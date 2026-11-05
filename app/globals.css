@@ -1,26 +1,54 @@
 @import "tailwindcss";
 
+/* ── Design tokens: Marfil & Oro, haunted ────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #fbf6ee;          /* page background (never pure white, never black) */
+  --section: #f5efe4;    /* sections, machine body */
+  --card: #fffdf8;       /* cards, message tape label */
+  --border: #e8e1d3;     /* borders */
+  --ink: #14110c;        /* headings */
+  --text: #2e2921;       /* body */
+  --muted: #6b665e;      /* secondary text */
+  --gold: #9e711f;       /* the one highlighted phrase in a heading (large text: 4.0:1) */
+  --gold-text: #82591a;  /* gold for small text and links (5.7:1) */
+  --gold-dot: #d0ab73;   /* eyebrow dots, reel hubs */
+  --espresso: #241d14;   /* tape reels, nav bar, the speaker grille */
+  --olive: #3a3f2f;      /* closing panel */
+  --light: #b65f45;     /* the message light (terracotta red) */
+  --light-text: #9c4e37; /* urgent badge background, with --card text (5.8:1) */
 }
 
+/* ── Map tokens into Tailwind theme ──────────────────────────────── */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg: var(--bg);
+  --color-section: var(--section);
+  --color-card: var(--card);
+  --color-border: var(--border);
+  --color-ink: var(--ink);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-gold: var(--gold);
+  --color-gold-text: var(--gold-text);
+  --color-gold-dot: var(--gold-dot);
+  --color-espresso: var(--espresso);
+  --color-olive: var(--olive);
+  --color-light: var(--light);
+  --color-light-text: var(--light-text);
+
+  --font-newsreader: var(--font-newsreader);
+  --font-inter: var(--font-inter);
+  --font-caveat: var(--font-caveat);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* ── Base styles ─────────────────────────────────────────────────── */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-inter), Arial, Helvetica, sans-serif;
+}
+
+/* Visible focus ring in gold */
+:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
 }
