@@ -965,3 +965,14 @@ New runtime dependencies: `zod` (v4), `@google/genai` (2.x, see "Versions instal
 4. **Phone lookup privacy:** approved. Reschedule and cancel read back a booking only when phone and name both match (Booking_Match, Requirement 12). A mismatch gets the same "cannot find it" reply as no booking. Property S7 covers the matcher.
 5. **Requirement 2.10:** kept. The client timeout ends the Call and sends a `hangup` so the Owner gets a Message.
 6. **Extra pieces:** approved: the `rate_limits` table, `lib/voice/`, the `callId` request field, and resources stored in `shops.profile`. `structure.md` and `tech.md` are updated to match.
+
+## Implementation notes (tasks 3–5)
+
+Small changes made while implementing, so the design matches the code:
+
+1. **`ServiceSchema` has an optional `aliases: string[]`.** Task 5.2 asks `matchService` to handle synonyms ("cortarme el pelo" → haircut). Synonyms belong to a shop's own catalog, so they live on the service, not in the sector pack. They are used only to match what the caller said, never spoken.
+2. **`lib/receptionist/format.ts` was created in task 5.1**, together with `phrases.ts`, because every templated line with a day or time needs `formatSlot`. Task 6.2 still owns its DST unit tests.
+3. **The `ModelClient` port type is in `lib/conversation/types.ts`** with the other ports. Task 6 implements it in `lib/receptionist`.
+4. **Spanish templates avoid grammatical gender of the booking noun** ("cita" is feminine, "encargo" masculine), so a future pack needs no new code. The not-found line is "No encuentro nada con esos datos. ¿Quieres que le deje un mensaje a Lola?", the same in both mismatch cases (12.7). The hair-salon cancel read-back ends with "¿Confirmas que la anulo?".
+5. **P4(e) precondition.** "At least one weekly session long enough for the service" is checked as *wall-clock length ≥ duration + 60 minutes*. Without the margin the clause is false for correct code: a session can lose an hour on a spring-forward day, and in a window of about 10 full days that day can be the only occurrence of its weekday.
+6. **`decideTurn` details the table leaves open:** a "yes" that also changes the service or the time is not a confirmation (a new read-back follows); a question in the middle of a booking, reschedule or cancel keeps that flow's intent; once a booking passed the Booking_Match, a turn classified as `booking` stays a reschedule or cancel; during a reschedule, a requested time equal to the old booking's start is ignored (the model repeats every field it heard).

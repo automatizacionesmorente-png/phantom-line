@@ -47,49 +47,49 @@ Every task finishes only when `npx vitest run`, `npm run lint` and `npm run buil
   - Requirements: tech.md (Node 20.19+, TypeScript 5.9, Temporal from `temporal-polyfill`, no secrets in the repo)
   - Done when: `npx vitest run`, `npm run lint` and `npm run build` all pass.
 
-- [ ] 3. Booking_Rules (`lib/booking`, pure)
-  - [ ] 3.1 `types.ts` and `time.ts`: `toInstant`, `localDateOf`, `sessionsOn`, `overlaps`. Unit tests:
+- [x] 3. Booking_Rules (`lib/booking`, pure)
+  - [x] 3.1 `types.ts` and `time.ts`: `toInstant`, `localDateOf`, `sessionsOn`, `overlaps`. Unit tests:
     - Madrid on 28, 29 and 31 March and 24 and 25 October 2026;
     - the synthetic shop open Sundays 01:00–05:00 (3 real hours on 29 March, 5 on 25 October);
     - back-to-back ranges do not overlap.
-  - [ ] 3.2 `rules.ts`: `evaluateBooking` and `checkBooking` in the evaluation order of design.md, assigning the first free resource. Unit tests:
+  - [x] 3.2 `rules.ts`: `evaluateBooking` and `checkBooking` in the evaluation order of design.md, assigning the first free resource. Unit tests:
     - one test per rejection reason;
     - a second chair is used when the first is busy;
     - `ignoreBookingId` lets a booking move 30 minutes on the same chair;
     - a synthetic pack rule rejects with `sector:<name>`.
-  - [ ] 3.3 `slots.ts`: `slotCandidates` and `findNearestSlots` on the `slotStepMin` grid, inside `[max(now, R − 14 d), R + 14 d]`. Unit tests:
+  - [x] 3.3 `slots.ts`: `slotCandidates` and `findNearestSlots` on the `slotStepMin` grid, inside `[max(now, R − 14 d), R + 14 d]`. Unit tests:
     - **the worked example:** at Lola on Wednesday 2026-11-11, `now` 09:00, a haircut at 21:00 is rejected as `outside_hours`, and the alternatives are 19:30, 19:15 and 19:00 on `chair-1`;
     - the two DST companions: Saturday 28 March 21:00 → 19:30 (`18:30Z`), and Sunday 29 March 12:00 → Saturday 19:30, not Tuesday 10:00.
-  - [ ] 3.4 `tests/booking/arbitraries.ts`: `arbShop` (always including Lola), `arbNow`, `arbRequest` (minute granularity, biased to session boundaries) and `arbExisting` (built only from accepted requests), as in design.md. Also an exhaustive grid oracle for P4(d).
-  - [ ] 3.5 **[PBT] P1.** Outside opening hours is rejected. Validates 9.1, 5.6.
-  - [ ] 3.6 **[PBT] P2.** Closed weekdays are rejected. Validates 9.2.
-  - [ ] 3.7 **[PBT] P3.** An accepted service ends by its session's close, using real-time arithmetic. Validates 9.3, 5.2.
-  - [ ] 3.8 **[PBT] P4.** A rejection comes with the nearest valid grid slot, covering clauses (a) to (e) of design.md. Validates 9.4, 5.5.
-  - [ ] 3.9 **[PBT] P5.** The past is rejected. Validates 9.5, 5.3.
-  - [ ] 3.10 **[PBT] P6.** A time is rejected when every resource is busy, and accepted on a free resource when at least one is free. Validates 9.6, 5.4, 5.12.
-  - [ ] 3.11 **[PBT] P7.** A re-check gives the same verdict, also with `existing` shuffled. Validates 9.7, 5.9.
-  - [ ] 3.12 **[PBT] P8.** A meta-test checks the coverage floor: at least 100 requests per property, minute granularity, at least 7 consecutive days, and both 2026 DST weekends hit. Validates 9.8.
-  - [ ] 3.13 **[PBT] P9.** No two accepted bookings share a resource and overlap, over sequences of 1–40 requests. Validates 9.9, 5.11. (The database half is in 7.5.)
-  - [ ] 3.14 **[PBT] S1.** An unknown `serviceId` is always rejected as `unknown_service`. Validates 5.7.
+  - [x] 3.4 `tests/booking/arbitraries.ts`: `arbShop` (always including Lola), `arbNow`, `arbRequest` (minute granularity, biased to session boundaries) and `arbExisting` (built only from accepted requests), as in design.md. Also an exhaustive grid oracle for P4(d).
+  - [x] 3.5 **[PBT] P1.** Outside opening hours is rejected. Validates 9.1, 5.6.
+  - [x] 3.6 **[PBT] P2.** Closed weekdays are rejected. Validates 9.2.
+  - [x] 3.7 **[PBT] P3.** An accepted service ends by its session's close, using real-time arithmetic. Validates 9.3, 5.2.
+  - [x] 3.8 **[PBT] P4.** A rejection comes with the nearest valid grid slot, covering clauses (a) to (e) of design.md. Validates 9.4, 5.5.
+  - [x] 3.9 **[PBT] P5.** The past is rejected. Validates 9.5, 5.3.
+  - [x] 3.10 **[PBT] P6.** A time is rejected when every resource is busy, and accepted on a free resource when at least one is free. Validates 9.6, 5.4, 5.12.
+  - [x] 3.11 **[PBT] P7.** A re-check gives the same verdict, also with `existing` shuffled. Validates 9.7, 5.9.
+  - [x] 3.12 **[PBT] P8.** A meta-test checks the coverage floor: at least 100 requests per property, minute granularity, at least 7 consecutive days, and both 2026 DST weekends hit. Validates 9.8.
+  - [x] 3.13 **[PBT] P9.** No two accepted bookings share a resource and overlap, over sequences of 1–40 requests. Validates 9.9, 5.11. (The database half is in 7.5.)
+  - [x] 3.14 **[PBT] S1.** An unknown `serviceId` is always rejected as `unknown_service`. Validates 5.7.
   - Requirements: 5.1–5.7, 5.11, 5.12, 9.1–9.9
   - Done when: `npx vitest run`, `npm run lint` and `npm run build` all pass.
 
-- [ ] 4. Sector packs (`lib/sectors`, pure)
-  - [ ] 4.1 `types.ts`: `SectorPack` and the zod `SectorPackDataSchema`. `registry.ts`: `getSectorPack` validates every pack when the module loads; `term()` looks up vocabulary.
-  - [ ] 4.2 `hairSalon.ts`: unit `appointment`, resource kind sillón / chair, required fields service → requestedTime → name → phone, `slotStepMin: 15`, `rules: []`, vocabulary in ES and EN, sensitive topics and things it must never promise.
-  - [ ] 4.3 Make the P1–P9 property tests run over every pack in the registry. Unit tests: every pack passes `SectorPackDataSchema`; an unknown id throws; the hair-salon ES vocabulary contains "cita" and never "mesa".
+- [x] 4. Sector packs (`lib/sectors`, pure)
+  - [x] 4.1 `types.ts`: `SectorPack` and the zod `SectorPackDataSchema`. `registry.ts`: `getSectorPack` validates every pack when the module loads; `term()` looks up vocabulary.
+  - [x] 4.2 `hairSalon.ts`: unit `appointment`, resource kind sillón / chair, required fields service → requestedTime → name → phone, `slotStepMin: 15`, `rules: []`, vocabulary in ES and EN, sensitive topics and things it must never promise.
+  - [x] 4.3 Make the P1–P9 property tests run over every pack in the registry. Unit tests: every pack passes `SectorPackDataSchema`; an unknown id throws; the hair-salon ES vocabulary contains "cita" and never "mesa".
   - Requirements: 11.1–11.5, 4.12
   - Done when: `npx vitest run`, `npm run lint` and `npm run build` all pass.
 
-- [ ] 5. Conversation core, pure parts (`lib/conversation`)
-  - [ ] 5.1 `types.ts`: `TurnInput`, `TurnOutput`, `PublicState`, `CallState`, `Effect` and the port types. `shopProfile.ts`: `ShopProfileSchema`. `lib/receptionist/schema.ts`: `ModelTurnSchema` in the form task 1.5 confirmed. `lib/receptionist/phrases.ts`: every templated line in ES and EN, including the same "cannot find the booking" reply for both mismatch cases. Unit tests: the Lola profile from design.md passes `ShopProfileSchema`; every phrase exists in both languages.
-  - [ ] 5.2 `fields.ts`: `normalizePhone`, `matchService` and `mergeFields`, with unit tests for accents, synonyms, `+34`, short numbers, and a server value kept when the model returns null.
-  - [ ] 5.3 `matchCaller.ts`: `normalizeName` and `matchesCaller` (phone and name must both match; the name ignores case and accents). Unit tests: "maria jose" matches "María José"; the right phone with another name does not match.
-  - [ ] 5.4 **[PBT] S7.** For the Booking_Match: case, accent and spacing variants match; a different normalized name or phone never matches; `normalizeName` is idempotent. Validates 12.1, 12.2, 12.7.
-  - [ ] 5.5 `limits.ts`: `checkLimits`, with unit tests at exactly 12 and 13 Turns.
-  - [ ] 5.6 **[PBT] S6.** `checkLimits` blocks exactly when a count is over its configured limit. Validates 3.9.
-  - [ ] 5.7 `ownerMessage.ts`: `buildOwnerMessage` for every outcome (booked, rescheduled, cancelled, answered, message, fallback, abandoned). Unit tests check that every field is filled and that `modelFailed` is set on fallback.
-  - [ ] 5.8 `decide.ts`: `decideTurn` following the reply-composition table of design.md. Unit tests:
+- [x] 5. Conversation core, pure parts (`lib/conversation`)
+  - [x] 5.1 `types.ts`: `TurnInput`, `TurnOutput`, `PublicState`, `CallState`, `Effect` and the port types. `shopProfile.ts`: `ShopProfileSchema`. `lib/receptionist/schema.ts`: `ModelTurnSchema` in the form task 1.5 confirmed. `lib/receptionist/phrases.ts`: every templated line in ES and EN, including the same "cannot find the booking" reply for both mismatch cases. Unit tests: the Lola profile from design.md passes `ShopProfileSchema`; every phrase exists in both languages.
+  - [x] 5.2 `fields.ts`: `normalizePhone`, `matchService` and `mergeFields`, with unit tests for accents, synonyms, `+34`, short numbers, and a server value kept when the model returns null.
+  - [x] 5.3 `matchCaller.ts`: `normalizeName` and `matchesCaller` (phone and name must both match; the name ignores case and accents). Unit tests: "maria jose" matches "María José"; the right phone with another name does not match.
+  - [x] 5.4 **[PBT] S7.** For the Booking_Match: case, accent and spacing variants match; a different normalized name or phone never matches; `normalizeName` is idempotent. Validates 12.1, 12.2, 12.7.
+  - [x] 5.5 `limits.ts`: `checkLimits`, with unit tests at exactly 12 and 13 Turns.
+  - [x] 5.6 **[PBT] S6.** `checkLimits` blocks exactly when a count is over its configured limit. Validates 3.9.
+  - [x] 5.7 `ownerMessage.ts`: `buildOwnerMessage` for every outcome (booked, rescheduled, cancelled, answered, message, fallback, abandoned). Unit tests check that every field is filled and that `modelFailed` is set on fallback.
+  - [x] 5.8 `decide.ts`: `decideTurn` following the reply-composition table of design.md. Unit tests:
     - an unknown service;
     - a rejection with 3 alternatives, then "vale, a las siete y media" resolved from `lastOffer`;
     - a read-back sets `awaiting_confirmation`;
@@ -99,7 +99,7 @@ Every task finishes only when `npx vitest run`, `npm run lint` and `npm run buil
     - the 20th Turn;
     - reschedule and cancel with a match, with no booking for the phone, and with a name mismatch (both mismatch cases give the same reply and read back nothing);
     - `callerConfirmed: true` outside `awaiting_confirmation` does nothing.
-  - [ ] 5.9 **[PBT] S2.** For all model turns and server states, every booking effect carries a verdict that `evaluateBooking` accepts for the same `existing`, and nothing is emitted unless the stage was `awaiting_confirmation`. Validates 5.8, 5.9, 3.11.
+  - [x] 5.9 **[PBT] S2.** For all model turns and server states, every booking effect carries a verdict that `evaluateBooking` accepts for the same `existing`, and nothing is emitted unless the stage was `awaiting_confirmation`. Validates 5.8, 5.9, 3.11.
   - Requirements: 3.5, 3.6, 3.9, 4.12–4.17, 5.8–5.10, 6.2, 6.3, 6.5, 10.1, 12.1–12.7
   - Done when: `npx vitest run`, `npm run lint` and `npm run build` all pass.
 
@@ -196,3 +196,23 @@ When a property test fails during tasks 3–9 and the failure shows a real bug (
 
 | Task | Property | Counterexample | Cause | Fix |
 |---|---|---|---|---|
+
+### Mutation check of P1–P9 (task 3, 2026-11-11)
+
+No property found a real bug in the first implementation. To prove the properties are real, each rule below was broken on purpose, the suite was run, and the code was restored (suite green again after each one).
+
+| Mutation in `lib/booking` | What failed | Smallest counterexample fast-check shrank to |
+|---|---|---|
+| Accept a start equal to the session close (`start < close` → `start <= close`), the suggested example | **No property failed.** Only the unit test "outside_hours … exactly at close" failed (got `does_not_fit`). This mutant is equivalent for P1–P9: every service lasts at least 5 minutes, so a start at the close is still rejected one step later by `does_not_fit`. Only the reason changes, and no property checks that reason. | n/a (unit test: haircut at 14:00 on Wednesday 11 November) |
+| Drop the `does_not_fit` check | **P3** and the `does_not_fit` unit test | New York shop, Friday session 03:05–09:15 local, a 158-minute service requested at 09:14 local on Friday 20 March: accepted although it ends long after the 09:15 close |
+| Count only bookings that *start* inside the request as overlapping (`b.start ∈ [start, end)` instead of half-open overlap) | **P6**, **P9**, the `all_resources_busy` unit test and the `ignoreBookingId` unit test | P6: Madrid shop with 2 resources, open Sundays 00:00–01:20, 10-minute service at 00:00 on 29 March, both resources blocked by bookings that started 1 minute earlier: accepted instead of `all_resources_busy`. P9: one resource, two 10-minute requests at 00:00 and 00:03 local on Wednesday 28 October: both accepted on the same resource |
+| Search alternatives only after the request (window `[R, R + 14 d]`) | **P4** (clause (d), the oracle found a slot 30 minutes away, the code offered one 3 hours away), the worked example and both DST companions | Lola, `now` 4 October, haircut on Saturday 24 October at 14:00 local: offered 17:00, oracle nearest 13:30 |
+
+### Mutation check of S2 (task 5, 2026-11-11)
+
+| Mutation in `lib/conversation/decide.ts` | What failed | Smallest counterexample fast-check shrank to |
+|---|---|---|
+| Re-check a confirmed booking against an empty agenda instead of the fresh bookings | **S2** | Lola, Wednesday 11 November: Ana says "yes" to a pending haircut at 17:00 while Luis holds both chairs at 17:00; the code still emitted `createBooking` |
+| Accept a "yes" in the `collecting` stage too | **S2** and the unit test "`callerConfirmed: true` outside `awaiting_confirmation` does nothing" | Ana, stage `collecting` with a pending cancel of her own booking, says "yes": the code emitted `cancelBooking` |
+
+The first S2 generator could not catch either mutation: a plain "yes" with an unchanged time almost never came up (`fc.option` returns null only 1 time in 6). The generator now draws starts from a shared pool and makes half the inputs a plain "yes" with a pending action in any stage. This was a weak generator, not a bug in the code.
