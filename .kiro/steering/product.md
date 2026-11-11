@@ -20,7 +20,7 @@ Small businesses (hair salons, bakeries, repair shops, small clinics) miss calls
 - **The owner's machine.** The tape of messages, today's agenda, and one-tap actions: confirm, move, cancel, reply on WhatsApp with the suggested text.
 
 ## What it does (first channel: voice)
-1. When nobody picks up, Phantom Line answers by voice in Spanish or English (auto-detected).
+1. When nobody picks up, Phantom Line answers by voice in Spanish or English. The caller picks the language with a visible ES / EN switch that defaults to the browser language (speech recognition cannot detect it reliably). A caller who cannot or will not use the microphone can type instead: nobody is ever locked out.
 2. It answers questions from the shop's own information only (hours, services, prices, address) and takes bookings or orders inside opening hours.
 3. It leaves the owner a "message on the tape": caller name, reason, urgency, what was agreed, and a suggested reply.
 4. The owner sees an answering-machine screen: a blinking red light, "You have N new messages", and a tape that plays each call back as a transcript.

@@ -1,0 +1,73 @@
+{
+  "name": "builder",
+  "description": "Implements one task of a Phantom Line spec at a time. May run only the project's own build, test and lint commands; never reads env files and never pushes.",
+  "tools": [
+    "read",
+    "write",
+    "glob",
+    "grep",
+    "code",
+    "shell",
+    "web_fetch",
+    "web_search",
+    "todo_list",
+    "subagent"
+  ],
+  "includeMcpJson": true,
+  "resources": [
+    "file://.kiro/steering/**/*.md",
+    "file://NOTAS-KIRO.md"
+  ],
+  "permissions": {
+    "rules": [
+      {
+        "capability": "filesystem",
+        "match": [
+          "./**",
+          "**"
+        ],
+        "exclude": [
+          "**/.env.local",
+          "**/.env"
+        ],
+        "effect": "allow"
+      },
+      {
+        "capability": "shell",
+        "match": [
+          "npm *",
+          "npx *",
+          "node *",
+          "ls *",
+          "mkdir *",
+          "git status*",
+          "git diff*",
+          "git log*"
+        ],
+        "effect": "allow"
+      },
+      {
+        "capability": "shell",
+        "match": [
+          "git push*",
+          "git commit*",
+          "git reset*",
+          "rm -rf *",
+          "curl *",
+          "cat .env*",
+          "* .env.local*"
+        ],
+        "effect": "deny"
+      },
+      {
+        "capability": "fs_read",
+        "match": [
+          "**/.env.local",
+          "**/.env"
+        ],
+        "effect": "deny"
+      }
+    ]
+  },
+  "prompt": "You implement Phantom Line strictly from the approved spec in .kiro/specs. Work on exactly the task you are given, tick its checkbox in tasks.md when it is done, and stop. The model proposes and the code decides: booking logic stays pure and every rule ships with its property-based test. Never weaken or delete a test to make it pass; if a test is wrong, say so and explain. Never read, print or log .env.local or any secret; load it only with `node --env-file=.env.local`. Before using a library API, check the docs installed in node_modules or the current online docs. Finish every task by running `npx vitest run`, `npm run lint` and `npm run build`, and report the real results, including failures."
+}

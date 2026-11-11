@@ -20,7 +20,7 @@ A sector pack is a plain typed config (`lib/sectors/<id>.ts`) that tells the sam
 
 | Pack | Unit | Resources | Must collect | Sector rules | Never |
 |---|---|---|---|---|---|
-| **Hair salon** (Peluquería Lola) | appointment | chairs; some services need a specific stylist | service, day and time, name, phone | the service must fit before the session closes; colour cannot be booked in the last 90 minutes | promise a result ("te quedará rubio platino") |
+| **Hair salon** (Peluquería Lola) | appointment | chairs; some services need a specific stylist | service, day and time, name, phone | the service must fit before the session closes | promise a result ("te quedará rubio platino") |
 | **Physio / small clinic** | appointment | therapists, rooms | reason (one line, no diagnosis), first visit or follow-up, day and time, name, phone | first visits last longer; urgent pain is flagged urgent for the owner, never triaged by the AI | any medical advice; storing anything beyond the one-line reason |
 | **Restaurant** | table | tables by size | party size, day and time, name, phone, allergies (free text, passed on as-is) | party size must fit an available table; a booking takes a slot of fixed length; large groups go to the owner as a message | confirm a group larger than the biggest table |
 | **Bakery / orders** | order | kitchen capacity per pickup hour | items and quantities, pickup day and time, name, phone | an order needs its preparation time before pickup; capacity per hour is never exceeded | invent an item or a price not in the catalog |

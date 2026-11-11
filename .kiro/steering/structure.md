@@ -8,19 +8,26 @@ inclusion: always
 app/
   call/[shopId]/page.tsx      caller side: the "phone" in the browser
   machine/[shopId]/page.tsx   owner side: the answering machine
-  api/turn/route.ts           one conversation turn: caller text -> receptionist reply
+  api/turn/route.ts           voice channel adapter: one conversation turn, caller text -> receptionist reply
   api/messages/route.ts       list and mark messages
 lib/
-  booking/                    pure booking rules (hours, slots, services) - no I/O, fully tested
-  receptionist/               prompt building, model call, zod schemas, fallbacks
-  db/                         Drizzle schema and queries
+  conversation/               the channel-agnostic core: handleTurn (the one function every channel calls),
+                              pure decideTurn, field re-derivation, caller matching, rate-limit decisions, owner message
+  booking/                    pure booking rules (hours, slots, resources, services) - no I/O, fully tested
+  sectors/                    sector packs: one plain typed config per kind of business, zod-validated, plus the registry
+  receptionist/               prompt building, model call, zod schemas, spoken phrases, fallbacks
+  voice/                      browser side of the voice channel: pure call-loop reducer and the speech port
+                              (Web Speech, typed-only, and a fake for tests)
+  db/                         Drizzle schema, queries (repository), seed
+drizzle/                      generated migrations plus custom SQL migrations (e.g. the no-overlap constraint)
 components/
   machine/                    tape reels, red light, message list
-  call/                       call button, live transcript
+  call/                       call button, language switch, live transcript, typed input
 tests/                        unit and property-based tests mirroring lib/
 ```
 
 ## Conventions
-- Business logic in `lib/` is pure and testable. Pages and routes stay thin.
+- Business logic in `lib/` is pure and testable. Pages and routes stay thin. Code that does I/O receives its dependencies (repository, model client, clock) as parameters.
+- Channel adapters (voice now, WhatsApp and web chat later) only identify the sender, validate their payload, load the shop and call `lib/conversation`. They never contain booking logic.
 - One component per file, PascalCase names. Utilities in camelCase.
 - Every new rule in `lib/booking/` comes with a property-based test.
