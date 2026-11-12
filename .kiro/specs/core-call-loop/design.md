@@ -19,7 +19,7 @@ Each library choice below was checked against the docs on 2026-11-11 (Next.js do
 | Area | First choice from memory | What the current docs say | Decision |
 |---|---|---|---|
 | Gemini API | `ai.models.generateContent` with `responseSchema` | The Interactions API (`ai.interactions.create`) has been GA and recommended for new projects since June 2026; `generateContent` is "legacy, fully supported". Interactions **store requests by default** (`store=true`). | Use `interactions.create` with `store: false`, so caller names and phones are not kept as stored interactions. The client is behind an interface, so switching back is one file. |
-| Gemini model | `gemini-2.5-flash` | `gemini-3.8-flash` is the current stable Flash (Sept 2026). Gemini 3.6+ ignore `temperature`/`top_p`/`top_k`. 3.8 Flash does not support `thinking_level: "minimal"` (returns an error). | Model id comes from `GEMINI_MODEL`. Send `generation_config: { thinking_level: "low", max_output_tokens }`, no sampling parameters. **Changed by the spike (task 1):** `gemini-3.8-flash` never answered with this key, `gemini-2.5-flash` returns 404 for new users, and `gemini-3.6-flash` is capped at 5 requests per minute on the free tier. The default is now `gemini-3.5-flash-lite`. See "Verification spike findings". |
+| Gemini model | `gemini-2.5-flash` | `gemini-3.8-flash` is the current stable Flash (Sept 2026). Gemini 3.6+ ignore `temperature`/`top_p`/`top_k`. 3.8 Flash does not support `thinking_level: "minimal"` (returns an error). | Model id comes from `GEMINI_MODEL`. Send `generation_config: { thinking_level: "low", max_output_tokens }`, no sampling parameters. **Changed by the spike (task 1):** `gemini-3.8-flash` never answered with this key, `gemini-2.5-flash` returns 404 for new users, and `gemini-3.6-flash` is capped at 5 requests per minute on the free tier. The default is now `gemini-3.5-flash-lite`. See "Verification spike findings". **Changed again on 2026-11-12:** `GEMINI_MODEL` may hold an ordered, comma-separated list, and the default is `gemini-3.5-flash-lite, gemini-flash-lite-latest`; see "Model attempts: measurements". |
 | Gemini free tier | Not considered | Free-tier content is "used to improve our products". | The prompt carries only what the Turn needs. Documented as a privacy note for the demo. |
 | `@google/genai` | Any Node | SDK 3.0+ requires Node 22+ (`engines: ">=22.0.0"` in 3.2.0, checked with `npm view`). | **Changed on the real machine:** the default Node here is 20.19.6, so the repo pins `@google/genai` **2.32.0**, the newest release whose `engines` is `>=20.0.0`. Its types already have `ai.interactions.create` with `store`, `response_format`, `generation_config.thinking_level` and per-request `signal`/`timeout_ms`/`retries` options. |
 | Time zones | `date-fns-tz` or a hand-rolled `Intl` offset helper | The docs said Node 26 (Vercel's default since 2026) ships `Temporal` enabled by default, and TypeScript ships Temporal types from 6.0. **That claim did not hold on the real machine:** `node -e "console.log(typeof Temporal)"` prints `undefined` on Node 26.0.0, also with `--harmony-temporal`, and the machine's default Node is 20.19.6. | No runtime `Temporal` global. Every file that uses Temporal imports it explicitly: `import { Temporal } from "temporal-polyfill"` (the side-effect-free entry point; it uses the native implementation when one exists, and ships its own types, so TypeScript stays at the installed 5.9.3). `"engines": { "node": ">=20.19" }`, the floor at which this ESM-only package can also be `require()`d. Still no date library besides the polyfill. |
@@ -386,6 +386,7 @@ Reply composition, in order:
 | Caller asked to switch language | Model reply in the new language; `language` changes. |
 | Service named but not offered | Template: "No hacemos manicura. Hacemos corte, tinte y barba." (5.7) |
 | Service and time known, `checkBooking` rejects | Template with reason and up to 3 alternatives (5.5). |
+| Booking, service known, day or time missing | Template `askDayAndTime` ("¿A qué hora te viene bien el viernes 13?" / "¿Qué día y a qué hora te viene bien?"), never the model's line (bugfix 2026-11-12, S8). |
 | Accepted, required fields still missing | Model reply (asks for the next field, in `pack.requiredFields` order, 4.12). The prompt forbids the model from saying a time is free or confirmed. |
 | Accepted, all fields present | Template read-back with day, time, Service (4.13); `stage = awaiting_confirmation`. |
 | Caller confirms and the fresh re-check accepts | Template confirmation + what happens next (4.15); effects `createBooking` + `saveMessage`. |
@@ -808,7 +809,7 @@ The schema is flat on purpose: flat objects with enums, strings and booleans are
 1. **Role and voice**, from `receptionist-voice.md`: answering machine of `shop.name`; one or two short spoken sentences; no lists, emoji or markdown; one question at a time.
 2. **Shop facts, the only facts you may state**: name, owner, address, opening hours per weekday rendered in words ("martes a sábado, de 10:00 a 14:00 y de 17:00 a 20:00"), services with duration and price formatted with `Intl.NumberFormat(lang, { style: "currency", currency: "EUR" })`. Every noun comes from the pack vocabulary, so the hair salon says "cita" and "sillón", never "mesa".
 3. **Today**: "Hoy es miércoles, 11 de noviembre de 2026, 09:12 (Europe/Madrid)." Relative expressions like "mañana a las cinco" resolve against this (4.3).
-4. **Rules**: never say a time is free or booked, because the system checks and says it; return dates and times as shop-local `YYYY-MM-DD` / `HH:MM`; never advise on the pack's sensitive topics or promise results from `neverPromise`; if the answer is not in the shop facts, say so and offer to take a message for `ownerName`; if the caller asks for the other language, set `wantsLanguage` and reply in it.
+4. **Rules**: never say a time is free or booked, because the system checks and says it; return dates and times as shop-local `YYYY-MM-DD` / `HH:MM`; always return the day and time the caller said, even when the shop is closed then or the time has passed, and never talk about opening hours during a booking unless asked (both added 2026-11-12, "Who speaks"); never advise on the pack's sensitive topics or promise results from `neverPromise`; if the answer is not in the shop facts, say so and offer to take a message for `ownerName`; if the caller asks for the other language, set `wantsLanguage` and reply in it.
 5. **Field order**: `pack.requiredFields` rendered as "first the service, then the day and time, then the name, then the phone". For a reschedule or a cancel: "first the phone, then the name"; the model must never describe a booking itself, because only the system's read-back may.
 
 `buildInput(state, conversation, utterance)` returns the per-Turn input:
@@ -823,19 +824,23 @@ The request: `client.interactions.create({ model, system_instruction, input, sto
 ```ts
 // lib/receptionist/callModel.ts
 export interface ModelClient {
-  generate(req: { systemInstruction: string; input: string; jsonSchema: object; signal: AbortSignal }): Promise<string>;
+  // `attempt` is 0 for a Turn's first attempt and grows with each fresh one, so a client
+  // with a model list can move to the next model. `modelFor` names the model, for logs.
+  generate(req: { systemInstruction: string; input: string; jsonSchema: object; signal: AbortSignal; attempt?: number }): Promise<string>;
+  modelFor?(attempt: number): string;
 }
 export type ModelFailure = "timeout" | "quota" | "unavailable" | "invalid_output";
 export async function callReceptionist(
   client: ModelClient,
   prompt: { systemInstruction: string; input: string },
-  opts: { timeoutMs: number; onFailure?: (info: ModelFailureInfo) => void },  // 8000; onFailure feeds the log
+  opts: { timeoutMs: number; attemptTimeoutMs?: number; onFailure?: (info: ModelFailureInfo) => void; onSuccess?: (info: ModelSuccessInfo) => void },
 ): Promise<{ ok: true; turn: ModelTurn } | { ok: false; failure: ModelFailure }>;
 ```
 
-- **Timeout.** `callReceptionist` creates `AbortSignal.timeout(8000)`, passes it to the client, and also races the call against the same timer. The 8-second bound holds even if the SDK ignores the signal. The spike showed that the SDK honours a top-level `signal` within milliseconds, that the deprecated `fetch_options.signal` is not reliable, and that the SDK's default backoff retries can outlast the budget, so the client disables them.
-- **Classification.** Our own timer fired → `timeout`; an error with numeric `status` (or `statusCode`) 429 → `quota` (the SDK's `RateLimitError`; `RESOURCE_EXHAUSTED` in the message also counts); any other error, including 503 "high demand" and 404 → `unavailable`; JSON parse or zod failure → `invalid_output`. The checks read fields, not SDK classes, because most error classes are not exported.
-- **Retry of a transient 5xx (bugfix, 2026-11-12).** An error with `status` 500–599 is retried at once, up to `MAX_MODEL_ATTEMPTS = 3` calls, all inside the same 8-second deadline and with the same abort signal. A 429 is never retried (it is quota, and a retry burns more of it), nor is an error without a status (network) or an abort. Gemini's free tier answers single requests with 503 "high demand" every now and then (2 of 14 calls sampled on 2026-11-12, about 1.1–1.5 s each), and without this retry one such answer ended the whole Call. Only the last error is classified; the earlier ones go to the log.
+- **Timeout.** `callReceptionist` races the whole Turn against its own 8-second timer (`MODEL_TIMEOUT_MS`) and aborts one shared signal when the timer fires or the Turn settles. The 8-second bound holds even if the SDK ignores the signal, which it did once on 2026-11-12 (an answer after 38 s; see "Model attempts"). The SDK's default backoff retries can outlast the budget, so the client disables them.
+- **Attempts (bugfix 2026-11-12, second round).** Each attempt has its own deadline, `ATTEMPT_TIMEOUT_MS = 2500`. When it expires without an answer, a fresh attempt starts **beside** it (hedged; the old one keeps running), and the first valid answer from any attempt wins. When the newest attempt answers a 5xx, a fresh attempt starts at once. An attempt gets its own deadline only if at least `MIN_ATTEMPT_MS = 1500` would be left after it; otherwise it is the last one and keeps the rest of the budget. At most `MAX_MODEL_ATTEMPTS = 4` per Turn. So a Turn whose attempts all hang tries at 0 s, 2.5 s and 5 s and still ends at exactly 8 s. Attempt `k` uses model `k mod n` of the client's list. The numbers come from measurements, below.
+- **What is never retried.** A 429 ends the Turn at once as `quota` (retrying burns more quota). An error without an HTTP status (network) or an abort never starts a fresh attempt. Neither does invalid output (the retry path of 4.6 below handles it).
+- **Classification.** Our own timer fired → `timeout`; an error with numeric `status` (or `statusCode`) 429 → `quota` (the SDK's `RateLimitError`; `RESOURCE_EXHAUSTED` in the message also counts); any other error, including 503 "high demand" and 404 → `unavailable`; JSON parse or zod failure → `invalid_output`. The checks read fields, not SDK classes, because most error classes are not exported. With several attempts, the error that ended the Turn is classified; the others go to the log as `earlier`, each with its model, outcome (`attempt_timeout`, `unfinished`, `5xx`, `error`) and latency.
 - **Fallback.** `timeout`, `quota`, `unavailable` and a Rate_Limit all take the **end path**: the reply is the Fallback_Message, the Call closes with `outcome = "fallback"`, and the Message carries the fields collected so far plus `model_failed = true` (4.7, 6.4, 8.2, 8.3). `invalid_output` takes the **retry path** (4.6): a Fallback_Message variant that offers to take a message and invites the caller to say it again; the Call continues; a second invalid output in a row takes the end path.
 - Fallback texts (in `phrases.ts`):
   - end, es: "Perdona, ahora mismo no puedo atenderte bien. Le dejo tu mensaje a Lola y te llamará."
@@ -843,7 +848,56 @@ export async function callReceptionist(
   - retry, es: "Perdona, no te he entendido. ¿Me lo repites? Si prefieres, se lo dejo apuntado a Lola."
   - retry, en: "Sorry, I didn't catch that. Could you say it again? Or I can leave a note for Lola."
 - **Injection.** `handleTurn` receives `deps.model`. Tests pass a scripted fake (`createScriptedModel([...turns])`) or failure fakes (`neverResolves`, `throws429`, `returnsGarbage`, and `failsWith503(n, then)`, which throws the SDK's real 503 "high demand" shape `n` times). No test touches the network.
-- `geminiClient.ts` starts with `import "server-only"` and reads `GEMINI_API_KEY` and `GEMINI_MODEL` from `process.env`. Neither has a `NEXT_PUBLIC_` prefix, so Next never inlines them into a client bundle (8.4).
+- `geminiClient.ts` starts with `import "server-only"` and reads `GEMINI_API_KEY` and `GEMINI_MODEL` from `process.env`. Neither has a `NEXT_PUBLIC_` prefix, so Next never inlines them into a client bundle (8.4). `GEMINI_MODEL` holds one model id or a comma-separated, ordered list; empty means the default list `gemini-3.5-flash-lite, gemini-flash-lite-latest`.
+
+### Model attempts: measurements (bugfix 2026-11-12, second round)
+
+Four scripted calls over HTTP against `next dev` (real key, real Neon, Spanish) showed two problems. Two of three model calls hung for the whole budget on a single attempt (`{"failure":"timeout","attempts":1,"latencyMs":8009}`), and one answered with the model's own words about opening hours instead of the code's rejection (see "Who speaks" below).
+
+`scripts/check-turn.ts --repeat=N` sends each line N times per model as one raw request each (no retry, no fallback model, a 12 s cap) and prints, per model, ok / timeout / 5xx / 429 / error / invalid_output and the latency percentiles of the ok answers, plus what `decideTurn` did with each answer. Requests were spaced by `--gap` across models in round robin, so each model saw one request every 20 s (run A) or 10 s (run B). Both runs used the fixed prompt.
+
+| Model | Calls | ok | 503 | Hung past 12 s | Other | ok p50 / p90 / max (ms) | ok within 2.5 s |
+|---|---|---|---|---|---|---|---|
+| `gemini-3.5-flash-lite` (A + B) | 55 | 44 | 10 (0.6–4.5 s) | 1 | | 1 582 / 3 076 / 3 428 | 38 of 44 |
+| `gemini-flash-lite-latest` (A + B) | 55 | 45 | 9 (0.8–4.5 s) | 1 (answered after 38 s: the SDK ignored the abort) | | 1 345 / 2 438 / 8 425 | 41 of 45 |
+| `gemini-3.1-flash-lite` (A) | 15 | 9 | 0 | 5 (the last 5 in a row) | 1 invalid output after 7.2 s | 1 700 / 7 965 / 7 965 | 6 of 9 |
+| `gemini-3-flash-preview` (A) | 15 | 2 | 1 (after 8.5 s) | 4 | 8 × 429 from the 8th call on | 1 716 / 10 515 | 1 of 2 |
+| `gemini-2.5-flash-lite` (A) | 15 | 0 | | | 15 × 404 | | |
+
+Run A: 2026-11-12 12:37–12:44 Madrid, the 21:00 line, 15 per model. Run B: 12:45–12:52, 20 runs of the 21:00 line and of "Hola, ¿a qué hora abrís el sábado?" for the first two models. **Rate limits:** `gemini-3-flash-preview` answered 429 from its 8th call on, at one request per 20 s, so that row measures its quota more than its latency. Its quota had probably been spent by an earlier 90-call run of the same script (6 models, old prompt) whose output went to a file this agent could not read; those numbers are lost. No other model got a 429 in runs A and B.
+
+**Choosing the numbers.** The 110 measured outcomes of the two lite models were replayed through each policy (200 000 simulated Turns, attempts alternating between the two models, 8 s budget):
+
+| Policy | Failed Turns, as measured | Failed Turns, latencies doubled and 30 % hangs | Failed Turns, 50 % hangs | Requests per Turn, as measured / doubled |
+|---|---|---|---|---|
+| Abort at 2.5 s, fresh attempt | 1.39 % | 46.6 % | 24.7 % | 1.40 / 2.44 |
+| Abort at 3.5 s | 1.61 % | 31.2 % | 33.4 % | 1.23 / 1.69 |
+| **Hedged at 2.5 s (chosen)** | **0.47 %** | **14.5 %** | **21.1 %** | **1.37 / 2.21** |
+| Hedged at 2.0 s | 0.18 % | 10.4 % | 13.5 % | 1.47 / 2.82 |
+| Hedged at 3.0 s | 0.75 % | 18.7 % | 23.4 % | 1.34 / 2.09 |
+
+- **Hedged, not aborted.** The first real conversation runs used "abort at 2.5 s". During a slow period, every attempt was cut at 2.5 s on both models, and the answers that did arrive came 2.0–2.9 s into the last attempt. Aborting threw away answers that were half a second away. An aborted request still counts against the free-tier quota, so keeping it running costs nothing extra.
+- **2.5 s, not 2.0 s.** 2.0 s fails fewer Turns but sends 7–28 % more requests, and the per-minute quota is the next limit we hit (see the conversation runs below). 2.5 s is above the p90 of the ok answers in the quieter run A (1.8 s and 1.7 s) and catches 79 of 89 ok answers of runs A and B on its own.
+- **A model list.** The default model hung on only 1 of 55 measured calls, against 2 of 3 in the real calls, so hangs come in bursts. `gemini-3.1-flash-lite` hung on 5 calls in a row. Alternating with a second model that answers just as fast makes a burst on one model cost one attempt instead of the Turn. `gemini-flash-lite-latest` is an alias Google can move; it is second in the list for that reason.
+
+**Whole booking conversation.** `scripts/check-turn.ts --conversation --repeat=6` runs start, the 21:00 line, "Vale, a las siete y media", "Me llamo Ana Prueba", "Mi teléfono es 612 345 678" and "Sí, correcto" through the production path (`callReceptionist` with the model list, then `decideTurn` with the state carried over, no database):
+
+| When (Madrid) | Attempt policy | Gap between Turns | Reached a confirmed booking decision | Where the others stopped |
+|---|---|---|---|---|
+| 12:54 | abort at 2.5 s | 5 s | 2 of 6 | Run 2 at "Sí, correcto": 4 attempts (no answer by 2.5 s, 503, 503, 503). Runs 3, 4, 5 on a **429 for `gemini-3.5-flash-lite`**: the measurement was rate-limited by itself (5 s gaps plus retries, right after run B). |
+| 12:56 | abort at 2.5 s | 12 s | 2 of 6 | Runs 3–6 on `timeout`: every attempt on both models cut at 2.5 s (turns 1, 2, 3 and 1). |
+| 13:05 | **hedged at 2.5 s (final code)** | 12 s | **6 of 6** | none. 2 of 30 Turns needed a second model: one 503 then an answer at 4.5 s, one first attempt with no answer by 2.5 s then an answer at 3.8 s. |
+
+The final runs fell in a quiet period. They show the policy works when the free tier behaves; they do not prove a bad hour is solved. The second run started without the planned 2-minute pause after the first (the pause ran in parallel by mistake).
+
+### Who speaks: a known service with no time (bugfix 2026-11-12)
+
+In Call B, "Quiero cortarme el pelo mañana a las nueve de la noche" was answered with the model's words ("Lo siento, abrimos de diez de la mañana a dos y de cinco a ocho de la tarde. ¿A qué hora te viene bien?"). Rerunning the line with the old prompt reproduced it: `gemini-3.5-flash-lite` returned `service: "cortarme el pelo"`, `date: "2026-11-13"` and **`time: null`**, with `reason` "…a las 21:00". The model judged 21:00 impossible and left the time out. `decideTurn` then had a service but no time, so it passed the model's line through, and no code ever saw 21:00.
+
+- **Prompt.** A rule now says: always return the day and time the caller said, even when the shop is closed then or it has passed; never decide whether it is possible; "mañana a las nueve de la noche" is tomorrow's date and "21:00". A second rule forbids talking about opening hours during a booking unless the caller asks.
+- **Schema.** `service`, `date` and `time` carry `description`s in the JSON Schema with the same instruction.
+- **Safety net in code.** In the booking flow, once the service is known, a missing day or time is asked for by a template (`askDayAndTime`: "¿A qué hora te viene bien el viernes 13?" or "¿Qué día y a qué hora te viene bien?"). The model's line is spoken in a booking with a known service only after the Booking_Rules accepted the requested time. Property **S8** checks this.
+- **Measured after the fix.** With `--repeat`, the 21:00 line produced the 19:30 offer in **68 of 68** ok answers (all four models that answered, runs A and B), with `time` null in none.
 
 ### The Owner's Message
 
@@ -864,8 +918,9 @@ export async function callReceptionist(
 | Recognition `network` error | Same switch to Typed_Mode. | Normal Message. |
 | `no-speech` | Listens again; after 2 silences shows the "type instead" hint. | Nothing extra. |
 | No `speechSynthesis` or no voice for the language | Replies appear in the transcript only. | Normal Message. |
-| Model timeout (8 s) | End Fallback_Message, Call ends. | Message with fields so far, `model_failed`, outcome `fallback`. |
-| Model answers 5xx (e.g. 503 "high demand") | Nothing: retried at once, up to 3 calls inside the same 8 s. If every call fails, same as a timeout. | Nothing extra if a retry answers; otherwise same as a timeout. |
+| Model attempt with no answer by 2.5 s (hung or slow) | Nothing: a fresh attempt starts beside it on the next model of the list; the first answer wins. | Nothing extra if an attempt answers in time. |
+| Model timeout (8 s, every attempt included) | End Fallback_Message, Call ends. | Message with fields so far, `model_failed`, outcome `fallback`. |
+| Model answers 5xx (e.g. 503 "high demand") | Nothing: a fresh attempt starts at once, up to 4 attempts inside the same 8 s. If every attempt fails, same as a timeout. | Nothing extra if a retry answers; otherwise same as a timeout. |
 | Model returns invalid output | Retry Fallback_Message, Call continues; a second time in a row ends the Call as above. | Nothing extra on the first; Message with `model_failed` if it ends. |
 | Gemini quota exceeded (429) | Same as timeout. | Same as timeout. |
 | Visitor or global Rate_Limit during a Call | Same as timeout; HTTP 200, no error screen. | Same as timeout. |
@@ -891,7 +946,7 @@ Every time a Caller hears a Fallback_Message (end or retry), or the Turn_API ans
 | `reason` | `rate_limit`, `timeout`, `quota`, `unavailable`, `invalid_output` or `exception`. |
 | `shopId`, `callId`, `turn` | Where it happened. |
 | `limit` | `rate_limit` only: `visitor` or `global`. |
-| `model` | Model failures: `failure`, `latencyMs`, `attempts`, HTTP `status`, `errorClass` (the SDK class name, e.g. `InternalServerError`), the error `message` truncated to 300 characters, `earlier` (the retried 5xx errors), and for `invalid_output` the reason: `empty`, `json` (only the text length) or `schema` (zod `path`, `code` and `message` per issue). |
+| `model` | Model failures: `failure`, `latencyMs`, `attempts`, HTTP `status`, `errorClass` (the SDK class name, e.g. `InternalServerError`), the error `message` truncated to 300 characters, `model` (the model of the last attempt), `earlier` (every other attempt: model, outcome `attempt_timeout` / `unfinished` / `5xx` / `error`, latency, status), and for `invalid_output` the reason: `empty`, `json` (only the text length) or `schema` (zod `path`, `code` and `message` per issue). |
 | `error` | `exception` only: class name, SQLSTATE `code`, message and first stack frame. For a Drizzle query error (it has `params`, and its message quotes the query parameters) the class, code and message of its `cause` are logged instead. |
 
 Never logged: the API key (the Gemini client rethrows every SDK error as `GeminiCallError` with the key replaced by `***`, keeping `status`, `statusCode` and the SDK class name), the model's text, the utterance, the transcript, the caller's name or phone, and the hashed visitor key. A JSON syntax error is logged by length only, because V8's message quotes the text it could not parse. The logger is `CoreDeps.logFallback` (default: `console.error(JSON.stringify(event))`), so tests assert on the events; a logger that throws never changes the reply.
@@ -939,6 +994,7 @@ Supporting properties outside Requirement 9 (same style, smaller):
 - **S4.** *For all* strings, `toSpokenReply` returns at most 2 sentences, each at most 25 words, with no markdown characters or emoji (4.11).
 - **S5.** *For all* event sequences, `callLoop` never reaches `ended` except through `HANG_UP`, `CLIENT_TIMEOUT` or a `REPLY` with `complete: true`, and the "type instead" action is available in every non-ended phase (2.11, 2.12).
 - **S6.** *For all* counts and configs, `checkLimits` blocks exactly when `visitor > perVisitorPerMinute` or `global > globalPerHour` (3.9).
+- **S8 (bugfix 2026-11-12).** *For all* `now`, catalog services as the caller says them, days (or null) and minute-granular times (or null) in a fresh booking, *if* `decideTurn` speaks the model's own line, *then* the requested time is set and `evaluateBooking` accepts it. A guard test checks that the generator reaches both sides. Validates 5.8. `tests/conversation/decide.whoSpeaks.property.test.ts`.
 - **S7.** *For all* names `n`, phones `p` and bookings: (a) `matchesCaller({ name: v(n), phone: p }, { customerName: n, customerPhone: p })` is true for every variant `v(n)` that only changes letter case, adds or removes accents (á↔a, ñ↔n, ü↔u) or adds leading, trailing or repeated spaces; (b) it is false whenever `normalizeName` of the two names differs; (c) it is false whenever the normalized phones differ, whatever the names; (d) `normalizeName` is idempotent. Validates 12.1, 12.2, 12.7.
 
 `normalizeName(s) = s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim().replace(/\s+/g, " ")`. Because "ñ" decomposes to "n" plus a mark, "Núñez" matches "Nunez"; that is acceptable for a phone-plus-name check.
@@ -967,7 +1023,7 @@ Supporting properties outside Requirement 9 (same style, smaller):
 
 - The browser loop is the pure `callLoop` reducer plus `SpeechPort`. `createFakeSpeechPort(script)` emits `RECOGNIZED` texts and speech errors on cue and records what was spoken. Reducer tests drive a complete call through voice, through a mid-call `not-allowed` switch to Typed_Mode, and through a 15-second client timeout.
 - Typed_Mode is the same path a real Caller without a microphone uses, so typing a whole call in the running app exercises everything except the two Web Speech calls.
-- **The real model path without the database:** `node --env-file=.env.local --conditions=react-server --import tsx scripts/check-turn.ts ["es|línea" …]` sends caller lines through the real `buildSystemInstruction` / `buildInput`, JSON Schema, `createGeminiClient` and `callReceptionist` exactly as the first `say` of `handleTurn`, then the pure `decideTurn`, and prints the outcome category, the validated ModelTurn (name and phone as their length only) or the failure details. It never touches the database and never prints the key. `--conditions=react-server` lets `import "server-only"` load, as inside Next.js.
+- **The real model path without the database:** `node --env-file=.env.local --conditions=react-server --import tsx scripts/check-turn.ts ["es|línea" …]` sends caller lines through the real `buildSystemInstruction` / `buildInput`, JSON Schema, `createGeminiClient` and `callReceptionist` exactly as the first `say` of `handleTurn`, then the pure `decideTurn`, and prints the outcome category, the validated ModelTurn (name and phone as their length only) or the failure details. It never touches the database and never prints the key. `--conditions=react-server` lets `import "server-only"` load, as inside Next.js. Two more modes (bugfix 2026-11-12): `--repeat=N` sends each line N times per model as raw single requests and prints per-model counts (ok / timeout / 5xx / 429 / error / invalid_output), latency percentiles and what `decideTurn` did with each answer; `--conversation --repeat=N` runs the whole booking conversation N times through the production path. `--gap` spaces the requests so the measurement does not hit the free tier's per-minute limit itself, and `--model` takes the same comma-separated list as `GEMINI_MODEL`.
 - Before the demo, a short manual checklist in Chrome (desktop and Android) covers real recognition and synthesis in `es-ES` and `en-US`, the denied-microphone path, and a 360 px viewport. Browser automation (Playwright with fake media devices) is left out to keep dependencies few; it can be added later for the typed path if the manual check proves too slow.
 
 ## Dependencies and configuration

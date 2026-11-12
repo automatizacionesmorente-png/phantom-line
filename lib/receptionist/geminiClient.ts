@@ -8,9 +8,25 @@ import type { ModelClient } from "@/lib/conversation/types";
  * client bundle) and never logged.
  */
 
-/** The model the task-1 spike found answering every call well inside 8 s. Override with GEMINI_MODEL. */
-export const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
+/**
+ * The models a Turn's attempts use, in order (attempt k uses entry k mod length).
+ * Chosen from measurements (design.md, "Model attempts"). Override with GEMINI_MODEL,
+ * which may hold one id or a comma-separated list.
+ */
+export const DEFAULT_GEMINI_MODELS: readonly string[] = ["gemini-3.5-flash-lite", "gemini-flash-lite-latest"];
+/** The first model of the default list. */
+export const DEFAULT_GEMINI_MODEL = DEFAULT_GEMINI_MODELS[0];
 export const MAX_OUTPUT_TOKENS = 400;
+
+/** "a, b,,a" → ["a", "b"]; empty or missing → the default list. */
+export function parseModelList(raw: string | undefined): string[] {
+  const ids = (raw ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s !== "");
+  const unique = [...new Set(ids)];
+  return unique.length > 0 ? unique : [...DEFAULT_GEMINI_MODELS];
+}
 
 /** The slice of the SDK this client uses, so a test can pass a fake. */
 export interface InteractionsApi {
@@ -31,16 +47,21 @@ export interface InteractionsApi {
 
 export interface GeminiConfig {
   apiKey: string;
+  /** One model id or a comma-separated list (the value of GEMINI_MODEL). */
   model?: string;
   /** For tests: the SDK instance to use. */
   sdk?: InteractionsApi;
 }
 
-export function createGeminiClient(cfg: GeminiConfig): ModelClient {
-  const model = cfg.model?.trim() || DEFAULT_GEMINI_MODEL;
+export function createGeminiClient(cfg: GeminiConfig): ModelClient & { models: readonly string[] } {
+  const models = parseModelList(cfg.model);
+  const modelFor = (attempt: number) => models[Math.max(0, attempt) % models.length];
   const sdk: InteractionsApi = cfg.sdk ?? new GoogleGenAI({ apiKey: cfg.apiKey });
   return {
-    async generate({ systemInstruction, input, jsonSchema, signal }) {
+    models,
+    modelFor,
+    async generate({ systemInstruction, input, jsonSchema, signal, attempt = 0 }) {
+      const model = modelFor(attempt);
       let interaction: { output_text?: string | undefined };
       try {
         interaction = await sdk.interactions.create(

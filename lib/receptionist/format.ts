@@ -24,6 +24,12 @@ export function formatTime(instant: Temporal.Instant, timeZone: string, lang: La
   return z.minute === 0 ? `${h12} ${suffix}` : `${h12}:${mm} ${suffix}`;
 }
 
+/** A local date alone: "el viernes 13" / "Friday the 13th". */
+export function formatDay(date: Temporal.PlainDate, lang: Lang): string {
+  const weekday = WEEKDAYS[lang][date.dayOfWeek - 1];
+  return lang === "es" ? `el ${weekday} ${date.day}` : `${weekday} the ${ordinal(date.day)}`;
+}
+
 /** Day and time in the shop's zone: "el miércoles 11 a las 19:30" / "Wednesday the 11th at 7:30 pm". */
 export function formatSlot(instant: Temporal.Instant, timeZone: string, lang: Lang): string {
   const z = instant.toZonedDateTimeISO(timeZone);

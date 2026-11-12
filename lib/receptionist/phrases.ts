@@ -2,7 +2,7 @@ import type { Temporal } from "temporal-polyfill";
 import type { RejectionReason } from "@/lib/booking";
 import type { ShopProfile } from "@/lib/conversation/shopProfile";
 import type { Lang, SectorPack } from "@/lib/sectors";
-import { formatSlot, formatSlotList, joinAnd } from "./format";
+import { formatDay, formatSlot, formatSlotList, joinAnd } from "./format";
 
 /**
  * Every templated line the receptionist says, and the owner-facing texts of a
@@ -13,6 +13,11 @@ export interface PhraseSet {
   greeting(): string;
   serviceNotOffered(asked: string | null): string;
   rejected(reason: RejectionReason, requested: Temporal.Instant, alternatives: readonly Temporal.Instant[]): string;
+  /**
+   * The service is known but the day or the time is not: the code asks for it itself, so
+   * the caller never hears the model's own words about opening hours (Requirement 5.8).
+   */
+  askDayAndTime(day: Temporal.PlainDate | null): string;
   slotJustTaken(alternatives: readonly Temporal.Instant[]): string;
   readBack(serviceId: string, start: Temporal.Instant): string;
   booked(serviceId: string, start: Temporal.Instant): string;
@@ -59,6 +64,7 @@ function common(lang: Lang, pack: SectorPack, shop: ShopProfile) {
     owner: shop.ownerName,
     booking: pack.vocabulary[lang].booking,
     slot: (i: Temporal.Instant) => formatSlot(i, tz, lang),
+    day: (d: Temporal.PlainDate) => formatDay(d, lang),
     list: (is: readonly Temporal.Instant[]) => formatSlotList(is, tz, lang),
     service: (id: string) => shop.services.find((s) => s.id === id)?.name[lang] ?? id,
     resource: (id: string) => shop.resources.find((r) => r.id === id)?.name[lang] ?? id,
@@ -85,6 +91,8 @@ function spanish(pack: SectorPack, shop: ShopProfile): PhraseSet {
       alts.length > 0
         ? `${cap(c.slot(requested))} no es posible, ${why[reason] ?? "a esa hora no se puede"}. Tengo libre ${c.list(alts)}.`
         : `${cap(c.slot(requested))} no es posible, ${why[reason] ?? "a esa hora no se puede"}. No encuentro otro hueco cerca, se lo dejo apuntado a ${c.owner} para que te llame.`,
+    askDayAndTime: (day) =>
+      day ? `¿A qué hora te viene bien ${c.day(day)}?` : "¿Qué día y a qué hora te viene bien?",
     slotJustTaken: (alts) =>
       alts.length > 0
         ? `Justo se acaba de ocupar. Tengo libre ${c.list(alts)}.`
@@ -154,6 +162,7 @@ function english(pack: SectorPack, shop: ShopProfile): PhraseSet {
       alts.length > 0
         ? `${cap(c.slot(requested))} isn't possible, ${why[reason] ?? "that time doesn't work"}. I have ${c.list(alts)}.`
         : `${cap(c.slot(requested))} isn't possible, ${why[reason] ?? "that time doesn't work"}. I can't find another time nearby, so I'll leave a note for ${c.owner} to call you.`,
+    askDayAndTime: (day) => (day ? `What time suits you on ${c.day(day)}?` : "What day and time suits you?"),
     slotJustTaken: (alts) =>
       alts.length > 0
         ? `That time was just taken. I have ${c.list(alts)}.`

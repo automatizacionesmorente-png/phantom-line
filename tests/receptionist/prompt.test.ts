@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Temporal } from "temporal-polyfill";
 import { buildInput, buildSystemInstruction, formatPrice, hoursInWords } from "@/lib/receptionist/prompt";
+import { modelTurnJsonSchema } from "@/lib/receptionist/schema";
 import { initialCallState, type CallState } from "@/lib/conversation/types";
 import { getSectorPack } from "@/lib/sectors";
 import { lolaProfile } from "../fixtures/lola";
@@ -55,6 +56,26 @@ describe("buildSystemInstruction", () => {
   it("tells the model the system, not the model, decides availability", () => {
     expect(es).toContain("Nunca digas que una hora está libre");
     expect(en).toContain("Never say that a time is free");
+  });
+
+  it("asks for the time the caller said even when the shop is closed then (bugfix 2026-11-12)", () => {
+    // The model once dropped 21:00 because it judged it impossible, then spoke the hours itself.
+    expect(es).toContain("devuélvelos siempre en date y time, aunque la tienda esté cerrada");
+    expect(es).toContain('"mañana a las nueve de la noche" es date = la fecha de mañana y time "21:00"');
+    expect(es).toContain("no hables del horario ni digas que está cerrado");
+    expect(en).toContain("always return them in date and time, even when the shop is closed");
+    expect(en).toContain('"tomorrow at nine at night" is date = tomorrow\'s date and time "21:00"');
+    expect(en).toContain("do not talk about opening hours or say the shop is closed");
+  });
+});
+
+describe("modelTurnJsonSchema", () => {
+  it("carries the date and time descriptions to the model", () => {
+    const props = (modelTurnJsonSchema as { properties: Record<string, { description?: string }> }).properties;
+    expect(props.time.description).toContain('"21:00"');
+    expect(props.time.description).toContain("even if the shop is closed");
+    expect(props.date.description).toContain("even if the shop is closed");
+    expect(props.service.description).toBeDefined();
   });
 });
 

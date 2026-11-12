@@ -5,13 +5,28 @@ export type { ModelClient } from "@/lib/conversation/types";
 export type ModelFailure = "timeout" | "quota" | "unavailable" | "invalid_output";
 export type ModelResult = { ok: true; turn: ModelTurn } | { ok: false; failure: ModelFailure };
 
+/** The whole budget of one Turn's model call, every attempt included (Requirement 4.7). */
 export const MODEL_TIMEOUT_MS = 8000;
 /**
- * Attempts per Turn for a transient server error (HTTP 5xx, e.g. Gemini's 503
- * "high demand"), all inside the same timeout. A 429 is never retried: it is
- * quota, and retrying burns more of it.
+ * The deadline of one attempt. When it expires without an answer, a fresh attempt
+ * starts (with the next model of the list) beside it, so one hung request can never
+ * use the whole budget. The first answer from any attempt wins, and every attempt
+ * still running is aborted when the Turn settles. Chosen from measurements
+ * (design.md, "Model attempts").
  */
-export const MAX_MODEL_ATTEMPTS = 3;
+export const ATTEMPT_TIMEOUT_MS = 2500;
+/**
+ * A fresh attempt gets its own deadline only if at least this much budget would be
+ * left after it; otherwise it is the last attempt and keeps the rest of the budget.
+ */
+export const MIN_ATTEMPT_MS = 1500;
+/**
+ * Attempts per Turn, all inside MODEL_TIMEOUT_MS. A new attempt starts after an
+ * attempt deadline or a transient server error (HTTP 5xx, e.g. Gemini's 503
+ * "high demand"). A 429 is never retried: it is quota, and retrying burns more of
+ * it. The cap also stops a client that fails instantly from spinning.
+ */
+export const MAX_MODEL_ATTEMPTS = 4;
 
 /** Longest error message kept for the server log. */
 const MAX_LOGGED_MESSAGE = 300;
@@ -25,10 +40,12 @@ const MAX_LOGGED_MESSAGE = 300;
 export interface ModelFailureInfo {
   failure: ModelFailure;
   latencyMs: number;
-  /** Model calls made in this Turn (more than 1 after a retried 5xx). */
+  /** Model calls made in this Turn (more than 1 after an attempt deadline or a retried 5xx). */
   attempts?: number;
-  /** The errors of the attempts before the last one (each was a retried 5xx). */
-  earlier?: Pick<ModelFailureInfo, "status" | "errorClass" | "message">[];
+  /** The model of the last attempt, when the client reports it. */
+  model?: string;
+  /** The attempts before the last one: each hit its own deadline or answered a 5xx. */
+  earlier?: AttemptRecord[];
   /** HTTP status of an API error, when it has one. */
   status?: number;
   /** Error class name, e.g. "APIConnectionError", "TypeError". */
@@ -40,6 +57,25 @@ export interface ModelFailureInfo {
     | { kind: "empty" }
     | { kind: "json"; length: number }
     | { kind: "schema"; length: number; issues: { path: string; code: string; message: string }[] };
+}
+
+/** One attempt that did not give the Turn its answer, for the log. */
+export interface AttemptRecord {
+  /** attempt_timeout: no answer by its own deadline; unfinished: still running, without a deadline of its own, when the Turn settled. */
+  outcome: "attempt_timeout" | "unfinished" | "5xx" | "error";
+  latencyMs: number;
+  model?: string;
+  status?: number;
+  errorClass?: string;
+  message?: string;
+}
+
+/** How a successful call went, for scripts and logs. */
+export interface ModelSuccessInfo {
+  latencyMs: number;
+  attempts: number;
+  model?: string;
+  earlier?: AttemptRecord[];
 }
 
 const TIMED_OUT = Symbol("timed out");
@@ -110,65 +146,169 @@ export function parseModelTurn(text: string): ModelTurn | null {
 }
 
 /**
- * One model call with a hard deadline. The signal tells the client to stop,
- * and the race makes the deadline hold even if a client ignores the signal.
- * "timeout" is decided by our own timer, never by the error class.
- * No own I/O: the network happens inside the injected client.
+ * One model call with a hard deadline for the whole Turn and a shorter one per
+ * attempt. When an attempt's deadline expires (a hung or slow request), a fresh
+ * attempt starts beside it; when the newest attempt answers a 5xx, a fresh one
+ * starts at once. The attempt number is passed on so a client with a model list
+ * can switch models. The first valid answer wins; all attempts share one abort
+ * signal, aborted when the Turn settles or at the overall deadline, and the race
+ * makes the deadline hold even if a client ignores the signal. "timeout" is
+ * decided by our own timer, never by the error class. No own I/O: the network
+ * happens inside the injected client.
  */
 export async function callReceptionist(
   client: ModelClient,
   prompt: { systemInstruction: string; input: string },
-  opts: { timeoutMs: number; onFailure?: (info: ModelFailureInfo) => void } = { timeoutMs: MODEL_TIMEOUT_MS },
+  opts: {
+    timeoutMs: number;
+    /** Per-attempt deadline (default ATTEMPT_TIMEOUT_MS). */
+    attemptTimeoutMs?: number;
+    onFailure?: (info: ModelFailureInfo) => void;
+    onSuccess?: (info: ModelSuccessInfo) => void;
+  } = { timeoutMs: MODEL_TIMEOUT_MS },
 ): Promise<ModelResult> {
   const startedAt = Date.now();
+  const elapsed = () => Date.now() - startedAt;
+  const attemptMs = opts.attemptTimeoutMs ?? ATTEMPT_TIMEOUT_MS;
   let attempts = 0;
-  const earlier: Pick<ModelFailureInfo, "status" | "errorClass" | "message">[] = [];
-  const fail = (info: Omit<ModelFailureInfo, "latencyMs" | "attempts" | "earlier">): ModelResult => {
+  let model: string | undefined;
+  const earlier: AttemptRecord[] = [];
+  const report = <T>(fn: ((info: T) => void) | undefined, info: T) => {
     try {
-      opts.onFailure?.({
-        ...info,
-        attempts,
-        ...(earlier.length > 0 ? { earlier } : {}),
-        latencyMs: Date.now() - startedAt,
-      });
+      fn?.(info);
     } catch {
       // A failing logger must never change the outcome of the Turn.
     }
+  };
+  const fail = (info: Omit<ModelFailureInfo, "latencyMs" | "attempts" | "earlier" | "model">): ModelResult => {
+    report(opts.onFailure, {
+      ...info,
+      attempts,
+      ...(model !== undefined ? { model } : {}),
+      ...(earlier.length > 0 ? { earlier } : {}),
+      latencyMs: elapsed(),
+    });
     return { ok: false, failure: info.failure };
   };
-  const controller = new AbortController();
+
+  const overall = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<typeof TIMED_OUT>((resolve) => {
     timer = setTimeout(() => {
-      controller.abort(new DOMException("model call timed out", "TimeoutError"));
+      overall.abort(new DOMException("model call timed out", "TimeoutError"));
       resolve(TIMED_OUT);
     }, opts.timeoutMs);
   });
-  // A 5xx is retried at once (the error itself took about a second to arrive), until
-  // MAX_MODEL_ATTEMPTS or the deadline. Any other error ends the attempts.
-  const call = (async (): Promise<{ ok: true; text: string } | { ok: false; err: unknown }> => {
-    for (;;) {
-      attempts++;
+
+  /** One record per attempt; the winner's (or the last failure's) is dropped from `earlier`. */
+  const records: AttemptRecord[] = [];
+  const starts: number[] = [];
+  let decisive = -1;
+  const call = new Promise<{ ok: true; text: string } | { ok: false; err: unknown }>((resolve) => {
+    let done = false;
+    let inflight = 0;
+    let nextTimer: ReturnType<typeof setTimeout> | undefined;
+    const finish = (k: number, r: { ok: true; text: string } | { ok: false; err: unknown }) => {
+      if (done) return;
+      done = true;
+      decisive = k;
+      model = records[k]?.model;
+      clearTimeout(nextTimer);
+      resolve(r);
+    };
+    overall.signal.addEventListener("abort", () => clearTimeout(nextTimer), { once: true });
+
+    const launch = () => {
+      if (done || overall.signal.aborted) return;
+      const k = attempts++;
+      const m = client.modelFor?.(k);
+      const startAt = elapsed();
+      // The last attempt keeps the rest of the budget: no fresh attempt could follow it.
+      const last = attempts >= MAX_MODEL_ATTEMPTS || opts.timeoutMs - startAt - attemptMs < MIN_ATTEMPT_MS;
+      records.push({ outcome: "unfinished", latencyMs: 0, ...(m !== undefined ? { model: m } : {}) });
+      starts.push(startAt);
+      let newest = true;
+      if (!last) {
+        // Hedged: at its deadline a fresh attempt starts, and this one keeps running. The
+        // measurements of 2026-11-12 showed answers 2.5–3.5 s after the request; aborting
+        // them would throw away the quickest answer the Turn could get.
+        nextTimer = setTimeout(() => {
+          newest = false;
+          records[k] = { ...records[k], outcome: "attempt_timeout", latencyMs: attemptMs };
+          launch();
+        }, attemptMs);
+      }
+      inflight++;
+      let pending: Promise<string>;
       try {
-        const text = await client.generate({
+        pending = client.generate({
           systemInstruction: prompt.systemInstruction,
           input: prompt.input,
           jsonSchema: modelTurnJsonSchema,
-          signal: controller.signal,
+          signal: overall.signal,
+          attempt: k,
         });
-        return { ok: true, text };
       } catch (err) {
-        if (controller.signal.aborted || attempts >= MAX_MODEL_ATTEMPTS || !isTransient(err)) return { ok: false, err };
-        earlier.push(errorFields(err));
+        pending = Promise.reject(err);
       }
-    }
-  })();
+      pending.then(
+          (text) => {
+            inflight--;
+            finish(k, { ok: true, text });
+          },
+          (err: unknown) => {
+            inflight--;
+            if (done || overall.signal.aborted) return;
+            records[k] = {
+              ...records[k],
+              outcome: isTransient(err) ? "5xx" : "error",
+              latencyMs: elapsed() - startAt,
+              ...errorFields(err),
+            };
+            // A 429 is quota: never retried, and the Turn ends now (Requirement 4.7).
+            if (statusOf(err) === 429 || /RESOURCE_EXHAUSTED/.test(String((err as { message?: unknown })?.message))) {
+              return finish(k, { ok: false, err });
+            }
+            const canRetry =
+              isTransient(err) && attempts < MAX_MODEL_ATTEMPTS && opts.timeoutMs - elapsed() >= MIN_ATTEMPT_MS;
+            if (newest) {
+              clearTimeout(nextTimer);
+              newest = false;
+              // Only a 5xx starts a fresh attempt; a network error or an abort never does.
+              if (canRetry) return launch();
+            }
+            // An older attempt failed while a newer one is still running: wait for that one.
+            if (inflight > 0) return;
+            finish(k, { ok: false, err });
+          },
+        );
+    };
+    launch();
+  });
+
   try {
     const result = await Promise.race([call, deadline]);
-    if (result === TIMED_OUT || controller.signal.aborted) return fail({ failure: "timeout" });
+    // Stop every attempt still running: the Turn has its answer, or its time is up.
+    if (!overall.signal.aborted) overall.abort(new DOMException("model call settled", "AbortError"));
+    const settledAt = elapsed();
+    const others = records
+      .map((r, k) => (r.outcome === "unfinished" ? { ...r, latencyMs: settledAt - starts[k] } : r))
+      .filter((_, k) => k !== (result === TIMED_OUT ? records.length - 1 : decisive));
+    earlier.push(...others);
+    if (result === TIMED_OUT) {
+      model = records.at(-1)?.model;
+      return fail({ failure: "timeout" });
+    }
     if (!result.ok) return fail({ failure: classify(result.err), ...errorFields(result.err) });
     const parsed = inspectModelTurn(result.text);
-    return parsed.ok ? { ok: true, turn: parsed.turn } : fail({ failure: "invalid_output", invalid: parsed.invalid });
+    if (!parsed.ok) return fail({ failure: "invalid_output", invalid: parsed.invalid });
+    report(opts.onSuccess, {
+      latencyMs: elapsed(),
+      attempts,
+      ...(model !== undefined ? { model } : {}),
+      ...(earlier.length > 0 ? { earlier } : {}),
+    });
+    return { ok: true, turn: parsed.turn };
   } finally {
     clearTimeout(timer);
   }
@@ -196,6 +336,25 @@ export function createScriptedModel(turns: readonly (ModelTurn | string)[]): Mod
 
 /** Never answers and ignores the signal, like a hung connection. */
 export const neverResolves: ModelClient = { generate: () => new Promise<string>(() => {}) };
+
+/**
+ * Hangs (ignoring the signal) on its first `hangs` calls, then answers like `then`:
+ * the shape of the real failures of 2026-11-12, where one request hung for the whole
+ * budget while the next request answered in about a second.
+ */
+export function hangsThen(hangs: number, then: ModelClient): ModelClient & { calls: number; attempts: number[] } {
+  const m = {
+    calls: 0,
+    attempts: [] as number[],
+    async generate(req: Parameters<ModelClient["generate"]>[0]) {
+      m.calls++;
+      m.attempts.push(req.attempt ?? 0);
+      if (m.calls <= hangs) return new Promise<string>(() => {});
+      return then.generate(req);
+    },
+  };
+  return m;
+}
 
 /** Fails like the SDK's RateLimitError: an error with numeric status 429. */
 export const throws429: ModelClient = {

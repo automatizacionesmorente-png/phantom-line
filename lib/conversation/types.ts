@@ -189,7 +189,19 @@ export type Clock = () => Temporal.Instant;
 
 /** The model port. `lib/receptionist/geminiClient.ts` implements it (task 6). */
 export interface ModelClient {
-  generate(req: { systemInstruction: string; input: string; jsonSchema: object; signal: AbortSignal }): Promise<string>;
+  /**
+   * `attempt` is 0 for the first attempt of a Turn and grows with each fresh attempt
+   * after a deadline or a 5xx, so a client with a model list can move to the next model.
+   */
+  generate(req: {
+    systemInstruction: string;
+    input: string;
+    jsonSchema: object;
+    signal: AbortSignal;
+    attempt?: number;
+  }): Promise<string>;
+  /** The model id an attempt uses, for logs. Optional. */
+  modelFor?(attempt: number): string;
 }
 
 export interface CoreConfig {

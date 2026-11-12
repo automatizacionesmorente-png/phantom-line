@@ -13,6 +13,9 @@
 # testing
 /coverage
 
+# check-turn measurement output (may quote model replies; never committed)
+/.measurements/
+
 # next.js
 /.next/
 /out/

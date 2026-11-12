@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 // `server-only` throws outside a React Server environment; the client itself is what is tested here.
 vi.mock("server-only", () => ({}));
 
-const { createGeminiClient, geminiClientFromEnv, DEFAULT_GEMINI_MODEL } = await import("@/lib/receptionist/geminiClient");
+const { createGeminiClient, geminiClientFromEnv, parseModelList, DEFAULT_GEMINI_MODEL, DEFAULT_GEMINI_MODELS } = await import(
+  "@/lib/receptionist/geminiClient"
+);
 type InteractionsApi = import("@/lib/receptionist/geminiClient").InteractionsApi;
 
 function fakeSdk(outputText = '{"ok":true}') {
@@ -68,6 +70,25 @@ describe("createGeminiClient", () => {
 
   it("from the environment: a missing key fails without printing anything secret", () => {
     expect(() => geminiClientFromEnv({})).toThrow("GEMINI_API_KEY is not set");
+  });
+
+  it("GEMINI_MODEL may hold a comma-separated list: attempt k uses model k mod length", async () => {
+    const { sdk, create } = fakeSdk();
+    const client = createGeminiClient({ apiKey: "k", model: " model-a , model-b,,model-a ", sdk });
+    expect(client.models).toEqual(["model-a", "model-b"]);
+    const req = { systemInstruction: "s", input: "i", jsonSchema: {}, signal: new AbortController().signal };
+    await client.generate(req);
+    await client.generate({ ...req, attempt: 1 });
+    await client.generate({ ...req, attempt: 2 });
+    expect(create.mock.calls.map((c) => c[0].model)).toEqual(["model-a", "model-b", "model-a"]);
+    expect([0, 1, 2].map((k) => client.modelFor?.(k))).toEqual(["model-a", "model-b", "model-a"]);
+  });
+
+  it("parseModelList: empty or missing gives the default list", () => {
+    expect(parseModelList(undefined)).toEqual([...DEFAULT_GEMINI_MODELS]);
+    expect(parseModelList(" , ")).toEqual([...DEFAULT_GEMINI_MODELS]);
+    expect(parseModelList("x")).toEqual(["x"]);
+    expect(DEFAULT_GEMINI_MODELS[0]).toBe(DEFAULT_GEMINI_MODEL);
   });
 
   it("an SDK error leaves the client with the key redacted, its status and its class name kept", async () => {

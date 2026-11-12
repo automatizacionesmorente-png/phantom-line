@@ -151,11 +151,26 @@ export function decideTurn(input: DecideInput): Decision {
     return toInstant(Temporal.PlainDate.from(r.date), Temporal.PlainTime.from(r.time), tz);
   }
 
+  /** A day the model heard without a time, if it is a real date. */
+  function heardDate(): Temporal.PlainDate | null {
+    if (turn.date === null) return null;
+    try {
+      return Temporal.PlainDate.from(turn.date, { overflow: "reject" });
+    } catch {
+      return null;
+    }
+  }
+
   function bookingFlow(): Decision {
     if (merged.unknownService !== null) return say(P.serviceNotOffered(merged.unknownService));
     const serviceId = s.fields.serviceId;
     const start = requestedStart();
-    if (!serviceId || !start) return say(turn.reply);
+    if (!serviceId) return say(turn.reply);
+    // Safety net (bugfix 2026-11-12): once the service is known, a missing day or time is
+    // asked for by code. The model's own line here once told the caller the opening hours
+    // instead of the code's rejection with alternatives, because it had left out a time
+    // it judged impossible (Requirement 5.8).
+    if (!start) return say(P.askDayAndTime(heardDate()));
 
     const v = checkBooking({ serviceId, start }, ctx);
     if (!v.ok) return say(P.rejected(v.reason, start, offer(v.alternatives)));
