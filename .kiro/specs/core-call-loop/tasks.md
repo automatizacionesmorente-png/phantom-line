@@ -161,10 +161,10 @@ Every task finishes only when `npx vitest run`, `npm run lint` and `npm run buil
   - Requirements: 2.1–2.12
   - Done when: `npx vitest run`, `npm run lint` and `npm run build` all pass.
 
-- [ ] 10. Call_Page. Needs 8 and 9. Can run in parallel with 11.
-  - [ ] 10.1 `app/call/[shopId]/page.tsx`: a static shell plus `<Suspense>` around `ShopGate`, which loads the public shop data with `'use cache'` and `cacheTag`. An unknown shop gets the "not found" message and no Call button. Add `error.tsx` for the database being down.
-  - [ ] 10.2 `components/call/`: `CallScreen`, `CallButton` (the gold pill with an arrow), `LanguageSwitch` (defaults to `navigator.language`), `Transcript`, `TypedInput`, `TypeInsteadButton` (always visible) and the `useCallLoop` hook. Use the Marfil & Oro tokens, a gold focus ring, `prefers-reduced-motion` and a 360 px layout.
-  - [ ] 10.3 Unit tests for `useCallLoop` with the fake speech port and a mocked `fetch`: a `pagehide` and the hang-up button send `hangup` with `keepalive`.
+- [x] 10. Call_Page. Needs 8 and 9. Can run in parallel with 11.
+  - [x] 10.1 `app/call/[shopId]/page.tsx`: a static shell plus `<Suspense>` around `ShopGate`, which loads the public shop data with `'use cache'` and `cacheTag`. An unknown shop gets the "not found" message and no Call button. Add `error.tsx` for the database being down.
+  - [x] 10.2 `components/call/`: `CallScreen`, `CallButton` (the gold pill with an arrow), `LanguageSwitch` (defaults to `navigator.language`), `Transcript`, `TypedInput`, `TypeInsteadButton` (always visible) and the `useCallLoop` hook. Use the Marfil & Oro tokens, a gold focus ring, `prefers-reduced-motion` and a 360 px layout.
+  - [x] 10.3 Unit tests for `useCallLoop` with the fake speech port and a mocked `fetch`: a `pagehide` and the hang-up button send `hangup` with `keepalive`.
   - Requirements: 1.1–1.9, 2.1–2.12
   - Done when: `npx vitest run`, `npm run lint` and `npm run build` all pass.
 

@@ -16,6 +16,8 @@
   --olive: #3a3f2f;      /* closing panel */
   --light: #b65f45;     /* the message light (terracotta red) */
   --light-text: #9c4e37; /* urgent badge background, with --card text (5.8:1) */
+  /* primary button: gold pill with ink text (white on gold fails contrast) */
+  --gold-gradient: linear-gradient(135deg, #d3a65c 0%, #b3873b 55%, #9e731f 100%);
 }
 
 /* ── Map tokens into Tailwind theme ──────────────────────────────── */
@@ -51,4 +53,31 @@ body {
 :focus-visible {
   outline: 2px solid var(--gold);
   outline-offset: 2px;
+}
+
+/* ── Haunted details ─────────────────────────────────────────────── */
+/* A new transcript line fades in like a voice from far away. */
+@keyframes ghost-in {
+  from {
+    opacity: 0;
+    filter: blur(3px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+.ghost-in {
+  animation: ghost-in 600ms ease-out both;
+}
+
+/* All motion stops with prefers-reduced-motion; content stays fully visible. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
 }
