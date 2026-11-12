@@ -829,19 +829,20 @@ export type ModelFailure = "timeout" | "quota" | "unavailable" | "invalid_output
 export async function callReceptionist(
   client: ModelClient,
   prompt: { systemInstruction: string; input: string },
-  opts: { timeoutMs: number },               // 8000
+  opts: { timeoutMs: number; onFailure?: (info: ModelFailureInfo) => void },  // 8000; onFailure feeds the log
 ): Promise<{ ok: true; turn: ModelTurn } | { ok: false; failure: ModelFailure }>;
 ```
 
 - **Timeout.** `callReceptionist` creates `AbortSignal.timeout(8000)`, passes it to the client, and also races the call against the same timer. The 8-second bound holds even if the SDK ignores the signal. The spike showed that the SDK honours a top-level `signal` within milliseconds, that the deprecated `fetch_options.signal` is not reliable, and that the SDK's default backoff retries can outlast the budget, so the client disables them.
 - **Classification.** Our own timer fired → `timeout`; an error with numeric `status` (or `statusCode`) 429 → `quota` (the SDK's `RateLimitError`; `RESOURCE_EXHAUSTED` in the message also counts); any other error, including 503 "high demand" and 404 → `unavailable`; JSON parse or zod failure → `invalid_output`. The checks read fields, not SDK classes, because most error classes are not exported.
+- **Retry of a transient 5xx (bugfix, 2026-11-12).** An error with `status` 500–599 is retried at once, up to `MAX_MODEL_ATTEMPTS = 3` calls, all inside the same 8-second deadline and with the same abort signal. A 429 is never retried (it is quota, and a retry burns more of it), nor is an error without a status (network) or an abort. Gemini's free tier answers single requests with 503 "high demand" every now and then (2 of 14 calls sampled on 2026-11-12, about 1.1–1.5 s each), and without this retry one such answer ended the whole Call. Only the last error is classified; the earlier ones go to the log.
 - **Fallback.** `timeout`, `quota`, `unavailable` and a Rate_Limit all take the **end path**: the reply is the Fallback_Message, the Call closes with `outcome = "fallback"`, and the Message carries the fields collected so far plus `model_failed = true` (4.7, 6.4, 8.2, 8.3). `invalid_output` takes the **retry path** (4.6): a Fallback_Message variant that offers to take a message and invites the caller to say it again; the Call continues; a second invalid output in a row takes the end path.
 - Fallback texts (in `phrases.ts`):
   - end, es: "Perdona, ahora mismo no puedo atenderte bien. Le dejo tu mensaje a Lola y te llamará."
   - end, en: "Sorry, I can't help properly right now. I'll leave your message for Lola and she'll call you back."
   - retry, es: "Perdona, no te he entendido. ¿Me lo repites? Si prefieres, se lo dejo apuntado a Lola."
   - retry, en: "Sorry, I didn't catch that. Could you say it again? Or I can leave a note for Lola."
-- **Injection.** `handleTurn` receives `deps.model`. Tests pass a scripted fake (`createScriptedModel([...turns])`) or failure fakes (`neverResolves`, `throws429`, `returnsGarbage`). No test touches the network.
+- **Injection.** `handleTurn` receives `deps.model`. Tests pass a scripted fake (`createScriptedModel([...turns])`) or failure fakes (`neverResolves`, `throws429`, `returnsGarbage`, and `failsWith503(n, then)`, which throws the SDK's real 503 "high demand" shape `n` times). No test touches the network.
 - `geminiClient.ts` starts with `import "server-only"` and reads `GEMINI_API_KEY` and `GEMINI_MODEL` from `process.env`. Neither has a `NEXT_PUBLIC_` prefix, so Next never inlines them into a client bundle (8.4).
 
 ### The Owner's Message
@@ -864,6 +865,7 @@ export async function callReceptionist(
 | `no-speech` | Listens again; after 2 silences shows the "type instead" hint. | Nothing extra. |
 | No `speechSynthesis` or no voice for the language | Replies appear in the transcript only. | Normal Message. |
 | Model timeout (8 s) | End Fallback_Message, Call ends. | Message with fields so far, `model_failed`, outcome `fallback`. |
+| Model answers 5xx (e.g. 503 "high demand") | Nothing: retried at once, up to 3 calls inside the same 8 s. If every call fails, same as a timeout. | Nothing extra if a retry answers; otherwise same as a timeout. |
 | Model returns invalid output | Retry Fallback_Message, Call continues; a second time in a row ends the Call as above. | Nothing extra on the first; Message with `model_failed` if it ends. |
 | Gemini quota exceeded (429) | Same as timeout. | Same as timeout. |
 | Visitor or global Rate_Limit during a Call | Same as timeout; HTTP 200, no error screen. | Same as timeout. |
@@ -878,6 +880,21 @@ export async function callReceptionist(
 | Caller hangs up early (button, tab close) | Nothing more. | Message with fields so far, outcome `abandoned`. No Booking. |
 | Hang-up request never arrives | Nothing. | The sweep in `after()` closes the Call after 10 idle minutes and saves the same `abandoned` Message. |
 | Turn_API slower than 15 s (client timeout) | "Se ha cortado la línea. Lola tiene tu mensaje y te llamará." Call ends (2.10). | `hangup` is sent with `keepalive`, so a Message with fields so far is saved. |
+
+### Logging a fallback (bugfix, 2026-11-12)
+
+Every time a Caller hears a Fallback_Message (end or retry), or the Turn_API answers 503, the server writes one JSON line to stderr with `event: "turn_fallback"`. The first end-to-end test ended in the Fallback_Message with an empty server log, because the model-failure paths logged nothing and the 503 path logged only `err.name`.
+
+| Field | Content |
+|---|---|
+| `path` | `end` (the Call closes with a Message), `retry` (invalid output, the Call continues), `start` (rate limit on `start`, no Call yet), `http_503` (an exception in the adapter or the core). |
+| `reason` | `rate_limit`, `timeout`, `quota`, `unavailable`, `invalid_output` or `exception`. |
+| `shopId`, `callId`, `turn` | Where it happened. |
+| `limit` | `rate_limit` only: `visitor` or `global`. |
+| `model` | Model failures: `failure`, `latencyMs`, `attempts`, HTTP `status`, `errorClass` (the SDK class name, e.g. `InternalServerError`), the error `message` truncated to 300 characters, `earlier` (the retried 5xx errors), and for `invalid_output` the reason: `empty`, `json` (only the text length) or `schema` (zod `path`, `code` and `message` per issue). |
+| `error` | `exception` only: class name, SQLSTATE `code`, message and first stack frame. For a Drizzle query error (it has `params`, and its message quotes the query parameters) the class, code and message of its `cause` are logged instead. |
+
+Never logged: the API key (the Gemini client rethrows every SDK error as `GeminiCallError` with the key replaced by `***`, keeping `status`, `statusCode` and the SDK class name), the model's text, the utterance, the transcript, the caller's name or phone, and the hashed visitor key. A JSON syntax error is logged by length only, because V8's message quotes the text it could not parse. The logger is `CoreDeps.logFallback` (default: `console.error(JSON.stringify(event))`), so tests assert on the events; a logger that throws never changes the reply.
 
 ## Correctness Properties
 
@@ -950,6 +967,7 @@ Supporting properties outside Requirement 9 (same style, smaller):
 
 - The browser loop is the pure `callLoop` reducer plus `SpeechPort`. `createFakeSpeechPort(script)` emits `RECOGNIZED` texts and speech errors on cue and records what was spoken. Reducer tests drive a complete call through voice, through a mid-call `not-allowed` switch to Typed_Mode, and through a 15-second client timeout.
 - Typed_Mode is the same path a real Caller without a microphone uses, so typing a whole call in the running app exercises everything except the two Web Speech calls.
+- **The real model path without the database:** `node --env-file=.env.local --conditions=react-server --import tsx scripts/check-turn.ts ["es|línea" …]` sends caller lines through the real `buildSystemInstruction` / `buildInput`, JSON Schema, `createGeminiClient` and `callReceptionist` exactly as the first `say` of `handleTurn`, then the pure `decideTurn`, and prints the outcome category, the validated ModelTurn (name and phone as their length only) or the failure details. It never touches the database and never prints the key. `--conditions=react-server` lets `import "server-only"` load, as inside Next.js.
 - Before the demo, a short manual checklist in Chrome (desktop and Android) covers real recognition and synthesis in `es-ES` and `en-US`, the denied-microphone path, and a 360 px viewport. Browser automation (Playwright with fake media devices) is left out to keep dependencies few; it can be added later for the typed path if the manual check proves too slow.
 
 ## Dependencies and configuration

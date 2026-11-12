@@ -69,4 +69,21 @@ describe("createGeminiClient", () => {
   it("from the environment: a missing key fails without printing anything secret", () => {
     expect(() => geminiClientFromEnv({})).toThrow("GEMINI_API_KEY is not set");
   });
+
+  it("an SDK error leaves the client with the key redacted, its status and its class name kept", async () => {
+    class InternalServerError extends Error {}
+    const create = vi.fn<InteractionsApi["interactions"]["create"]>(async () => {
+      throw Object.assign(new InternalServerError("503 high demand (key=sk-secret-123)"), { status: 503, statusCode: 503 });
+    });
+    const client = createGeminiClient({ apiKey: "sk-secret-123", sdk: { interactions: { create } } });
+    const err = await client
+      .generate({ systemInstruction: "s", input: "i", jsonSchema: {}, signal: new AbortController().signal })
+      .then(() => null, (e: unknown) => e as { message: string; status: number; statusCode: number; errorClass: string });
+    expect(err).not.toBeNull();
+    expect(err?.message).toBe("503 high demand (key=***)");
+    expect(err?.status).toBe(503);
+    expect(err?.statusCode).toBe(503);
+    expect(err?.errorClass).toBe("InternalServerError");
+    expect(JSON.stringify(err) + String(err?.message)).not.toContain("sk-secret-123");
+  });
 });

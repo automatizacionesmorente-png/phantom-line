@@ -1,12 +1,13 @@
 import { Temporal } from "temporal-polyfill";
 import { toInstant, type ExistingBooking } from "@/lib/booking";
-import { callReceptionist } from "@/lib/receptionist/callModel";
+import { callReceptionist, type ModelFailure, type ModelFailureInfo } from "@/lib/receptionist/callModel";
 import { phrases } from "@/lib/receptionist/phrases";
 import { buildInput, buildSystemInstruction } from "@/lib/receptionist/prompt";
 import { toSpokenReply } from "@/lib/receptionist/speech";
 import { getSectorPack, type SectorPack } from "@/lib/sectors";
 import { decideTurn, publicStateOf, type Decision } from "./decide";
-import { checkLimits } from "./limits";
+import { checkLimits, type LimitDecision } from "./limits";
+import { consoleFallbackLogger, type FallbackLogEvent } from "./fallbackLog";
 import { mergeFields } from "./fields";
 import { buildOwnerMessage } from "./ownerMessage";
 import type { ShopProfile } from "./shopProfile";
@@ -63,14 +64,34 @@ export async function handleTurn(input: TurnInput, deps: CoreDeps): Promise<Turn
 // ---------------------------------------------------------------------------
 
 /** Counts this Turn; if the counter itself fails (database down), limits fail open. */
-async function overLimit(visitorKey: string, deps: CoreDeps): Promise<boolean> {
+async function overLimit(visitorKey: string, deps: CoreDeps): Promise<LimitDecision> {
   try {
     const counts = await deps.limiter.hit(visitorKey, deps.clock());
-    return checkLimits(counts, deps.config).blocked;
+    return checkLimits(counts, deps.config);
   } catch (err) {
     console.error("rate limiter failed, failing open:", (err as Error)?.name ?? "error");
-    return false;
+    return { blocked: false };
   }
+}
+
+/** Why this Turn falls back, for the server log. */
+type FallbackCause = Pick<FallbackLogEvent, "reason" | "limit" | "model" | "error">;
+
+function logFallback(
+  deps: CoreDeps,
+  path: FallbackLogEvent["path"],
+  where: { shopId: string; callId?: string; turn?: number },
+  cause: FallbackCause,
+): void {
+  try {
+    (deps.logFallback ?? consoleFallbackLogger)({ event: "turn_fallback", path, ...where, ...cause });
+  } catch {
+    // Logging must never change what the Caller hears.
+  }
+}
+
+function causeOfModelFailure(failure: ModelFailure, info: ModelFailureInfo | undefined): FallbackCause {
+  return { reason: failure, model: info ?? { failure, latencyMs: 0 } };
 }
 
 function output(
@@ -103,7 +124,9 @@ async function start(
 
   // Over the limit on the first request: no Call exists yet, so nothing is saved
   // and nothing reaches the Owner's tape (design, review point 3).
-  if (await overLimit(input.visitorKey, deps)) {
+  const limited = await overLimit(input.visitorKey, deps);
+  if (limited.blocked) {
+    logFallback(deps, "start", { shopId: shop.id }, { reason: "rate_limit", limit: limited.limit });
     return output(callId, { ...state, stage: "done" }, shop, P.rateLimitedStart(), true);
   }
 
@@ -140,8 +163,11 @@ async function endWithFallback(
   input: Extract<TurnInput, { kind: "say" }>,
   pack: SectorPack,
   deps: CoreDeps,
+  cause: FallbackCause,
 ): Promise<TurnOutput> {
   const { shop } = input;
+  // Logged before the commit, so the cause is on record even if the database fails next.
+  logFallback(deps, "end", { shopId: shop.id, callId: call.id, turn: state.turnCount + 1 }, cause);
   const P = phrases(state.language, pack, shop);
   const reply = P.fallbackEnd();
   const final: CallState = {
@@ -272,25 +298,30 @@ async function say(
 
   // The page's ES / EN switch decides the language of this Turn (2.7, 4.9).
   const state: CallState = { ...call.state, language: input.language };
-  if (limited) return endWithFallback(call, state, input, pack, deps);
+  if (limited.blocked) {
+    return endWithFallback(call, state, input, pack, deps, { reason: "rate_limit", limit: limited.limit });
+  }
 
   const now = deps.clock();
+  let failureInfo: ModelFailureInfo | undefined;
   const result = await callReceptionist(
     deps.model,
     {
       systemInstruction: buildSystemInstruction(shop, pack, state.language, now),
       input: buildInput(state, input.conversation, input.utterance, shop),
     },
-    { timeoutMs: deps.config.modelTimeoutMs },
+    { timeoutMs: deps.config.modelTimeoutMs, onFailure: (info) => (failureInfo = info) },
   );
 
   if (!result.ok) {
-    if (result.failure !== "invalid_output") return endWithFallback(call, state, input, pack, deps);
+    const cause = causeOfModelFailure(result.failure, failureInfo);
+    if (result.failure !== "invalid_output") return endWithFallback(call, state, input, pack, deps, cause);
     // The retry path (4.6): the Call continues; the second invalid output in a row ends it.
     const invalid = state.consecutiveInvalid + 1;
     if (invalid >= deps.config.maxConsecutiveInvalid) {
-      return endWithFallback(call, { ...state, consecutiveInvalid: invalid }, input, pack, deps);
+      return endWithFallback(call, { ...state, consecutiveInvalid: invalid }, input, pack, deps, cause);
     }
+    logFallback(deps, "retry", { shopId: shop.id, callId: call.id, turn: state.turnCount + 1 }, cause);
     const reply = phrases(state.language, pack, shop).fallbackRetry();
     const next: CallState = { ...state, consecutiveInvalid: invalid, turnCount: state.turnCount + 1 };
     await deps.repo.commit([

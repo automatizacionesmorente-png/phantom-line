@@ -2,6 +2,7 @@ import type { Temporal } from "temporal-polyfill";
 import type { AcceptedVerdict, ExistingBooking } from "@/lib/booking";
 import type { Lang } from "@/lib/sectors";
 import type { ShopProfile } from "./shopProfile";
+import type { FallbackLogger } from "./fallbackLog";
 
 export type { Lang } from "@/lib/sectors";
 export type Channel = "voice" | "whatsapp" | "webchat";
@@ -206,6 +207,8 @@ export interface CoreDeps {
   clock: Clock;
   newId: () => string;
   config: CoreConfig;
+  /** Where a fallback's cause is logged. Defaults to one JSON line on stderr. */
+  logFallback?: FallbackLogger;
 }
 
 export function initialCallState(language: Lang): CallState {

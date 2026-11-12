@@ -41,24 +41,58 @@ export function createGeminiClient(cfg: GeminiConfig): ModelClient {
   const sdk: InteractionsApi = cfg.sdk ?? new GoogleGenAI({ apiKey: cfg.apiKey });
   return {
     async generate({ systemInstruction, input, jsonSchema, signal }) {
-      const interaction = await sdk.interactions.create(
-        {
-          model,
-          system_instruction: systemInstruction,
-          input,
-          // Do not keep caller names and phones as stored interactions.
-          store: false,
-          response_format: { type: "text", mime_type: "application/json", schema: jsonSchema as { [k: string]: unknown } },
-          // No temperature / top_p / top_k: Gemini 3.6+ ignore them.
-          generation_config: { thinking_level: "low", max_output_tokens: MAX_OUTPUT_TOKENS },
-        },
-        // Top-level signal (the spike showed fetch_options.signal is unreliable) and no SDK
-        // retries, whose backoff can outlast the 8-second budget.
-        { signal, retries: { strategy: "none" } },
-      );
+      let interaction: { output_text?: string | undefined };
+      try {
+        interaction = await sdk.interactions.create(
+          {
+            model,
+            system_instruction: systemInstruction,
+            input,
+            // Do not keep caller names and phones as stored interactions.
+            store: false,
+            response_format: { type: "text", mime_type: "application/json", schema: jsonSchema as { [k: string]: unknown } },
+            // No temperature / top_p / top_k: Gemini 3.6+ ignore them.
+            generation_config: { thinking_level: "low", max_output_tokens: MAX_OUTPUT_TOKENS },
+          },
+          // Top-level signal (the spike showed fetch_options.signal is unreliable) and no SDK
+          // retries, whose backoff can outlast the 8-second budget.
+          { signal, retries: { strategy: "none" } },
+        );
+      } catch (err) {
+        throw redactedError(err, cfg.apiKey);
+      }
       return interaction.output_text ?? "";
     },
   };
+}
+
+/**
+ * The SDK error with the key removed from its message, so whatever logs it
+ * cannot leak the key. Keeps the status fields (used to classify a 429) and
+ * the SDK's class name (most SDK error classes are not exported).
+ */
+export class GeminiCallError extends Error {
+  readonly status?: number;
+  readonly statusCode?: number;
+  readonly errorClass: string;
+  constructor(message: string, errorClass: string, status?: number) {
+    super(message);
+    this.name = "GeminiCallError";
+    this.errorClass = errorClass;
+    if (status !== undefined) {
+      this.status = status;
+      this.statusCode = status;
+    }
+  }
+}
+
+function redactedError(err: unknown, apiKey: string): GeminiCallError {
+  const e = err as { constructor?: { name?: unknown }; message?: unknown; status?: unknown; statusCode?: unknown } | null;
+  const raw = typeof e?.message === "string" ? e.message : String(err);
+  const message = apiKey ? raw.split(apiKey).join("***") : raw;
+  const status = typeof e?.status === "number" ? e.status : typeof e?.statusCode === "number" ? e.statusCode : undefined;
+  const errorClass = typeof e?.constructor?.name === "string" ? e.constructor.name : typeof err;
+  return new GeminiCallError(message, errorClass, status);
 }
 
 /** The client from the environment. Throws if the key is missing; the message never contains it. */

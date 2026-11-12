@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { z } from "zod";
 import { CallNotFoundError, handleTurn, sweep } from "@/lib/conversation/handleTurn";
+import { consoleFallbackLogger, summarizeError, type FallbackLogEvent } from "@/lib/conversation/fallbackLog";
 import type { CoreDeps, TurnInput } from "@/lib/conversation/types";
 import { phrases } from "@/lib/receptionist/phrases";
 import { getSectorPack } from "@/lib/sectors";
@@ -74,7 +75,14 @@ export function makeTurnHandler(opts: TurnHandlerOptions): (request: Request) =>
       deps = opts.deps();
       shop = await deps.repo.getShop(req.shopId);
     } catch (err) {
-      console.error("turn: shop lookup failed:", (err as Error)?.name ?? "error");
+      // No deps (or no logger) yet if building them failed, so this one goes straight to stderr.
+      consoleFallbackLogger({
+        event: "turn_fallback",
+        path: "http_503",
+        reason: "exception",
+        shopId: req.shopId,
+        error: summarizeError(err),
+      });
       return json({ error: "unavailable", reply: GENERIC_UNAVAILABLE[lang] }, 503);
     }
     if (!shop) return json({ error: "shop_not_found" }, 404);
@@ -105,7 +113,19 @@ export function makeTurnHandler(opts: TurnHandlerOptions): (request: Request) =>
       return json(await handleTurn(input, deps), 200);
     } catch (err) {
       if (err instanceof CallNotFoundError) return json({ error: "call_not_found" }, 404);
-      console.error("turn failed:", (err as Error)?.name ?? "error");
+      const event: FallbackLogEvent = {
+        event: "turn_fallback",
+        path: "http_503",
+        reason: "exception",
+        shopId: shop.id,
+        ...(req.kind !== "start" ? { callId: req.callId } : {}),
+        error: summarizeError(err),
+      };
+      try {
+        (deps.logFallback ?? consoleFallbackLogger)(event);
+      } catch {
+        // Logging must never change the response.
+      }
       const reply = phrases(req.kind === "hangup" ? shop.languages[0] : lang, getSectorPack(shop.sectorPackId), shop).fallbackEnd();
       return json({ error: "unavailable", reply }, 503);
     }
