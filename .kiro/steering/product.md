@@ -37,3 +37,5 @@ Small businesses (hair salons, bakeries, repair shops, small clinics) miss calls
 
 ## Success for the demo
 A live call in the browser books an appointment, and seconds later the owner's machine blinks with the new message.
+
+The demo shop (Peluquería Lola) is public, and judges may open it weeks after it was recorded. Only for the demo shop: messages older than 24 hours leave the tape, its calls and messages are deleted after 7 days, a nearly empty tape is refilled with 3 fixed sample messages marked "Sample", and the demo machine and call page say "Demo: do not leave real personal data". Real shops keep everything.

@@ -13,7 +13,7 @@ A sector pack is a plain typed config (`lib/sectors/<id>.ts`) that tells the sam
 - **catalog shape**: services with duration and price, menu items with price and preparation time, or table sizes.
 - **required fields**: what the receptionist must collect before confirming, in the order it asks for them.
 - **rules**: sector-specific checks, all pure functions (see below).
-- **vocabulary**: how the receptionist and the owner screen name things in Spanish and English ("cita" / "reserva" / "encargo").
+- **vocabulary**: how the receptionist and the owner screen name things in Spanish and English ("cita" / "reserva" / "encargo"), plus the urgent and today terms per language that the code uses to decide a message's urgency (the model only suggests it).
 - **sensitive topics**: what the receptionist must never advise on, and must turn into a message for the owner instead.
 
 ## The first four packs
