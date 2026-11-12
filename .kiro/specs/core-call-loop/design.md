@@ -56,6 +56,7 @@ Run on 2026-11-11 with `node --env-file=.env.local scripts/check-gemini.mjs <che
 | `@neondatabase/serverless` | 1.2.0 | `engines: >=19`. |
 | `server-only` | 0.0.1 | |
 | `@electric-sql/pglite` | 0.5.16 | Dev only. |
+| `tsx` | 4.23.15 | Dev only, added in task 11. Node 20.19 cannot run TypeScript, and the seed reuses `ShopProfileSchema` and the sector registry, so `npm run db:seed` is `node --env-file=.env.local --import tsx scripts/seed.ts`. Already in the tree through `drizzle-kit` and `vite`; now declared so the script does not depend on a transitive copy. |
 
 `npm audit --omit=dev` reports 0 vulnerabilities. The full `npm audit` reports 12 moderate ones, all in dev tooling; 4 of them arrived with `drizzle-kit` 0.31 (it still pulls the deprecated `@esbuild-kit` loaders). They do not ship to production.
 
@@ -976,3 +977,32 @@ Small changes made while implementing, so the design matches the code:
 4. **Spanish templates avoid grammatical gender of the booking noun** ("cita" is feminine, "encargo" masculine), so a future pack needs no new code. The not-found line is "No encuentro nada con esos datos. ¿Quieres que le deje un mensaje a Lola?", the same in both mismatch cases (12.7). The hair-salon cancel read-back ends with "¿Confirmas que la anulo?".
 5. **P4(e) precondition.** "At least one weekly session long enough for the service" is checked as *wall-clock length ≥ duration + 60 minutes*. Without the margin the clause is false for correct code: a session can lose an hour on a spring-forward day, and in a window of about 10 full days that day can be the only occurrence of its weekday.
 6. **`decideTurn` details the table leaves open:** a "yes" that also changes the service or the time is not a confirmation (a new read-back follows); a question in the middle of a booking, reschedule or cancel keeps that flow's intent; once a booking passed the Booking_Match, a turn classified as `booking` stays a reschedule or cancel; during a reschedule, a requested time equal to the old booking's start is ignored (the model repeats every field it heard).
+
+## Implementation notes (task 8)
+
+1. **`makeTurnHandler` lives in `app/api/turn/handler.ts`**, not in `route.ts`. A route file may export only HTTP methods and segment config, so `route.ts` is three lines: it builds the production deps lazily (no `DATABASE_URL` or key at build time), passes `after` as the scheduler and exports `POST`. Tests build the same handler with PGlite, a scripted model and a scheduler that collects the `after()` work. `TurnRequestSchema` stays in `lib/voice/turnRequest.ts` so the Call_Page can import it without server code.
+2. **Unknown `callId`:** `say` and `hangup` for a Call this shop never issued get `404 { error: "call_not_found" }`. A `say` after the Call ended gets the goodbye line with `complete: true` and writes nothing; a repeated `hangup` is a no-op.
+3. **Fixed templates are not shortened.** `decideTurn` replies (model and templates) go through `toSpokenReply`. The greeting and the two Fallback_Messages are the exact texts of `receptionist-voice.md` and this design; the greeting and the retry fallback have three short sentences, and cutting them to two would drop "soy su contestador" or the offer to take a message. They are spoken as written.
+4. **Still conflicting after 2 retries:** the Call ends with outcome `message` (not `fallback`, because the model did not fail), the reply "Justo se acaba de ocupar y no encuentro otro hueco cerca. Se lo dejo apuntado a Lola para que te llame.", no Booking, and a Message so the Owner calls back.
+5. **Model failure closes the Call with status `failed`**; a completed outcome uses `completed`, a hang-up and the sweep use `abandoned`.
+6. **A missing `GEMINI_API_KEY` is a model failure**, not a broken route: the client is created on the first model call, so `start` still works and the first `say` takes the end path with a saved Message.
+7. **Bundle check (8.6):** `scripts/check-client-bundle.mjs` runs as npm `postbuild`, so every `npm run build` fails if `.next/static` contains `GEMINI_API_KEY` or `@google/genai`.
+
+## Implementation notes (task 9)
+
+1. **Two effects carry more than the design listed.** `post` carries `timeoutMs: 15000`, so the hook passes `AbortSignal.timeout(timeoutMs)` and dispatches `CLIENT_TIMEOUT` when it fires. `beaconHangup` carries its `hangup` body (`shopId`, `callId`), so the hook does not rebuild it.
+2. **One extra effect, `stopSpeech`.** It stops recognition and synthesis. The reducer emits it on a hang-up, on the client timeout, and when "type instead" or a typed line interrupts listening. A complete reply does not emit it, so the goodbye is still spoken after the Call ends.
+3. **The reducer does not hold the shop's wording.** Its transcript stores caller lines, receptionist lines and notice keys (`typeInstead`, `lineCut`). The Call_Page turns the keys into text with `phrases()`, and shows the hint to type when `showTypeHint` is set (after 2 silences in a row). `lineCut` names the owner, so the Call_Page needs `ownerName` in its public shop data (task 10).
+4. **Stale events are ignored.** A `REPLY` is ignored outside `starting` and `thinking`, and also when it carries another `callId`. A `CLIENT_TIMEOUT` counts only while a request is in flight. A `RECOGNIZED` counts only while listening; an empty one is handled like `no-speech`.
+5. **A hang-up or timeout before `start` answers** has no `callId` to send. When the late `start` reply arrives, the reducer emits the beacon for that Call, so the Call is closed without waiting for the 10-minute sweep.
+6. **No synthesis voice is tracked per language** (`mutedLangs`). After a switch, a language that has a voice is still spoken.
+7. **`createWebSpeechPort` uses structural types** for `SpeechRecognition`, `available()`, `SpeechRecognitionPhrase` and `speechSynthesis`. TypeScript's DOM lib does not describe the first three, and structural types let the tests drive the port with plain objects. It accepts the real `window`. `available()` is called once per language; if the call itself throws, the port still tries voice, and recognition reports its own errors. If the browser answers `phrases-not-supported`, the port listens again once without phrases. Synthesis uses the voice for the exact locale first (`es-ES`, `en-US`), then any voice of that language.
+
+### Mutation check of S5 (task 9, 2026-11-12)
+
+No property found a real bug. Two mutations were made on purpose to show S5 can fail, and the code was restored after each one.
+
+| Mutation in `lib/voice/callLoop.ts` | What failed | Smallest counterexample fast-check shrank to |
+|---|---|---|
+| `not-allowed` while listening ends the Call instead of switching to Typed_Mode | **S5** ("ended only through…") | Spanish, recognition on, synthesis off: `PRESS_CALL`, a `REPLY` (not complete), then `SPEECH_ERROR not-allowed` |
+| A spoken reply also starts recognition in the same step | **S5** (the listen/speak check) and 8 reducer unit tests | Recognition off, synthesis on: `PRESS_CALL`, then a `REPLY` (not complete) |

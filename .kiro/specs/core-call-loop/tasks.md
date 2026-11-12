@@ -103,37 +103,37 @@ Every task finishes only when `npx vitest run`, `npm run lint` and `npm run buil
   - Requirements: 3.5, 3.6, 3.9, 4.12–4.17, 5.8–5.10, 6.2, 6.3, 6.5, 10.1, 12.1–12.7
   - Done when: `npx vitest run`, `npm run lint` and `npm run build` all pass.
 
-- [ ] 6. Receptionist with a fake model (`lib/receptionist`). Can run in parallel with 7 and 9.
-  - [ ] 6.1 `prompt.ts`: `buildSystemInstruction` and `buildInput` as in design.md, with the transcript placed inside delimiters as data. Snapshot tests for Lola in ES and EN; they must contain the name, owner, address, hours in words, prices in €, today's date in Europe/Madrid, the field order, and the reschedule order (phone, then name).
-  - [ ] 6.2 `format.ts`: `formatSlot` for ES and EN in the shop's time zone, with unit tests that include a DST date.
-  - [ ] 6.3 `speech.ts`: `toSpokenReply`, with unit tests for markdown, emoji, lists and long sentences.
-  - [ ] 6.4 **[PBT] S4.** For all strings, `toSpokenReply` returns at most 2 sentences of at most 25 words each, with no markdown or emoji. Validates 4.11.
-  - [ ] 6.5 `callModel.ts`: `callReceptionist` with an 8-second timeout (signal plus race), sorting failures into timeout, quota, unavailable and invalid_output. Fakes: `createScriptedModel`, `neverResolves`, `throws429`, `throwsNetwork`, `returnsGarbage`. Unit tests with fake timers: rejection at exactly 8 s; 429 is `quota`; garbage is `invalid_output`. No test touches the network.
-  - [ ] 6.6 `geminiClient.ts`: `import "server-only"`. Uses the `interactions.create` call and abort mechanism confirmed in task 1 (top-level `signal`, `retries: { strategy: "none" }`), with the model from `GEMINI_MODEL` and the default (`gemini-3.5-flash-lite`) in one constant. A unit test with a mocked SDK checks the request shape: `store: false`, `response_format`, `thinking_level`, and no sampling parameters.
+- [x] 6. Receptionist with a fake model (`lib/receptionist`). Can run in parallel with 7 and 9.
+  - [x] 6.1 `prompt.ts`: `buildSystemInstruction` and `buildInput` as in design.md, with the transcript placed inside delimiters as data. Snapshot tests for Lola in ES and EN; they must contain the name, owner, address, hours in words, prices in €, today's date in Europe/Madrid, the field order, and the reschedule order (phone, then name).
+  - [x] 6.2 `format.ts`: `formatSlot` for ES and EN in the shop's time zone, with unit tests that include a DST date.
+  - [x] 6.3 `speech.ts`: `toSpokenReply`, with unit tests for markdown, emoji, lists and long sentences.
+  - [x] 6.4 **[PBT] S4.** For all strings, `toSpokenReply` returns at most 2 sentences of at most 25 words each, with no markdown or emoji. Validates 4.11.
+  - [x] 6.5 `callModel.ts`: `callReceptionist` with an 8-second timeout (signal plus race), sorting failures into timeout, quota, unavailable and invalid_output. Fakes: `createScriptedModel`, `neverResolves`, `throws429`, `throwsNetwork`, `returnsGarbage`. Unit tests with fake timers: rejection at exactly 8 s; 429 is `quota`; garbage is `invalid_output`. No test touches the network.
+  - [x] 6.6 `geminiClient.ts`: `import "server-only"`. Uses the `interactions.create` call and abort mechanism confirmed in task 1 (top-level `signal`, `retries: { strategy: "none" }`), with the model from `GEMINI_MODEL` and the default (`gemini-3.5-flash-lite`) in one constant. A unit test with a mocked SDK checks the request shape: `store: false`, `response_format`, `thinking_level`, and no sampling parameters.
   - Requirements: 4.1–4.11, 4.13–4.15, 8.2, 8.4, 8.5
   - Done when: `npx vitest run`, `npm run lint` and `npm run build` all pass.
 
-- [ ] 7. Database with PGlite (`lib/db`, `drizzle/`). Can run in parallel with 6 and 9.
-  - [ ] 7.1 `schema.ts`: the tables `shops`, `calls`, `bookings`, `messages` and `rate_limits`, with the columns, indexes, unique keys and CHECK constraints from design.md. `drizzle.config.ts`. Generate the first migration.
-  - [ ] 7.2 Custom migration `bookings_no_overlap`, made with `drizzle-kit generate --custom`: `btree_gist` plus the partial `EXCLUDE` constraint.
-  - [ ] 7.3 `client.ts`: `getDb()`, neon-http, `server-only`, created lazily so that `npm run build` does not need `DATABASE_URL`. `repository.ts`: `createRepository(db)` implementing the `Repository` port, where `commit` maps `23P01` to `booking_overlap`. A test helper runs every migration on PGlite with `btree_gist`.
-  - [ ] 7.4 Integration tests on PGlite:
+- [x] 7. Database with PGlite (`lib/db`, `drizzle/`). Can run in parallel with 6 and 9.
+  - [x] 7.1 `schema.ts`: the tables `shops`, `calls`, `bookings`, `messages` and `rate_limits`, with the columns, indexes, unique keys and CHECK constraints from design.md. `drizzle.config.ts`. Generate the first migration.
+  - [x] 7.2 Custom migration `bookings_no_overlap`, made with `drizzle-kit generate --custom`: `btree_gist` plus the partial `EXCLUDE` constraint.
+  - [x] 7.3 `client.ts`: `getDb()`, neon-http, `server-only`, created lazily so that `npm run build` does not need `DATABASE_URL`. `repository.ts`: `createRepository(db)` implementing the `Repository` port, where `commit` maps `23P01` to `booking_overlap`. A test helper runs every migration on PGlite with `btree_gist`.
+  - [x] 7.4 Integration tests on PGlite:
     - overlapping confirmed bookings on one chair are rejected, while the other chair, back-to-back bookings and cancelled rows are allowed;
     - a reschedule batch rolls back completely when the new slot conflicts;
     - one Message and one Booking per Call (unique keys);
     - `hitRateLimits` counts per window;
     - `findCallerBookings` returns only upcoming, confirmed bookings;
     - `closeStaleCalls`.
-  - [ ] 7.5 Concurrency test for the database half of P9: 20 concurrent `commit` calls for the same chair and time leave exactly one confirmed row and return 19 `booking_overlap` conflicts. Validates 9.9, 5.11.
+  - [x] 7.5 Concurrency test for the database half of P9: 20 concurrent `commit` calls for the same chair and time leave exactly one confirmed row and return 19 `booking_overlap` conflicts. Validates 9.9, 5.11.
   - Requirements: 5.9–5.13, 6.1, 6.2, 6.4, 6.6, 10.4, 10.5, 3.9
   - Done when: `npx vitest run`, `npm run lint` and `npm run build` all pass.
 
-- [ ] 8. `handleTurn` and the Turn_API (voice adapter). Needs 6 and 7.
-  - [ ] 8.1 `lib/conversation/handleTurn.ts`: start, say and hangup as in the design sequences. It covers the rate limit, the model call, fresh booking reads, `decideTurn`, `toSpokenReply`, commit with up to 2 retries on `booking_overlap`, the end and retry fallback paths, and the stale-call sweep. All I/O goes through `CoreDeps`.
-  - [ ] 8.2 `app/api/turn/route.ts`: `TurnRequestSchema` (`strictObject`, discriminated by `kind`), `makeTurnHandler(deps)`, a hashed `visitorKey` from `x-forwarded-for`, the 200/400/404/503 responses, no `runtime` export, and the sweep in `after()`.
-  - [ ] 8.3 **[PBT] S3.** For all JSON bodies with a key outside the schema (for example `fields`, `accepted`, `bookingId`), `TurnRequestSchema` fails and the route returns 400 listing the key. Validates 3.7, 3.11.
-  - [ ] 8.4 Scripted full booking call through `POST` with a real `Request`, PGlite and a scripted model, **in Spanish and in English**: greeting, 21:00 rejected with 19:30 offered, "vale, a las siete y media", name, phone, read-back, "sí", confirmation. At the end: `complete: true`, one confirmed booking on a chair, and one Message with every field filled. Validates 8.1, 4.8, 4.13, 4.15, 6.1, 6.2.
-  - [ ] 8.5 Scripted failure calls:
+- [x] 8. `handleTurn` and the Turn_API (voice adapter). Needs 6 and 7.
+  - [x] 8.1 `lib/conversation/handleTurn.ts`: start, say and hangup as in the design sequences. It covers the rate limit, the model call, fresh booking reads, `decideTurn`, `toSpokenReply`, commit with up to 2 retries on `booking_overlap`, the end and retry fallback paths, and the stale-call sweep. All I/O goes through `CoreDeps`.
+  - [x] 8.2 `app/api/turn/route.ts`: `TurnRequestSchema` (`strictObject`, discriminated by `kind`), `makeTurnHandler(deps)`, a hashed `visitorKey` from `x-forwarded-for`, the 200/400/404/503 responses, no `runtime` export, and the sweep in `after()`.
+  - [x] 8.3 **[PBT] S3.** For all JSON bodies with a key outside the schema (for example `fields`, `accepted`, `bookingId`), `TurnRequestSchema` fails and the route returns 400 listing the key. Validates 3.7, 3.11.
+  - [x] 8.4 Scripted full booking call through `POST` with a real `Request`, PGlite and a scripted model, **in Spanish and in English**: greeting, 21:00 rejected with 19:30 offered, "vale, a las siete y media", name, phone, read-back, "sí", confirmation. At the end: `complete: true`, one confirmed booking on a chair, and one Message with every field filled. Validates 8.1, 4.8, 4.13, 4.15, 6.1, 6.2.
+  - [x] 8.5 Scripted failure calls:
     - model timeout and 429, each giving the end fallback and a Message with `model_failed`;
     - invalid output once (the Call continues) and twice (the Call ends);
     - the visitor limit reached mid-call (200, fallback and Message) and on `start` (no Message);
@@ -142,14 +142,14 @@ Every task finishes only when `npx vitest run`, `npm run lint` and `npm run buil
     - a forged body with `accepted: true` (400);
     - two parallel confirmations for the last free slot (one gets the booking, the other is offered alternatives);
     - reschedule and cancel with a name mismatch (nothing read back).
-  - [ ] 8.6 A build check that the client bundle never contains `GEMINI_API_KEY` or `@google/genai`: after `npm run build`, grep `.next/static`. Validates 8.4.
+  - [x] 8.6 A build check that the client bundle never contains `GEMINI_API_KEY` or `@google/genai`: after `npm run build`, grep `.next/static`. Validates 8.4.
   - Requirements: 3.1–3.11, 4.6–4.10, 5.8–5.10, 6.1–6.6, 8.1–8.5, 10.1–10.5, 12.1–12.7
   - Done when: `npx vitest run`, `npm run lint` and `npm run build` all pass.
 
-- [ ] 9. Voice loop reducer and speech port (`lib/voice`). Needs only 5.1. Can run in parallel with 6, 7 and 8.
-  - [ ] 9.1 `callLoop.ts`: the pure reducer with the phases, events and effects of design.md. Recognition starts only after speaking ends; a 15-second client timeout ends the Call and emits `beaconHangup`.
-  - [ ] 9.2 `speechPort.ts`: `createWebSpeechPort(window)` (constructor detection, `available()` when present, `phrases` when supported, voice choice with a 1-second wait for `voiceschanged`), `createTypedOnlyPort()` and `createFakeSpeechPort(script)`.
-  - [ ] 9.3 Reducer unit tests with the fake port:
+- [x] 9. Voice loop reducer and speech port (`lib/voice`). Needs only 5.1. Can run in parallel with 6, 7 and 8.
+  - [x] 9.1 `callLoop.ts`: the pure reducer with the phases, events and effects of design.md. Recognition starts only after speaking ends; a 15-second client timeout ends the Call and emits `beaconHangup`.
+  - [x] 9.2 `speechPort.ts`: `createWebSpeechPort(window)` (constructor detection, `available()` when present, `phrases` when supported, voice choice with a 1-second wait for `voiceschanged`), `createTypedOnlyPort()` and `createFakeSpeechPort(script)`.
+  - [x] 9.3 Reducer unit tests with the fake port:
     - a complete voice call;
     - `not-allowed` mid-call switches to Typed_Mode in the same Call;
     - no recognition from the start;
@@ -157,7 +157,7 @@ Every task finishes only when `npx vitest run`, `npm run lint` and `npm run buil
     - two `no-speech` errors in a row;
     - a language switch restarts recognition in the new language;
     - the client timeout.
-  - [ ] 9.4 **[PBT] S5.** For all event sequences, the Call reaches `ended` only through a hang-up, a client timeout or a complete reply, and "type instead" is available in every phase except `ended`. Validates 2.11, 2.12.
+  - [x] 9.4 **[PBT] S5.** For all event sequences, the Call reaches `ended` only through a hang-up, a client timeout or a complete reply, and "type instead" is available in every phase except `ended`. Validates 2.11, 2.12.
   - Requirements: 2.1–2.12
   - Done when: `npx vitest run`, `npm run lint` and `npm run build` all pass.
 
@@ -168,9 +168,9 @@ Every task finishes only when `npx vitest run`, `npm run lint` and `npm run buil
   - Requirements: 1.1–1.9, 2.1–2.12
   - Done when: `npx vitest run`, `npm run lint` and `npm run build` all pass.
 
-- [ ] 11. Seed Peluquería Lola. Needs 7. Can run in parallel with 10.
-  - [ ] 11.1 `lib/db/seed.ts` and an `npm run db:seed` script: the Lola profile from design.md, with 2 chairs and the hair-salon pack, and an upsert on the shop name so it never creates a duplicate.
-  - [ ] 11.2 PGlite tests: the seeded profile passes `ShopProfileSchema`; running the seed twice leaves exactly one shop.
+- [x] 11. Seed Peluquería Lola. Needs 7. Can run in parallel with 10.
+  - [x] 11.1 `lib/db/seed.ts` and an `npm run db:seed` script: the Lola profile from design.md, with 2 chairs and the hair-salon pack, and an upsert on the shop name so it never creates a duplicate.
+  - [x] 11.2 PGlite tests: the seeded profile passes `ShopProfileSchema`; running the seed twice leaves exactly one shop.
   - Requirements: 7.1–7.7
   - Done when: `npx vitest run`, `npm run lint` and `npm run build` all pass.
 

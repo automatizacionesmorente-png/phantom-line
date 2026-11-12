@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { eq, sql } from "drizzle-orm";
+import { DrizzleQueryError, eq, sql } from "drizzle-orm";
 import { Temporal } from "temporal-polyfill";
 import { bookings, calls, messages, rateLimits, shops } from "@/lib/db/schema";
 import { isOverlapViolation, rateWindows } from "@/lib/db/repository";
@@ -52,6 +52,17 @@ describe("the bookings_no_overlap constraint", () => {
     const err = await raw.then(() => null, (e: unknown) => e);
     expect(err).not.toBeNull();
     expect(isOverlapViolation(err)).toBe(true);
+  });
+
+  it("recognises 23P01 also when Drizzle wraps the driver error (the neon-http path PGlite does not run)", () => {
+    const neonError = Object.assign(new Error("conflicting key value violates exclusion constraint"), {
+      name: "NeonDbError",
+      code: "23P01",
+    });
+    expect(isOverlapViolation(new DrizzleQueryError("insert into bookings ...", [], neonError))).toBe(true);
+    const unique = Object.assign(new Error("duplicate key"), { code: "23505" });
+    expect(isOverlapViolation(new DrizzleQueryError("insert into bookings ...", [], unique))).toBe(false);
+    expect(isOverlapViolation(undefined)).toBe(false);
   });
 
   it("allows the other chair, back-to-back bookings and an overlap with a cancelled row", async () => {
