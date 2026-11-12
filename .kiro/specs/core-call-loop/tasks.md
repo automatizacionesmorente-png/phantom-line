@@ -196,6 +196,7 @@ When a property test fails during tasks 3–9 and the failure shows a real bug (
 
 | Task | Property | Counterexample | Cause | Fix |
 |---|---|---|---|---|
+| 6.4 (2026-11-12) | **S4** (both the shape check and idempotence) | Shape check: `'1. x'` left in the output after 17 runs, from input such as `"*1. x"` or `"? 1. x"`. Idempotence: `"1⃣. 0"` gave `"1. 0"`, and a second pass gave `"0"`. | `toSpokenReply` removed list markers in a single early pass, before stripping markup and emoji and before dropping empty sentences. A `*`, a keycap emoji or a stray `?` in front of `1. ` hid the marker from the check. Once they were stripped, a numbered-list marker was still in the reply. | Each line now loses its markup and emoji before the list-marker check, and the whole cleanup repeats until the text stops changing (at most 8 passes). That also makes the function idempotent. Regression unit test in `tests/receptionist/speech.test.ts`. The property is unchanged. |
 
 ### Mutation check of P1–P9 (task 3, 2026-11-11)
 

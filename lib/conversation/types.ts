@@ -172,12 +172,16 @@ export interface Repository {
   listBookings(shopId: string, from: Temporal.Instant, to: Temporal.Instant): Promise<ExistingBooking[]>;
   findCallerBookings(shopId: string, phone: string, now: Temporal.Instant): Promise<CallerBooking[]>;
   commit(writes: readonly Write[]): Promise<{ ok: true } | { ok: false; conflict: "booking_overlap" }>;
-  hitRateLimits(visitorKey: string): Promise<{ visitor: number; global: number }>;
+  /** Counts this Turn in the visitor's minute and the global hour that contain `now`; returns the new counts. */
+  hitRateLimits(visitorKey: string, now: Temporal.Instant): Promise<{ visitor: number; global: number }>;
+  /** Deletes rate-limit windows that started before `before`; returns how many. */
+  pruneRateLimits(before: Temporal.Instant): Promise<number>;
+  /** Open Calls idle since before `idleBefore` become `abandoned` with their Message; returns how many. */
   closeStaleCalls(shopId: string, idleBefore: Temporal.Instant): Promise<number>;
 }
 
 export interface RateLimiter {
-  hit(visitorKey: string): Promise<{ visitor: number; global: number }>;
+  hit(visitorKey: string, now: Temporal.Instant): Promise<{ visitor: number; global: number }>;
 }
 
 export type Clock = () => Temporal.Instant;
