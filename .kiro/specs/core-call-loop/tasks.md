@@ -175,6 +175,7 @@ Every task finishes only when `npx vitest run`, `npm run lint` and `npm run buil
   - Done when: `npx vitest run`, `npm run lint` and `npm run build` all pass.
 
 - [ ] 12. Manual Chrome checklist. Needs 10 and 11. Write it to `.kiro/specs/core-call-loop/manual-checklist.md`, run it against the deployed app on Neon, and record pass or fail per line.
+  - Status (2026-11-12): the checklist is written. Recorded there as already verified: one Spanish and one English booking over HTTP in typed mode on `next dev` (real Gemini, real Neon), both `booked`. No check below has been run in Chrome yet.
   - [ ] 12.1 es-ES on desktop Chrome: a full booking by voice; the owner's Message exists; the transcript is correct; the voice is Spanish.
   - [ ] 12.2 en-US: the same call in English, plus a mid-call switch from ES to EN.
   - [ ] 12.3 Microphone denied: the Call continues in Typed_Mode and the booking can still be completed by typing.
@@ -183,10 +184,11 @@ Every task finishes only when `npx vitest run`, `npm run lint` and `npm run buil
   - Requirements: 1.1–1.9, 2.1–2.12, 8.1
   - Done when: `npx vitest run`, `npm run lint` and `npm run build` all pass.
 
-- [ ] 13. Notes for the jury in `NOTAS-KIRO.md`
-  - [ ] 13.1 Add one row per thing a property test caught, taken from the "Catch log" below: date, "Property-based tests", which property, the bug, and the fix.
-  - [ ] 13.2 Add one row per place the current docs changed a first choice, taken from the table in design.md: Interactions API with `store: false`, the model id and dropped sampling parameters, Temporal from `temporal-polyfill` (the native-Temporal claim did not hold on the real machine), `@google/genai` 2.x for Node 20, no Drizzle `EXCLUDE` builder, neon-http batches, the deprecated Edge runtime and no `runtime` export, `request.ip` removed, `<Suspense>` with Cache Components, `SpeechRecognition.available()`. Add any further finding from task 1.
-  - [ ] 13.3 Add one row for the spec review: the four amendments and the six review decisions.
+- [x] 13. Notes for the jury in `NOTAS-KIRO.md`
+  - [x] 13.1 Add one row per thing a property test caught, taken from the "Catch log" below: date, "Property-based tests", which property, the bug, and the fix.
+  - [x] 13.2 Add one row per place the current docs changed a first choice, taken from the table in design.md: Interactions API with `store: false`, the model id and dropped sampling parameters, Temporal from `temporal-polyfill` (the native-Temporal claim did not hold on the real machine), `@google/genai` 2.x for Node 20, no Drizzle `EXCLUDE` builder, neon-http batches, the deprecated Edge runtime and no `runtime` export, `request.ip` removed, `<Suspense>` with Cache Components, `SpeechRecognition.available()`. Add any further finding from task 1.
+  - [x] 13.3 Add one row for the spec review: the four amendments and the six review decisions.
+  - Status (2026-11-12): 13.1 added S4 and the mutation rows that were not in `NOTAS-KIRO.md` yet. The three bugfix lines, the fit-check and start-at-close mutations and the S2 generator fix were already there. 13.2 added rows for `@google/genai` 2.x, the dropped sampling parameters, `request.ip`, `<Suspense>` and the SDK abort finding from task 1; the other items already had rows. 13.3 was already covered by the 2026-11-11 "Specs (design)" and "Specs (human review)" rows, so no row was duplicated.
   - Requirements: none (submission notes)
   - Done when: `npx vitest run`, `npm run lint` and `npm run build` all pass.
 
