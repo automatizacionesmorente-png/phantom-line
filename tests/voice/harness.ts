@@ -26,6 +26,7 @@ export function reply(text: string, opts: { complete?: boolean; language?: Lang;
   return {
     callId: opts.callId ?? CALL_ID,
     reply: text,
+    cacheable: false,
     language: opts.language ?? "es",
     state: { intent: "booking", fields: { name: null, phone: null, service: null, requestedTime: null }, complete },
     complete,

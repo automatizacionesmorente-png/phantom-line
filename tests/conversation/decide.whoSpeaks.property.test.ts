@@ -5,15 +5,18 @@ import { evaluateBooking, toInstant } from "@/lib/booking";
 import { decideTurn } from "@/lib/conversation/decide";
 import { toShopRules } from "@/lib/conversation/shopProfile";
 import { initialCallState } from "@/lib/conversation/types";
+import { phrases } from "@/lib/receptionist/phrases";
 import type { ModelTurn } from "@/lib/receptionist/schema";
 import { getSectorPack } from "@/lib/sectors";
 import { lolaProfile } from "../fixtures/lola";
 
 /**
- * S8 (bugfix 2026-11-12). Requirement 5.8: the code produces every rejection and every
- * alternative. In a booking whose service is known, the model's own line is spoken only
- * after the Booking_Rules accepted the requested time (it can then only ask for the next
- * field). Before the fix, a model that left out a time it judged impossible got its own
+ * S8 (bugfix 2026-11-12, extended 2026-11-13 by natural-voice 6.2). Requirement 5.8: the code
+ * produces every rejection and every alternative. In a booking whose service is known, the model's
+ * own line is never spoken: before the Booking_Rules accepted the requested time the code rejects
+ * or asks for the day and time, and once it accepted it, the code asks for the next missing field
+ * with a template ("Genial, mañana a las siete y media tengo hueco. ¿Me dices tu nombre?").
+ * Before the 2026-11-12 fix, a model that left out a time it judged impossible got its own
  * words about opening hours spoken instead of the code's rejection with alternatives.
  */
 const pack = getSectorPack("hair-salon");
@@ -23,12 +26,13 @@ const MODEL_LINE = "MODEL-LINE: Lo siento, a esa hora estamos cerrados, abrimos 
 
 const hhmm = (h: number, m: number) => `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 
-describe("S8: a known service in a booking: the model never speaks before the time is accepted", () => {
+describe("S8: a known service in a booking: the model never speaks, and the code asks for the next field", () => {
   it("holds for every date / time / null combination", () => {
+    let accepted = 0;
     fc.assert(
       fc.property(
         fc.constantFrom(...NOWS),
-        fc.constantFrom("corte", "tinte", "barba", "cortarme el pelo"),
+        fc.constantFrom("corte", "tinte", "barba", "cortarme el pelo", "pintar el pelo"),
         fc.option(fc.integer({ min: -3, max: 20 }), { nil: null }),
         fc.option(fc.record({ h: fc.integer({ min: 0, max: 23 }), m: fc.integer({ min: 0, max: 59 }) }), { nil: null }),
         fc.constantFrom("es" as const, "en" as const),
@@ -60,32 +64,48 @@ describe("S8: a known service in a booking: the model never speaks before the ti
             existing: [],
             callerBookings: [],
           });
-          if (d.reply !== MODEL_LINE) return;
-          // The model spoke: the code must have accepted this exact time first.
+          expect(d.reply).not.toBe(MODEL_LINE);
+          expect(d.reply).not.toContain("MODEL-LINE");
+          expect(d.fromModel).toBe(false);
           const r = d.state.fields.requested;
-          expect(r).toBeDefined();
-          const start = toInstant(Temporal.PlainDate.from(r!.date), Temporal.PlainTime.from(r!.time), TZ);
+          if (!r) return;
+          const start = toInstant(Temporal.PlainDate.from(r.date), Temporal.PlainTime.from(r.time), TZ);
           const verdict = evaluateBooking(
             { serviceId: d.state.fields.serviceId!, start },
             { now, shop: toShopRules(lolaProfile), pack: { slotStepMin: pack.slotStepMin, rules: pack.rules }, existing: [] },
           );
-          expect(verdict.ok).toBe(true);
+          if (!verdict.ok) return;
+          // The code accepted this exact time, so the name is asked by the template, in the Call's language.
+          accepted++;
+          const P = phrases(d.state.language, pack, lolaProfile, undefined, now);
+          expect(d.reply).toBe(P.timeAcceptedAskName(verdict.start).text);
         },
       ),
       { numRuns: 300 },
     );
+    // A guard against a vacuous S8 (the lesson of the S2 generator, task 5).
+    expect(accepted).toBeGreaterThan(0);
   });
 
-  it("the generator reaches both sides: model lines after an accepted time, and code lines without one", () => {
-    // A guard against a vacuous S8 (the lesson of the S2 generator, task 5).
+  it("the generator reaches all three sides: a template ask after an accepted time, a rejection, and a question for the day and time", () => {
     const base = { state: initialCallState("es"), shop: lolaProfile, pack, now: NOWS[0], existing: [], callerBookings: [] };
-    const t = (date: string | null, time: string | null): ModelTurn => ({
+    const t = (date: string | null, time: string | null, service: string | null = "corte"): ModelTurn => ({
       reply: MODEL_LINE, language: "es", wantsLanguage: null, intent: "booking", name: null, phone: null,
-      service: "corte", date, time, callerConfirmed: false, callerWantsToEnd: false, outOfProfile: false,
+      service, date, time, callerConfirmed: false, callerWantsToEnd: false, outOfProfile: false,
       reason: "x", urgency: "normal",
     });
-    expect(decideTurn({ ...base, turn: t("2026-11-11", "19:30") }).reply).toBe(MODEL_LINE);
-    expect(decideTurn({ ...base, turn: t("2026-11-11", null) }).reply).not.toBe(MODEL_LINE);
-    expect(decideTurn({ ...base, turn: t("2026-11-11", "21:00") }).reply).not.toBe(MODEL_LINE);
+    const P = phrases("es", pack, lolaProfile, undefined, NOWS[0]);
+    const slot = Temporal.Instant.from("2026-11-11T18:30:00Z");
+    expect(decideTurn({ ...base, turn: t("2026-11-11", "19:30") }).reply).toBe(P.timeAcceptedAskName(slot).text);
+    expect(decideTurn({ ...base, turn: t("2026-11-11", "21:00") }).reply).toBe(
+      P.rejected("outside_hours", Temporal.Instant.from("2026-11-11T20:00:00Z"), [
+        slot,
+        Temporal.Instant.from("2026-11-11T18:15:00Z"),
+        Temporal.Instant.from("2026-11-11T18:00:00Z"),
+      ]).text,
+    );
+    expect(decideTurn({ ...base, turn: t("2026-11-11", null) }).reply).toBe(P.askDayAndTime(Temporal.PlainDate.from("2026-11-11")).text);
+    // Only without a service does the model's line still speak.
+    expect(decideTurn({ ...base, turn: t("2026-11-11", "19:30", null) }).reply).toBe(MODEL_LINE);
   });
 });

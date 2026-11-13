@@ -52,7 +52,7 @@ import { createGeminiClient, parseModelList } from "@/lib/receptionist/geminiCli
 import { phrases } from "@/lib/receptionist/phrases";
 import { buildInput, buildSystemInstruction } from "@/lib/receptionist/prompt";
 import { modelTurnJsonSchema, type ModelTurn } from "@/lib/receptionist/schema";
-import { toSpokenReply } from "@/lib/receptionist/speech";
+import { MAX_TEMPLATE_SENTENCES, toSpokenReply } from "@/lib/receptionist/speech";
 import { getSectorPack } from "@/lib/sectors";
 
 const DEFAULT_LINES: [Lang, string][] = [
@@ -127,6 +127,13 @@ function decide(state: CallState, turn: ModelTurn, now: Temporal.Instant): Decis
   return decideTurn({ state, turn, shop, pack, now, existing: [], callerBookings: [], maxTurns: 20 });
 }
 
+/** The reply as handleTurn speaks and shows it: the safety net in the Call's language, 2 or 3 sentences. */
+function heard(d: Decision): string {
+  const lang = d.state.language;
+  return d.fromModel ? toSpokenReply(d.reply, lang) : toSpokenReply(d.reply, lang, { maxSentences: MAX_TEMPLATE_SENTENCES });
+}
+const DIGIT = /\d/;
+
 // ---------------------------------------------------------------------------
 // Default mode: each line once through the production path.
 
@@ -181,7 +188,7 @@ async function single(lines: [Lang, string][], models: string[], now: Temporal.I
       modelTurn: withoutPersonalData(result.turn),
       decision: {
         kind: decisionKind(decision, result.turn),
-        reply: toSpokenReply(decision.reply),
+        reply: heard(decision),
         stage: decision.state.stage,
         complete: decision.complete,
         lastOffer: decision.state.lastOffer ?? [],
@@ -200,8 +207,24 @@ interface RawStats {
   counts: Record<RawOutcome, number>;
   okLatency: number[];
   failLatency: number[];
-  /** Per line: what decideTurn made of each ok answer, and how often time / date came back null. */
-  lines: Map<string, { kinds: Map<string, number>; timeNull: number; dateNull: number; replies: Map<string, number> }>;
+  /**
+   * Per line: what decideTurn made of each ok answer, and how often time / date came back null.
+   * Digits (natural-voice 7.4): how many ok answers had a digit in the model's own `reply`, in the
+   * decided reply before the safety net, and in what the caller hears after it.
+   */
+  lines: Map<
+    string,
+    {
+      kinds: Map<string, number>;
+      timeNull: number;
+      dateNull: number;
+      replies: Map<string, number>;
+      modelDigits: number;
+      decidedDigits: number;
+      heardDigits: number;
+      modelWithDigits: Map<string, number>;
+    }
+  >;
 }
 
 async function rawCall(
@@ -284,7 +307,20 @@ async function repeat(
         s.counts[res.outcome]++;
         (res.outcome === "ok" ? s.okLatency : s.failLatency).push(res.latencyMs);
         let line = s.lines.get(utterance);
-        if (!line) s.lines.set(utterance, (line = { kinds: new Map(), timeNull: 0, dateNull: 0, replies: new Map() }));
+        if (!line)
+          s.lines.set(
+            utterance,
+            (line = {
+              kinds: new Map(),
+              timeNull: 0,
+              dateNull: 0,
+              replies: new Map(),
+              modelDigits: 0,
+              decidedDigits: 0,
+              heardDigits: 0,
+              modelWithDigits: new Map(),
+            }),
+          );
         let kind = res.outcome as string;
         if (res.outcome === "ok" && res.text) {
           const turn = inspectModelTurn(res.text);
@@ -293,9 +329,16 @@ async function repeat(
             kind = decisionKind(d, turn.turn);
             if (turn.turn.time === null) line.timeNull++;
             if (turn.turn.date === null) line.dateNull++;
-            const reply = toSpokenReply(d.reply);
+            const reply = heard(d);
             line.replies.set(reply, (line.replies.get(reply) ?? 0) + 1);
             line.kinds.set(kind, (line.kinds.get(kind) ?? 0) + 1);
+            if (DIGIT.test(turn.turn.reply)) {
+              line.modelDigits++;
+              // The model's own words: never personal data in these two lines, and shown so the owner sees what was converted.
+              line.modelWithDigits.set(turn.turn.reply, (line.modelWithDigits.get(turn.turn.reply) ?? 0) + 1);
+            }
+            if (DIGIT.test(d.reply)) line.decidedDigits++;
+            if (DIGIT.test(reply)) line.heardDigits++;
           }
         }
         k++;
@@ -318,7 +361,14 @@ async function repeat(
       lines: Object.fromEntries(
         [...s.lines].map(([utt, l]) => [
           utt,
-          { decisions: Object.fromEntries(l.kinds), timeNull: l.timeNull, dateNull: l.dateNull, replies: Object.fromEntries(l.replies) },
+          {
+            decisions: Object.fromEntries(l.kinds),
+            timeNull: l.timeNull,
+            dateNull: l.dateNull,
+            digits: { inModelReply: l.modelDigits, inDecidedReply: l.decidedDigits, heardByCaller: l.heardDigits },
+            modelRepliesWithDigits: Object.fromEntries(l.modelWithDigits),
+            heardReplies: Object.fromEntries(l.replies),
+          },
         ]),
       ),
     });
@@ -359,7 +409,7 @@ async function conversation(models: string[], now: Temporal.Instant, runs: numbe
         if (failure?.message) say(`     last error: ${failure.model ?? "?"} ${failure.status ?? ""} ${failure.errorClass ?? ""}: ${failure.message}`);
         if (result.failure === "invalid_output" && state.consecutiveInvalid + 1 < 2) {
           // handleTurn's retry path: the caller hears the retry line and says the same thing again.
-          const retry = toSpokenReply(phrases("es", pack, shop).fallbackRetry());
+          const retry = toSpokenReply(phrases("es", pack, shop).fallbackRetry().text, "es", { maxSentences: 3 });
           lines.push({ caller: utterance, receptionist: retry });
           state = { ...state, consecutiveInvalid: state.consecutiveInvalid + 1, turnCount: state.turnCount + 1 };
           i--;
@@ -369,7 +419,7 @@ async function conversation(models: string[], now: Temporal.Instant, runs: numbe
         break;
       }
       const d = decide(state, result.turn, now);
-      const reply = toSpokenReply(d.reply);
+      const reply = heard(d);
       const kind = decisionKind(d, result.turn);
       const tries = (success?.earlier ?? []).map((e) => `${e.model ?? "?"}:${e.outcome}@${e.latencyMs}`).join(" ");
       say(`  ${i + 1}. "${utterance}" -> [${kind}] ${success?.model ?? "?"} ×${success?.attempts ?? "?"} ${ms} ms${tries ? ` (${tries})` : ""}: ${reply}`);

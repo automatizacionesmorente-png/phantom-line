@@ -1,10 +1,17 @@
 import { createHash } from "node:crypto";
+import type { Temporal } from "temporal-polyfill";
 import type { z } from "zod";
 import { CallNotFoundError, handleTurn, sweep } from "@/lib/conversation/handleTurn";
 import { consoleFallbackLogger, summarizeError, type FallbackLogEvent } from "@/lib/conversation/fallbackLog";
-import type { CoreDeps, TurnInput } from "@/lib/conversation/types";
+import type { ShopProfile } from "@/lib/conversation/shopProfile";
+import type { CoreDeps, TurnInput, TurnOutput } from "@/lib/conversation/types";
 import { phrases } from "@/lib/receptionist/phrases";
+import { signSpeech } from "@/lib/receptionist/speechToken";
+import { lineKeys, type VoiceFor } from "@/lib/receptionist/voiceCacheKey";
+import type { VoiceCacheStore } from "@/lib/receptionist/voiceCacheBudget";
+import { resolveVoiceProfile } from "@/lib/receptionist/voiceProfile";
 import { getSectorPack } from "@/lib/sectors";
+import { MAX_SPEECH_TEXT, type TurnResponse } from "@/lib/voice/speechRequest";
 import { TurnRequestSchema } from "@/lib/voice/turnRequest";
 
 /**
@@ -20,6 +27,72 @@ export interface TurnHandlerOptions {
   schedule: (task: () => Promise<void>) => void;
   /** Salt for the hashed visitor key, read per request. */
   salt: () => string;
+  /**
+   * SPEECH_TOKEN_SECRET, read per request. When it is missing or empty, replies carry no
+   * `speech` hint and the Call_Page speaks them with the browser voice.
+   */
+  speechSecret?: () => string | undefined;
+  /**
+   * The voice cache, built on first use. When it is missing, or its lookup fails, every reply
+   * gets a live hint, as before the cache existed.
+   */
+  voiceCache?: () => VoiceCacheLookup;
+}
+
+/** What /api/turn needs to find a reply's stored audio: the store, the TTS models in order, and their voices. */
+export interface VoiceCacheLookup {
+  store: Pick<VoiceCacheStore, "findKeys">;
+  /** GEMINI_TTS_MODEL, in order. */
+  models: readonly string[];
+  voiceFor: VoiceFor;
+}
+
+/** The URL a cached line is served from (app/api/voice/[key]/route.ts). */
+export const voiceUrl = (key: string) => `/api/voice/${key}`;
+
+/**
+ * The adapter's `speech` hint for a reply (natural-voice 8.5 and 9.4). A cacheable reply whose
+ * audio is stored, under the key of any model that speaks with the primary voice (in
+ * GEMINI_TTS_MODEL order), gets `{ kind: "cached", url, rate }`, and the browser fetches the
+ * file with no TTS request. Every other reply gets `{ kind: "live", token, rate }`: a token that
+ * binds the shop, the language, the exact text and whether its audio may be cached. A line with
+ * a name or a phone, or the model's own text, is never looked up, so it is always live.
+ */
+export async function speechFor(
+  out: TurnOutput,
+  shop: ShopProfile,
+  secret: string | undefined,
+  now: Temporal.Instant,
+  cache: VoiceCacheLookup | undefined,
+): Promise<TurnResponse> {
+  if (!secret || !out.reply || out.reply.length > MAX_SPEECH_TEXT) return out;
+  if (out.cacheable && cache) {
+    try {
+      const profile = resolveVoiceProfile(getSectorPack(shop.sectorPackId), shop, out.language);
+      const keys = lineKeys(out.reply, profile, cache.models, cache.voiceFor);
+      const found = keys.length > 0 ? await cache.store.findKeys(keys.map((k) => k.key)) : new Set<string>();
+      const hit = keys.find((k) => found.has(k.key));
+      if (hit) return { ...out, speech: { kind: "cached", url: voiceUrl(hit.key), rate: shop.speechRate } };
+    } catch (err) {
+      // The cache is an optimisation: a failed lookup means a live line, never a failed Turn.
+      console.error("voice cache lookup failed:", (err as Error)?.name ?? "error");
+    }
+  }
+  return withSpeech(out, shop, secret, now);
+}
+
+/**
+ * The adapter's `speech` hint for a reply (natural-voice 8.5): a token that binds the shop, the
+ * language, the exact text and whether its audio may be cached, and the shop's playback rate.
+ */
+export function withSpeech(out: TurnOutput, shop: ShopProfile, secret: string | undefined, now: Temporal.Instant): TurnResponse {
+  if (!secret || !out.reply || out.reply.length > MAX_SPEECH_TEXT) return out;
+  const token = signSpeech(
+    { shopId: shop.id, language: out.language, text: out.reply, cacheable: out.cacheable },
+    secret,
+    now.epochMilliseconds,
+  );
+  return { ...out, speech: { kind: "live", token, rate: shop.speechRate } };
 }
 
 export interface Issue {
@@ -110,7 +183,14 @@ export function makeTurnHandler(opts: TurnHandlerOptions): (request: Request) =>
     opts.schedule(() => sweep(shopId, sweepDeps));
 
     try {
-      return json(await handleTurn(input, deps), 200);
+      const out = await handleTurn(input, deps);
+      let cache: VoiceCacheLookup | undefined;
+      try {
+        cache = opts.voiceCache?.();
+      } catch {
+        // No cache (for example no database URL for it): live lines only.
+      }
+      return json(await speechFor(out, shop, opts.speechSecret?.(), deps.clock(), cache), 200);
     } catch (err) {
       if (err instanceof CallNotFoundError) return json({ error: "call_not_found" }, 404);
       const event: FallbackLogEvent = {
@@ -126,7 +206,7 @@ export function makeTurnHandler(opts: TurnHandlerOptions): (request: Request) =>
       } catch {
         // Logging must never change the response.
       }
-      const reply = phrases(req.kind === "hangup" ? shop.languages[0] : lang, getSectorPack(shop.sectorPackId), shop).fallbackEnd();
+      const reply = phrases(req.kind === "hangup" ? shop.languages[0] : lang, getSectorPack(shop.sectorPackId), shop).fallbackEnd().text;
       return json({ error: "unavailable", reply }, 503);
     }
   };

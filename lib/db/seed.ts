@@ -35,7 +35,25 @@ export const lolaSeedProfile: ShopProfile = {
     {
       id: "colour",
       name: { es: "tinte", en: "colour" },
-      aliases: ["color", "teñir", "teñirme el pelo", "tinte de pelo", "dye", "hair colour", "hair color"],
+      aliases: [
+        "color",
+        "colorear",
+        "teñir",
+        "teñirme",
+        "teñirse",
+        "tintarme",
+        "pintar el pelo",
+        "pintarme el pelo",
+        "pintarse el pelo",
+        "mechas",
+        "mechitas",
+        "reflejos",
+        "dye",
+        "colouring",
+        "coloring",
+        "highlights",
+        "tint",
+      ],
       durationMin: 90,
       priceCents: 4500,
       spokenName: { es: "un tinte", en: "a colour" },
@@ -54,8 +72,8 @@ export const lolaSeedProfile: ShopProfile = {
     { id: "chair-2", name: { es: "Sillón 2", en: "Chair 2" } },
   ],
   // The voice is the hair-salon pack's (es-es-commercial-3 / Kore), so no `voice` override.
-  // Pace option 2 (design.md "Pace"): play the neural voice 10 % faster with the pitch kept,
-  // while option 1 (pace words in the style) waits for a day's TTS quota (task 3.7 / 3.8).
+  // Pace option 2 (design.md "Pace", decided in task 3.8): play the neural voice 10 % faster
+  // with the pitch kept. Option 1 (pace words in the style) was measured and rejected.
   speechRate: 1.1,
 };
 

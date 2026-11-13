@@ -6,10 +6,10 @@ import type { TestDb } from "../db/pglite";
 import type { FallbackLogEvent } from "@/lib/conversation/fallbackLog";
 import { messages } from "@/lib/db/schema";
 import { createScriptedModel, failsWith503, MAX_MODEL_ATTEMPTS } from "@/lib/receptionist/callModel";
-import { phrases } from "@/lib/receptionist/phrases";
+import { phrases, type Said } from "@/lib/receptionist/phrases";
 import { toSpokenReply } from "@/lib/receptionist/speech";
 import { getSectorPack } from "@/lib/sectors";
-import { Caller, makeDeps, makePost, modelTurn, setupDb } from "./harness";
+import { Caller, makeDeps, makePost, modelTurn, NOW, setupDb } from "./harness";
 
 /**
  * Regression for the first end-to-end test (2026-11-12). The caller said
@@ -21,7 +21,8 @@ import { Caller, makeDeps, makePost, modelTurn, setupDb } from "./harness";
  * exactly that error once, then answers as the real model did.
  */
 const pack = getSectorPack("hair-salon");
-const ES = phrases("es", pack, lolaProfile);
+const ES = phrases("es", pack, lolaProfile, undefined, NOW);
+const spoken = (line: Said) => toSpokenReply(line.text, "es", { maxSentences: 3 });
 const at = (iso: string) => Temporal.Instant.from(iso);
 const WED_2100 = at("2026-11-11T20:00:00Z");
 const OFFERED = [at("2026-11-11T18:30:00Z"), at("2026-11-11T18:15:00Z"), at("2026-11-11T18:00:00Z")];
@@ -63,8 +64,8 @@ describe("Gemini's 503 'high demand' on the first say", () => {
     await c.start();
     const r = await c.say(LINE);
     expect(r.status).toBe(200);
-    expect(r.body.reply).toBe(toSpokenReply(ES.rejected("outside_hours", WED_2100, OFFERED)));
-    expect(r.body.reply).toContain("19:30");
+    expect(r.body.reply).toBe(spoken(ES.rejected("outside_hours", WED_2100, OFFERED)));
+    expect(r.body.reply).toContain("las siete y media");
     expect(r.body.complete).toBe(false);
     expect(model.calls).toBe(2);
     expect(events).toEqual([]);
@@ -77,7 +78,7 @@ describe("Gemini's 503 'high demand' on the first say", () => {
     const c = new Caller(makePost(deps).POST);
     await c.start();
     const r = await c.say("Soy Ana Secreta, mi teléfono es 612345678, quiero cortarme el pelo");
-    expect(r.body).toMatchObject({ reply: ES.fallbackEnd(), complete: true, outcome: "fallback" });
+    expect(r.body).toMatchObject({ reply: spoken(ES.fallbackEnd()), complete: true, outcome: "fallback" });
     expect(model.calls).toBe(MAX_MODEL_ATTEMPTS);
 
     expect(events).toHaveLength(1);

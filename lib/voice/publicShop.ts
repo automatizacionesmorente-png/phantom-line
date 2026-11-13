@@ -23,7 +23,7 @@ export function toPublicShop(shop: ShopProfile): PublicShop {
   const pack = getSectorPack(shop.sectorPackId);
   const notices = (lang: Lang) => {
     const p = phrases(lang, pack, shop);
-    return { typeInstead: p.typeInstead(), lineCut: p.lineCut() };
+    return { typeInstead: p.typeInstead().text, lineCut: p.lineCut().text };
   };
   const names = shop.services.flatMap((s) => [s.name.es, s.name.en]);
   return {

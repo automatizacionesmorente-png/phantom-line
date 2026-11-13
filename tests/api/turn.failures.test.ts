@@ -8,14 +8,16 @@ import type { TestDb } from "../db/pglite";
 import type { ModelClient, TurnOutput } from "@/lib/conversation/types";
 import { bookings, calls, messages } from "@/lib/db/schema";
 import { createScriptedModel, neverResolves, returnsGarbage, throws429 } from "@/lib/receptionist/callModel";
-import { phrases } from "@/lib/receptionist/phrases";
+import { phrases, type Said } from "@/lib/receptionist/phrases";
 import { toSpokenReply } from "@/lib/receptionist/speech";
 import { getSectorPack } from "@/lib/sectors";
-import { Caller, makeDeps, makePost, modelTurn, request, setupDb, SHOP } from "./harness";
+import { Caller, makeDeps, makePost, modelTurn, NOW, request, setupDb, SHOP } from "./harness";
 
 /** Task 8.5: the scripted failure Calls through POST /api/turn, on PGlite. */
 const pack = getSectorPack("hair-salon");
-const ES = phrases("es", pack, lolaProfile);
+const ES = phrases("es", pack, lolaProfile, undefined, NOW);
+/** A code-owned line as the caller hears it. */
+const spoken = (line: Said) => toSpokenReply(line.text, "es", { maxSentences: 3 });
 const WED_1930 = Temporal.Instant.from("2026-11-11T18:30:00Z");
 
 let t: TestDb;
@@ -68,7 +70,7 @@ describe("model failures take the end path: Fallback_Message, Call ends, Message
     const r = await c.say("El viernes");
     expect(Date.now() - started).toBeLessThan(2000);
     expect(r.status).toBe(200);
-    expect(r.body).toMatchObject({ reply: ES.fallbackEnd(), complete: true, outcome: "fallback" });
+    expect(r.body).toMatchObject({ reply: spoken(ES.fallbackEnd()), complete: true, outcome: "fallback" });
     await expectFallbackMessage(c.callId);
   });
 
@@ -80,7 +82,7 @@ describe("model failures take the end path: Fallback_Message, Call ends, Message
     await c.say("Quiero un corte, soy Ana");
     const r = await c.say("El viernes");
     expect(r.status).toBe(200);
-    expect(r.body).toMatchObject({ reply: ES.fallbackEnd(), complete: true, outcome: "fallback" });
+    expect(r.body).toMatchObject({ reply: spoken(ES.fallbackEnd()), complete: true, outcome: "fallback" });
     await expectFallbackMessage(c.callId);
   });
 });
@@ -96,7 +98,7 @@ describe("invalid model output takes the retry path", () => {
     await c.start();
     const r1 = await c.say("Hola, quería una cita");
     expect(r1.status).toBe(200);
-    expect(r1.body).toMatchObject({ reply: ES.fallbackRetry(), complete: false });
+    expect(r1.body).toMatchObject({ reply: spoken(ES.fallbackRetry()), complete: false });
     expect(r1.body.outcome).toBeUndefined();
     const r2 = await c.say("Una cita, por favor");
     expect(r2.body).toMatchObject({ reply: "¿Qué servicio quieres?", complete: false });
@@ -108,9 +110,9 @@ describe("invalid model output takes the retry path", () => {
     const { POST } = makePost(makeDeps(t, returnsGarbage));
     const c = new Caller(POST);
     await c.start();
-    expect((await c.say("Hola")).body).toMatchObject({ reply: ES.fallbackRetry(), complete: false });
+    expect((await c.say("Hola")).body).toMatchObject({ reply: spoken(ES.fallbackRetry()), complete: false });
     const r = await c.say("Hola, ¿me oyes?");
-    expect(r.body).toMatchObject({ reply: ES.fallbackEnd(), complete: true, outcome: "fallback" });
+    expect(r.body).toMatchObject({ reply: spoken(ES.fallbackEnd()), complete: true, outcome: "fallback" });
     const ms = await allMessages();
     expect(ms).toHaveLength(1);
     expect(ms[0]).toMatchObject({ outcome: "fallback", modelFailed: true });
@@ -127,7 +129,7 @@ describe("rate limits", () => {
     await c.say("Quiero un corte, soy Ana");
     const r = await c.say("El viernes");
     expect(r.status).toBe(200);
-    expect(r.body).toMatchObject({ reply: ES.fallbackEnd(), complete: true, outcome: "fallback" });
+    expect(r.body).toMatchObject({ reply: spoken(ES.fallbackEnd()), complete: true, outcome: "fallback" });
     expect(model.calls).toHaveLength(1);
     await expectFallbackMessage(c.callId);
   });
@@ -140,7 +142,7 @@ describe("rate limits", () => {
     await c.start(); // 2
     await c.say("Quiero un corte, soy Ana"); // 3
     const r = await c.say("El viernes"); // 4: over
-    expect(r.body).toMatchObject({ reply: ES.fallbackEnd(), complete: true, outcome: "fallback" });
+    expect(r.body).toMatchObject({ reply: spoken(ES.fallbackEnd()), complete: true, outcome: "fallback" });
     await expectFallbackMessage(c.callId);
   });
 
@@ -149,7 +151,7 @@ describe("rate limits", () => {
     expect((await new Caller(POST).start()).status).toBe(200);
     const r = await new Caller(POST).start();
     expect(r.status).toBe(200);
-    expect(r.body).toMatchObject({ reply: ES.rateLimitedStart(), complete: true });
+    expect(r.body).toMatchObject({ reply: spoken(ES.rateLimitedStart()), complete: true });
     expect(await t.handle.db.select().from(calls)).toHaveLength(1); // only the first Call
     expect(await allMessages()).toHaveLength(0);
   });
@@ -254,7 +256,7 @@ describe("requests the adapter refuses", () => {
     const { POST } = makePost(broken);
     const res = await POST(request({ kind: "start", shopId: SHOP, language: "es" }));
     expect(res.status).toBe(503);
-    expect(await res.json()).toEqual({ error: "unavailable", reply: ES.fallbackEnd() });
+    expect(await res.json()).toEqual({ error: "unavailable", reply: spoken(ES.fallbackEnd()) });
   });
 });
 
@@ -274,10 +276,10 @@ describe("two parallel confirmations for the last free slot", () => {
     const ana = new Caller(makePost(makeDeps(t, callerScript("Ana", "612345678"))).POST, "es", "198.51.100.10");
     const bea = new Caller(makePost(makeDeps(t, callerScript("Bea", "622345678"))).POST, "es", "198.51.100.11");
     await Promise.all([ana.start(), bea.start()]);
-    const readBack = toSpokenReply(ES.readBack("haircut", WED_1930));
+    const readBack = (name: string, phone: string) => spoken(ES.readBack("haircut", WED_1930, name, phone));
     const [ra, rb] = await Promise.all([ana.say("Un corte mañana a las 19:30, soy Ana, 612345678"), bea.say("Un corte mañana a las 19:30, soy Bea, 622345678")]);
-    expect(ra.body.reply).toBe(readBack);
-    expect(rb.body.reply).toBe(readBack);
+    expect(ra.body.reply).toBe(readBack("Ana", "+34612345678"));
+    expect(rb.body.reply).toBe(readBack("Bea", "+34622345678"));
 
     const results: TurnOutput[] = (await Promise.all([ana.say("Sí"), bea.say("Sí")])).map((r) => r.body);
     const won = results.filter((r) => r.outcome === "booked");
@@ -285,7 +287,7 @@ describe("two parallel confirmations for the last free slot", () => {
     expect(won).toHaveLength(1);
     expect(lost).toHaveLength(1);
     expect(lost[0].complete).toBe(false);
-    expect(lost[0].reply).toMatch(/^Justo se acaba de ocupar\. Tengo libre /);
+    expect(lost[0].reply).toMatch(/^¡Vaya, justo se acaba de ocupar! ¿Te viene bien /);
 
     const confirmed = (await allBookings()).filter((b) => b.status === "confirmed");
     expect(confirmed).toHaveLength(2); // Luis on chair 2 and the winner on chair 1
@@ -321,7 +323,7 @@ describe("reschedule and cancel with a name mismatch read back nothing", () => {
       await seedAnaBooking();
       const mismatch = await attempt(intent, "Marta", "612 345 678");
       const noBooking = await attempt(intent, "Ana", "699 999 999");
-      expect(mismatch.reply).toBe(toSpokenReply(ES.bookingNotFound()));
+      expect(mismatch.reply).toBe(spoken(ES.bookingNotFound()));
       expect(noBooking.reply).toBe(mismatch.reply);
       for (const r of [mismatch, noBooking]) {
         expect(r.complete).toBe(false);
@@ -369,7 +371,9 @@ describe("commit retries on booking_overlap (23P01)", () => {
     await c.start();
     await c.say("Un corte mañana a las 19:30, soy Ana, 612345678");
     const r = await c.say("Sí");
-    expect(r.body).toMatchObject({ outcome: "booked", complete: true, reply: toSpokenReply(ES.booked("haircut", WED_1930)) });
+    // "Sí" is Turn 2 of this Call, so the Variant_Seed is { callId, turn: 2 }.
+    const booked = phrases("es", pack, lolaProfile, { callId: c.callId, turn: 2 }, NOW).booked("haircut", WED_1930);
+    expect(r.body).toMatchObject({ outcome: "booked", complete: true, reply: spoken(booked) });
     expect(commits.slice(-2)).toEqual(["booking_overlap", "ok"]);
     const mine = (await allBookings()).filter((b) => b.customerName === "Ana");
     expect(mine.map((b) => b.resourceId)).toEqual(["chair-2"]);
@@ -383,7 +387,7 @@ describe("commit retries on booking_overlap (23P01)", () => {
     await c.say("Un corte mañana a las 19:30, soy Ana, 612345678");
     const r = await c.say("Sí");
     expect(r.body.complete).toBe(false);
-    expect(r.body.reply).toMatch(/^Justo se acaba de ocupar\. Tengo libre /);
+    expect(r.body.reply).toMatch(/^¡Vaya, justo se acaba de ocupar! ¿Te viene bien /);
     expect(commits.slice(-2)).toEqual(["booking_overlap", "ok"]);
     expect((await allBookings()).filter((b) => b.customerName === "Ana")).toHaveLength(0);
     expect((await callRow(c.callId)).status).toBe("open");
@@ -407,7 +411,7 @@ describe("commit retries on booking_overlap (23P01)", () => {
     await c.say("Un corte mañana a las 19:30, soy Ana, 612345678");
     const r = await c.say("Sí");
     expect(attempts).toBe(3);
-    expect(r.body).toMatchObject({ complete: true, outcome: "message", reply: toSpokenReply(ES.slotJustTaken([])) });
+    expect(r.body).toMatchObject({ complete: true, outcome: "message", reply: spoken(ES.slotJustTaken(null, [])) });
     expect(await allBookings()).toHaveLength(0);
     const ms = await allMessages();
     expect(ms).toHaveLength(1);

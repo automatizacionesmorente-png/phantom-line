@@ -14,7 +14,7 @@ describe("toPublicShop", () => {
   });
 
   it("carries the page's notices in both languages from the shop's phrases", () => {
-    expect(pub.notices.es.typeInstead).toBe("No te oigo bien, pero puedes escribirme aquí.");
+    expect(pub.notices.es.typeInstead).toBe("No te oigo bien, pero puedes escribirme aquí abajo.");
     expect(pub.notices.es.lineCut).toBe("Se ha cortado la línea. Lola tiene tu mensaje y te llamará.");
     expect(pub.notices.en.lineCut).toContain("Lola");
   });

@@ -43,6 +43,12 @@ export interface TurnOutput {
   callId: string;
   /** What to say or show. */
   reply: string;
+  /**
+   * Whether the audio of `reply` may be stored and replayed for other callers: false for any
+   * line with a name or a phone, and for the model's own words (natural-voice 6.5). Signed
+   * into the speech token by the voice adapter (task 8).
+   */
+  cacheable: boolean;
   /** May change if the caller asked to switch. */
   language: Lang;
   state: PublicState;
@@ -83,6 +89,8 @@ export interface CallState {
   consecutiveInvalid: number;
   modelFailed: boolean;
   turnCount: number;
+  /** The caller was already asked once more for a name that did not look like one (natural-voice 6.2). */
+  nameReasked?: boolean;
 }
 
 // ---------------------------------------------------------------------------

@@ -1,10 +1,11 @@
 import { Temporal } from "temporal-polyfill";
 import { checkBooking, toInstant, type ExistingBooking, type RuleContext } from "@/lib/booking";
-import { phrases } from "@/lib/receptionist/phrases";
+import { phrases, type Said } from "@/lib/receptionist/phrases";
 import type { ModelTurn } from "@/lib/receptionist/schema";
 import type { RequiredField, SectorPack } from "@/lib/sectors";
 import { mergeFields } from "./fields";
 import { matchesCaller } from "./matchCaller";
+import { looksLikeName } from "./names";
 import { buildOwnerMessage, type MessageBooking } from "./ownerMessage";
 import { toShopRules, type ShopProfile } from "./shopProfile";
 import type { CallerBooking, CallFields, CallState, Effect, Intent, Outcome, PendingAction, PublicState } from "./types";
@@ -23,11 +24,17 @@ export interface DecideInput {
   /** Upcoming confirmed bookings for the caller's phone; filtered here with matchesCaller. */
   callerBookings: readonly CallerBooking[];
   maxTurns?: number;
+  /** The Call's id: with the Turn number it picks the Phrase_Variants (Variant_Seed). Without it, variant 0. */
+  callId?: string;
 }
 
 export interface Decision {
   state: CallState;
   reply: string;
+  /** The audio of `reply` may be stored and replayed: false for a line with a name or phone, and for model text. */
+  cacheable: boolean;
+  /** The reply is the model's own line (a question, an out-of-profile answer), not a template. */
+  fromModel: boolean;
   complete: boolean;
   outcome?: Outcome;
   effects: Effect[];
@@ -60,9 +67,12 @@ export function decideTurn(input: DecideInput): Decision {
   const { turn, shop, pack, now } = input;
   const maxTurns = input.maxTurns ?? DEFAULT_MAX_TURNS;
   const prev = input.state;
+  const phraseSet = (lang: CallState["language"], turnNumber: number) =>
+    phrases(lang, pack, shop, input.callId ? { callId: input.callId, turn: turnNumber } : undefined, now);
 
   if (prev.stage === "done") {
-    return { state: prev, reply: phrases(prev.language, pack, shop).goodbye(), complete: true, effects: [] };
+    const goodbye = phraseSet(prev.language, prev.turnCount).goodbye();
+    return { state: prev, reply: goodbye.text, cacheable: goodbye.cacheable, fromModel: false, complete: true, effects: [] };
   }
 
   const merged = mergeFields(prev, turn, shop);
@@ -75,7 +85,7 @@ export function decideTurn(input: DecideInput): Decision {
     consecutiveInvalid: 0,
     turnCount: prev.turnCount + 1,
   };
-  const P = phrases(s.language, pack, shop);
+  const P = phraseSet(s.language, s.turnCount);
   const tz = shop.timeZone;
   const ctx: RuleContext = {
     now,
@@ -84,12 +94,30 @@ export function decideTurn(input: DecideInput): Decision {
     existing: input.existing,
   };
 
-  const say = (reply: string): Decision => ({ state: s, reply, complete: false, effects: [] });
-  const end = (outcome: Outcome, reply: string, effects: Effect[] = [], booking?: MessageBooking): Decision => {
+  const reply = (line: Said, model = false): Decision => ({
+    state: s,
+    reply: line.text,
+    cacheable: line.cacheable,
+    fromModel: model,
+    complete: false,
+    effects: [],
+  });
+  const say = (line: Said): Decision => reply(line);
+  /** The model's own words: never cacheable. */
+  const sayModel = (text: string): Decision => reply({ text, cacheable: false }, true);
+  const end = (outcome: Outcome, line: Said, effects: Effect[] = [], booking?: MessageBooking): Decision => {
     s.stage = "done";
     s.pending = undefined;
     const message = buildOwnerMessage(s, outcome, shop, pack, booking);
-    return { state: s, reply, complete: true, outcome, effects: [...effects, { type: "saveMessage", message }] };
+    return {
+      state: s,
+      reply: line.text,
+      cacheable: line.cacheable,
+      fromModel: false,
+      complete: true,
+      outcome,
+      effects: [...effects, { type: "saveMessage", message }],
+    };
   };
   const offer = (alts: readonly { start: Temporal.Instant }[]) => {
     s.lastOffer = alts.length > 0 ? alts.map((a) => a.start.toString()) : undefined;
@@ -135,13 +163,13 @@ export function decideTurn(input: DecideInput): Decision {
   }
 
   // 4. Language switch and questions: the model's line.
-  if (switched) return say(turn.reply);
-  if (turn.intent === "question" || turn.outOfProfile) return say(turn.reply);
+  if (switched) return sayModel(turn.reply);
+  if (turn.intent === "question" || turn.outOfProfile) return sayModel(turn.reply);
 
   // 5. The flows.
   if (s.intent === "booking") return bookingFlow();
   if (s.intent === "reschedule" || s.intent === "cancel") return changeFlow(s.intent);
-  return say(turn.reply);
+  return sayModel(turn.reply);
 
   // -------------------------------------------------------------------------
 
@@ -162,10 +190,17 @@ export function decideTurn(input: DecideInput): Decision {
   }
 
   function bookingFlow(): Decision {
+    // A name that is clearly not a name ("Mi amor") is not kept: the caller is asked once more,
+    // once the time is accepted. After that one re-ask, whatever they say is taken.
+    const heardName = s.fields.name;
+    const suspectName =
+      heardName !== undefined && heardName !== prev.fields.name && !prev.nameReasked && !looksLikeName(heardName);
+    if (suspectName) s.fields.name = prev.fields.name;
+
     if (merged.unknownService !== null) return say(P.serviceNotOffered(merged.unknownService));
     const serviceId = s.fields.serviceId;
     const start = requestedStart();
-    if (!serviceId) return say(turn.reply);
+    if (!serviceId) return sayModel(turn.reply);
     // Safety net (bugfix 2026-11-12): once the service is known, a missing day or time is
     // asked for by code. The model's own line here once told the caller the opening hours
     // instead of the code's rejection with alternatives, because it had left out a time
@@ -176,14 +211,33 @@ export function decideTurn(input: DecideInput): Decision {
     if (!v.ok) return say(P.rejected(v.reason, start, offer(v.alternatives)));
     s.lastOffer = undefined;
 
-    if (pack.requiredFields.some((f) => !hasField(s.fields, f))) return say(turn.reply);
+    // From here the time is accepted, so every missing field is asked by a template, in the
+    // order of the pack, and the model's own line is never spoken (natural-voice 6.2).
+    // A caller who switched service mid-booking first hears what the new one takes and costs.
+    const switchedService = prev.fields.serviceId !== undefined && prev.fields.serviceId !== serviceId;
+    const info = P.serviceInfo(serviceId);
+    const withInfo = (line: Said): Said =>
+      switchedService ? { text: `${info.text} ${line.text}`, cacheable: info.cacheable && line.cacheable } : line;
+
+    if (suspectName && prev.fields.name === undefined) {
+      s.nameReasked = true;
+      return say(withInfo(P.askNameAgain()));
+    }
+    const next = pack.requiredFields.find((f) => !hasField(s.fields, f));
+    if (next === "name") {
+      const justAccepted = switchedService || !sameRequested(s.fields.requested, prev.fields.requested);
+      return say(withInfo(justAccepted ? P.timeAcceptedAskName(v.start) : P.askName()));
+    }
+    if (next === "phone") return say(withInfo(P.askPhone()));
+    const { name, phone } = s.fields;
+    if (next !== undefined || !name || !phone) return sayModel(turn.reply);
     s.pending = { kind: "book", serviceId, start: v.start.toString() };
     s.stage = "awaiting_confirmation";
-    return say(P.readBack(serviceId, v.start));
+    return say(withInfo(P.readBack(serviceId, v.start, name, phone)));
   }
 
   function changeFlow(kind: "reschedule" | "cancel"): Decision {
-    if (!s.fields.name || !s.fields.phone) return say(turn.reply);
+    if (!s.fields.name || !s.fields.phone) return sayModel(turn.reply);
     const mine = myBookings();
     if (mine.length === 0) {
       s.existingBookingId = undefined;
@@ -216,13 +270,13 @@ export function decideTurn(input: DecideInput): Decision {
     const { name, phone } = s.fields;
     s.stage = "collecting";
     s.pending = undefined;
-    if (!name || !phone) return say(turn.reply);
+    if (!name || !phone) return sayModel(turn.reply);
 
     if (pending.kind === "book") {
       const start = Temporal.Instant.from(pending.start);
       // Re-check against the bookings read from the database in this request.
       const v = checkBooking({ serviceId: pending.serviceId, start }, ctx);
-      if (!v.ok) return say(P.slotJustTaken(offer(v.alternatives)));
+      if (!v.ok) return say(P.slotJustTaken(start, offer(v.alternatives)));
       s.lastOffer = undefined;
       return end(
         "booked",
@@ -249,7 +303,7 @@ export function decideTurn(input: DecideInput): Decision {
 
     const start = Temporal.Instant.from(pending.start);
     const v = checkBooking({ serviceId: pending.serviceId, start, ignoreBookingId: target.id }, ctx);
-    if (!v.ok) return say(P.slotJustTaken(offer(v.alternatives)));
+    if (!v.ok) return say(P.slotJustTaken(start, offer(v.alternatives)));
     s.lastOffer = undefined;
     return end(
       "rescheduled",

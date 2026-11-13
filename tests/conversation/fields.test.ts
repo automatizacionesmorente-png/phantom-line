@@ -61,9 +61,26 @@ describe("matchService", () => {
     expect(matchService("arreglarme la barba", lolaProfile)).toBe("beard");
     expect(matchService("hair color", lolaProfile)).toBe("colour");
   });
+  it("matches the words people use for colour: pintar el pelo, teñir, tinte, color, mechas (owner's real call, 2026-11-13)", () => {
+    for (const said of [
+      "pintar el pelo de rosa",
+      "me puedo pintar el pelo",
+      "pintarme el pelo",
+      "teñirme",
+      "un tinte",
+      "color",
+      "mechas",
+      "unas mechas rubias",
+      "dye my hair pink",
+      "highlights",
+      "hair colour",
+    ]) {
+      expect(matchService(said, lolaProfile), said).toBe("colour");
+    }
+  });
   it("returns null for services the shop does not offer and for empty text", () => {
     expect(matchService("manicura", lolaProfile)).toBeNull();
-    expect(matchService("mechas", lolaProfile)).toBeNull();
+    expect(matchService("depilación", lolaProfile)).toBeNull();
     expect(matchService("   ", lolaProfile)).toBeNull();
   });
   it("does not match inside other words", () => {

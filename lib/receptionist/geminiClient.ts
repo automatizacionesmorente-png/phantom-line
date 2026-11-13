@@ -107,7 +107,7 @@ export class GeminiCallError extends Error {
   }
 }
 
-function redactedError(err: unknown, apiKey: string): GeminiCallError {
+export function redactedError(err: unknown, apiKey: string): GeminiCallError {
   const e = err as { constructor?: { name?: unknown }; message?: unknown; status?: unknown; statusCode?: unknown } | null;
   const raw = typeof e?.message === "string" ? e.message : String(err);
   const message = apiKey ? raw.split(apiKey).join("***") : raw;

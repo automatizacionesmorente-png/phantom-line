@@ -1,12 +1,14 @@
-// Requirement 8.4: the client bundle never contains the Gemini key's name or the
-// Gemini SDK. Runs after `next build` (npm "postbuild") over every file the
-// browser can download (.next/static). Exits 1 if either string is found.
+// Requirement 8.4 (core-call-loop) and natural-voice 1.2 / task 8.6: the client bundle never
+// contains the Gemini key's name, the Gemini SDK, the speech-token secret's name, or the TTS
+// client (`ttsClient`, and `speech_metadata`, a string only the TTS request body uses, which
+// survives minification). Runs after `next build` (npm "postbuild") over every file the
+// browser can download (.next/static). Exits 1 if any string is found.
 // It never reads .env files or prints any environment value.
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dirname, "..", ".next", "static");
-const FORBIDDEN = ["GEMINI_API_KEY", "@google/genai"];
+const FORBIDDEN = ["GEMINI_API_KEY", "@google/genai", "SPEECH_TOKEN_SECRET", "ttsClient", "speech_metadata"];
 
 async function* files(dir) {
   for (const entry of await readdir(dir, { withFileTypes: true })) {
@@ -37,4 +39,4 @@ if (hits.length > 0) {
   console.error(`check-client-bundle: FAILED, forbidden strings in the client bundle:\n  ${hits.join("\n  ")}`);
   process.exit(1);
 }
-console.log(`check-client-bundle: OK, ${scanned} files in .next/static, none contains ${FORBIDDEN.join(" or ")}.`);
+console.log(`check-client-bundle: OK, ${scanned} files in .next/static, none contains ${FORBIDDEN.join(", ")}.`);

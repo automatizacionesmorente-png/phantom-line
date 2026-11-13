@@ -19,6 +19,7 @@ function out(reply: string, opts: { complete?: boolean } = {}): TurnOutput {
   return {
     callId: CALL_ID,
     reply,
+    cacheable: false,
     language: "es",
     state: { intent: "booking", fields: { name: null, phone: null, service: null, requestedTime: null }, complete },
     complete,

@@ -6,10 +6,10 @@ import type { TestDb } from "../db/pglite";
 import type { FallbackLogEvent } from "@/lib/conversation/fallbackLog";
 import { bookings } from "@/lib/db/schema";
 import { createScriptedModel, hangsThen } from "@/lib/receptionist/callModel";
-import { phrases } from "@/lib/receptionist/phrases";
+import { phrases, type Said } from "@/lib/receptionist/phrases";
 import { toSpokenReply } from "@/lib/receptionist/speech";
 import { getSectorPack } from "@/lib/sectors";
-import { Caller, makeDeps, makePost, modelTurn, setupDb } from "./harness";
+import { Caller, makeDeps, makePost, modelTurn, NOW, setupDb } from "./harness";
 
 /**
  * Regressions for the second round of real calls (2026-11-12, `next dev`, real Gemini, real Neon).
@@ -23,7 +23,10 @@ import { Caller, makeDeps, makePost, modelTurn, setupDb } from "./harness";
  * moved to the harness's "mañana", Wednesday 11).
  */
 const pack = getSectorPack("hair-salon");
-const ES = phrases("es", pack, lolaProfile);
+const ES = phrases("es", pack, lolaProfile, undefined, NOW);
+/** The phrases of Turn n of a Call: the Variant_Seed is the Call id and the Turn number. */
+const turnPhrases = (callId: string, n: number) => phrases("es", pack, lolaProfile, { callId, turn: n }, NOW);
+const spoken = (line: Said) => toSpokenReply(line.text, "es", { maxSentences: 3 });
 const at = (iso: string) => Temporal.Instant.from(iso);
 const WED = Temporal.PlainDate.from("2026-11-11");
 const WED_2100 = at("2026-11-11T20:00:00Z");
@@ -68,8 +71,8 @@ describe("who speaks: a known service with no time is answered by code, never by
     await c.start();
     const r = await c.say(LINE);
     expect(r.status).toBe(200);
-    expect(r.body.reply).toBe(ES.askDayAndTime(WED));
-    expect(r.body.reply).toBe("¿A qué hora te viene bien el miércoles 11?");
+    expect(r.body.reply).toBe(ES.askDayAndTime(WED).text);
+    expect(r.body.reply).toBe("¿A qué hora te viene bien mañana?");
     expect(r.body.reply).not.toMatch(/cerrad|horario|abrimos/);
     expect(r.body.complete).toBe(false);
     expect(r.body.state.fields.service).toBe("corte");
@@ -79,7 +82,7 @@ describe("who speaks: a known service with no time is answered by code, never by
     const c = new Caller(makePost(makeDeps(t, createScriptedModel([CALL_B_NO_DATE]))).POST);
     await c.start();
     const r = await c.say(LINE);
-    expect(r.body.reply).toBe(ES.askDayAndTime(null));
+    expect(r.body.reply).toBe(turnPhrases(c.callId, 1).askDayAndTime(null).text);
     expect(r.body.reply).not.toContain("abrimos");
   });
 
@@ -93,10 +96,12 @@ describe("who speaks: a known service with no time is answered by code, never by
     await c.start();
     await c.say(LINE);
     const r2 = await c.say("A las nueve de la noche");
-    expect(r2.body.reply).toBe(toSpokenReply(ES.rejected("outside_hours", WED_2100, OFFERED)));
+    expect(r2.body.reply).toBe(spoken(turnPhrases(c.callId, 2).rejected("outside_hours", WED_2100, OFFERED)));
     expect(r2.body.reply).not.toContain("cerramos a las ocho");
     const r3 = await c.say("Vale, a las siete y media");
-    expect(r3.body.reply).toBe("Perfecto. ¿A nombre de quién?");
+    // The time is accepted, so the code asks for the name; the model's "Perfecto. ¿A nombre de quién?" is not spoken.
+    expect(r3.body.reply).toBe(spoken(turnPhrases(c.callId, 3).timeAcceptedAskName(OFFERED[0])));
+    expect(r3.body.reply).not.toBe("Perfecto. ¿A nombre de quién?");
     expect(r3.body.state.fields.requestedTime).toBe("2026-11-11T19:30");
   });
 });
@@ -110,7 +115,7 @@ describe("a hung model attempt (bugfix 2026-11-12, Call A and Call B turn 2)", (
     const c = new Caller(makePost(deps).POST);
     await c.start();
     const r = await c.say(LINE);
-    expect(r.body.reply).toBe(toSpokenReply(ES.rejected("outside_hours", WED_2100, OFFERED)));
+    expect(r.body.reply).toBe(spoken(ES.rejected("outside_hours", WED_2100, OFFERED)));
     expect(r.body.complete).toBe(false);
     expect(model.calls).toBe(2);
     expect(events).toEqual([]);

@@ -19,18 +19,60 @@ describe("buildSystemInstruction", () => {
     expect(en).toMatchSnapshot("en");
   });
 
-  it("contains the shop facts: name, owner, address, hours in words, prices in €", () => {
+  it("contains the shop facts: name, owner, address, hours and prices in words (natural-voice 6.9, 8.4)", () => {
     for (const text of [es, en]) {
       expect(text).toContain("Peluquería Lola");
       expect(text).toContain("Lola");
       expect(text).toContain("Calle Mayor 12, Madrid");
     }
-    expect(es).toContain("martes a sábado, de 10:00 a 14:00 y de 17:00 a 20:00; cerrado lunes y domingo");
-    expect(en).toContain("Tuesday to Saturday, 10:00 to 14:00 and 17:00 to 20:00; closed Monday and Sunday");
-    expect(es).toContain("corte (30 minutos, 15 €)");
-    expect(es).toContain("tinte (90 minutos, 45 €)");
-    expect(es).toContain("barba (20 minutos, 10 €)");
-    expect(en).toContain("haircut (30 minutes, €15)");
+    expect(es).toContain(
+      "- Horario: de martes a sábado, de diez de la mañana a dos de la tarde y de cinco a ocho de la tarde; cerrado lunes y domingo\n",
+    );
+    expect(en).toContain(
+      "- Opening hours: Tuesday to Saturday, ten in the morning to two in the afternoon and five in the afternoon to eight in the evening; closed Monday and Sunday\n",
+    );
+    expect(es).toContain("  - corte: media hora, quince euros.");
+    expect(es).toContain("  - tinte: una hora y media, cuarenta y cinco euros.");
+    expect(es).toContain("  - barba: veinte minutos, diez euros.");
+    expect(en).toContain("  - haircut: half an hour, fifteen euros.");
+    expect(en).toContain("  - colour: an hour and a half, forty-five euros.");
+    expect(en).toContain("  - beard: twenty minutes, ten euros.");
+    // No hour or price of the shop reaches the model as digits.
+    for (const text of [es, en]) {
+      const facts = text.slice(text.search(/DATOS DE LA TIENDA|SHOP FACTS/), text.search(/\nHOY:|\nTODAY:/));
+      expect(facts.replace("Calle Mayor 12", "")).not.toMatch(/\d/);
+    }
+  });
+
+  it("lists each service's aliases, so the model can match 'pintar el pelo' to the colour (owner's call, 2026-11-13)", () => {
+    const tinte = es.split("\n").find((l) => l.startsWith("  - tinte: "))!;
+    const colour = en.split("\n").find((l) => l.startsWith("  - colour: "))!;
+    expect(tinte).toContain("El cliente también puede decir: ");
+    expect(colour).toContain("Callers may also say: ");
+    for (const alias of ['"pintar el pelo"', '"teñir"', '"color"', '"mechas"', '"dye"', '"highlights"']) {
+      expect(tinte).toContain(alias);
+      expect(colour).toContain(alias);
+    }
+  });
+
+  it("has a CÓMO HABLAS / HOW YOU TALK block with style, honesty and examples (natural-voice 11.1, 11.2)", () => {
+    expect(es).toContain("\nCÓMO HABLAS:\n");
+    expect(en).toContain("\nHOW YOU TALK:\n");
+    expect(es.indexOf("CÓMO HABLAS")).toBeLessThan(es.indexOf("DATOS DE LA TIENDA"));
+    expect(es).toContain("Eres el asistente virtual de Peluquería Lola, una inteligencia artificial.");
+    expect(en).toContain("You are the virtual assistant of Peluquería Lola, an artificial intelligence.");
+    expect(es).toContain("Nunca digas que eres Lola ni una persona.");
+    expect(en).toContain("Never say you are Lola or a person.");
+    expect(es).toContain('"a las cinco y cuarto", "mañana", "quince euros"');
+    expect(en).toContain('"at quarter past five", "tomorrow", "fifteen euros"');
+    expect(es).toContain('Así sí: "Claro, un corte cuesta quince euros y dura media hora. ¿Qué día te viene bien?"');
+    expect(en).toContain('Like this: "Sure, a haircut is fifteen euros and takes half an hour. What day works for you?"');
+    expect(es).toContain('Así no: "Perfecto, te anoto a las 17:00."');
+    expect(es).toContain("no lo repitas ni lo comentes");
+    for (const text of [es, en]) {
+      expect(text.toLowerCase()).not.toContain("contestador");
+      expect(text.toLowerCase()).not.toContain("answering machine");
+    }
   });
 
   it("states today's date and time in Europe/Madrid, not the server's zone", () => {
@@ -101,6 +143,8 @@ describe("buildInput", () => {
     const close = text.indexOf(">>>");
     expect(open).toBeGreaterThan(text.indexOf("CONOCIDO HASTA AHORA"));
     expect(text.slice(open, close)).toContain("Cliente (ahora): vale, a las siete y media");
+    expect(text).toContain("Asistente virtual: A esa hora está cerrado.");
+    expect(text).not.toContain("Contestador");
   });
 
   it("caller text cannot close the data block", () => {
@@ -117,10 +161,22 @@ describe("prompt helpers", () => {
     expect(formatPrice(1550, "es")).toBe("15,50 €");
     expect(formatPrice(1550, "en")).toBe("€15.50");
   });
-  it("groups non-consecutive days separately", () => {
+  it("groups non-consecutive days separately, in words", () => {
     const shop = { ...lolaProfile, hours: { 1: [{ open: "09:00", close: "13:00" }], 3: [{ open: "09:00", close: "13:00" }] } };
     expect(hoursInWords(shop, "en")).toBe(
-      "Monday, 09:00 to 13:00; Wednesday, 09:00 to 13:00; closed Tuesday, Thursday, Friday, Saturday and Sunday",
+      "Monday, nine in the morning to one in the afternoon; Wednesday, nine in the morning to one in the afternoon; closed Tuesday, Thursday, Friday, Saturday and Sunday",
+    );
+    expect(hoursInWords(shop, "es")).toBe(
+      "lunes, de nueve de la mañana a una del mediodía; miércoles, de nueve de la mañana a una del mediodía; cerrado martes, jueves, viernes, sábado y domingo",
+    );
+  });
+  it("says hours with minutes in words, and the period once when both ends share it", () => {
+    const shop = { ...lolaProfile, hours: { 2: [{ open: "09:30", close: "13:45" }, { open: "16:00", close: "20:30" }] } };
+    expect(hoursInWords(shop, "es")).toBe(
+      "martes, de nueve y media de la mañana a dos menos cuarto del mediodía y de cuatro a ocho y media de la tarde; cerrado lunes, miércoles, jueves, viernes, sábado y domingo",
+    );
+    expect(hoursInWords(shop, "en")).toBe(
+      "Tuesday, half past nine in the morning to quarter to two in the afternoon and four in the afternoon to half past eight in the evening; closed Monday, Wednesday, Thursday, Friday, Saturday and Sunday",
     );
   });
 });

@@ -3,7 +3,8 @@ import { callLoop, canType, canTypeInstead, initialCallLoop, type CallEffect } f
 import { createFakeSpeechPort, createTypedOnlyPort } from "@/lib/voice/speechPort";
 import { CALL_ID, createHarness, effectsOf, reply, scriptedServer } from "./harness";
 
-const GREETING = "Hola, has llamado a Peluquería Lola. Ahora mismo no pueden atenderte, soy su contestador. ¿En qué te ayudo?";
+const GREETING =
+  "¡Hola! Estás llamando a Peluquería Lola, soy su asistente virtual. ¿En qué te puedo ayudar?";
 const final = (text: string) => ({ type: "final" as const, text });
 
 describe("callLoop: a complete voice call", () => {

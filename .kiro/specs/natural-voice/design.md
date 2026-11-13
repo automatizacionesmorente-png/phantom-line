@@ -183,10 +183,10 @@ The hair-salon pack and Lola's profile:
 
 | Lang | voice | classicVoice | style | Status |
 |---|---|---|---|---|
-| es | `es-es-commercial-3` ("warm and engaging", Castilian, female, 30), on `gemini-3.8-flash-tts` and `gemini-3.8-flash-lite-tts` | `Kore` | "Una peluquera simpática de Madrid, relajada, a ritmo natural y sonriendo." (task 3 may change the pace words, see "Pace") | **Chosen by the owner** after listening to the spike samples |
+| es | `es-es-commercial-3` ("warm and engaging", Castilian, female, 30), on `gemini-3.8-flash-tts` and `gemini-3.8-flash-lite-tts` | `Kore` | "Una peluquera simpática de Madrid, relajada, a ritmo natural y sonriendo." (kept by task 3.8: the pace words were rejected, see "Pace") | **Chosen by the owner** after listening to the spike samples |
 | en | to be measured: `Callirrhoe` ("easy-going, relaxed, casual") or `Achird` ("friendly, approachable, warm") | same | "A friendly hairdresser in Madrid speaking English, relaxed, natural pace, smiling." | Audition pending (task 2.2, 2.4). Until then the pack ships `Callirrhoe` for both fields as a placeholder (task 3), so the schema has an English profile; no quota is spent on English before 2.4 |
 
-`es-es-commercial-3` is the pack's Spanish default and Lola's voice. Only the two 3.8 models accept it; `gemini-3.1-flash-tts-preview` would speak with `Kore`, a different voice. The cache script therefore builds Spanish lines with the 3.8 models only, so every cached Spanish line has the chosen voice. Lola's `speechRate` is 1.1 if task 3 picks option 2 below, and 1.0 if the style annotation alone gets the pace right (option 1), so the two never add up.
+`es-es-commercial-3` is the pack's Spanish default and Lola's voice. Only the two 3.8 models accept it; `gemini-3.1-flash-tts-preview` would speak with `Kore`, a different voice. The cache script therefore builds Spanish lines with the 3.8 models only, so every cached Spanish line has the chosen voice. Lola's `speechRate` is 1.1 if task 3 picks option 2 below, and 1.0 if the style annotation alone gets the pace right (option 1), so the two never add up. Task 3.8 picked option 2: Lola's `speechRate` is 1.1 and the style is unchanged.
 
 `resolveVoiceProfile(pack, shop, lang)` merges the shop override over the pack. `VoiceProfileSchema` (zod) validates the pack when the registry loads and the shop on every read (Requirement 3.3).
 
@@ -227,11 +227,13 @@ Two things follow from this table. First, the same sentence on the same model va
 
 | Option | Model | Runs | Median before → after | Change | Pitch change | Owner | Decision |
 |---|---|---|---|---|---|---|---|
-| 1, style "algo ágil" | `gemini-3.8-flash-tts` | 2 + 3 | not measured yet: TTS quota exhausted when task 3 ran (00:30 Madrid, 13 Nov; resets 09:00 Madrid) | | | | |
-| 1, style "algo ágil" | `gemini-3.8-flash-lite-tts` | 3 + 3 (the spike's 6.92 s / 206.4 Hz is the third baseline) | not measured yet, same reason | | | | |
+| 1, style "algo ágil" | `gemini-3.8-flash-tts` | 2 + 3 | 6.94 s → 7.00 s (base 7.20, 6.68; pace 6.80, 7.28, 7.00) | **−0.9 %** (longer); one pace run (7.28 s) longer than the baseline median | 193.9 → 235.9 Hz, **+21.7 %** | not asked: the numbers fail | **Rejected** |
+| 1, style "algo ágil" | `gemini-3.8-flash-lite-tts` | 3 + 3 (the spike's 6.92 s / 206.4 Hz is the third baseline) | 6.92 s → 6.00 s (base 6.92, 6.56, 6.92; pace 5.80, 6.00, 6.04) | **13.3 % shorter**, no pace run longer than the baseline median | 206.4 → 203.8 Hz, −1.3 % | not asked | passes on this model alone |
 | 2, `timeStretch` 1.1 | both (spike samples) | offline | pending (task 10.7) | | | | |
 
-**Decision so far (task 3.8, provisional).** Option 1 has not been measured, so the rule's "while 3.7 waits for quota" branch applies: the hair-salon pack's Spanish style stays "…a ritmo natural…", and Lola's `speechRate` is **1.1** in the seed (option 2, played by task 10). Never both. When `node --env-file=.env.local scripts/check-tts.mjs pace` has run after 09:00 Madrid (exactly 10 requests, `--plan` lists them), its `pace.json` gives the rows above and `summary[].rulePasses` per model. If both models pass and the owner does not hear it as rushed, the pace words go into the pack's style and Lola's `speechRate` goes back to 1.0, before the voice cache is built.
+The option 1 run: `node --env-file=.env.local scripts/check-tts.mjs pace`, started by the owner's reviewer at 11:30 Madrid on 13 Nov 2026 (10:30–10:34 UTC), voice `es-es-commercial-3`, the offer sentence, not streamed, about 23 s apart. **10 requests, 10 answered** (`audio/wav`, 2.2–3.9 s each), no 429 and no retry. Raw lines: `.measurements/pace.txt`; summary: `.measurements/tts/pace.json`. One baseline run on the lite model has a median pitch of 248 Hz against 206 Hz for the other two; the pitch tracker may have locked on a different frame set there, and the median of three is not moved by it.
+
+**Decision (task 3.8, 13 Nov 2026): option 2.** The rule asks for 5–15 % shorter on *both* models. On `gemini-3.8-flash-tts` the pace words changed nothing (−0.9 %), one pace run was longer than the baseline median, and the median pitch rose 21.7 %; on `gemini-3.8-flash-lite-tts` the line was 13.3 % shorter with the pitch kept. The annotation is therefore not reliable across the two models that carry the chosen voice, and a Call can land on either. So the hair-salon pack's Spanish style stays "Una peluquera simpática de Madrid, relajada, a ritmo natural y sonriendo.", and Lola's `speechRate` is **1.1** (option 2, played on the client with the pitch kept, built in task 10). Never both. Because the style did not change, the voice cache (task 9) can be built with it.
 
 ### TTS client (`ttsClient.ts`, server only)
 
@@ -291,6 +293,17 @@ export const SpeechRequestSchema = z.discriminatedUnion("kind", [
 - `report` → `204`. The browser uses it when it falls back on its own. It is rate-limited like `say` (Requirement 4.6).
 - Cached lines are not served by this route. They come from `GET /api/voice/[key]` (see "The voice cache"), and `/api/turn` only hands out their URL.
 - Limits: `TTS_LIMIT_PER_VISITOR_PER_MINUTE` (default 12), `TTS_LIMIT_GLOBAL_PER_HOUR` (default 20), `TTS_LIMIT_GLOBAL_PER_DAY` (default 30, the measured total). They are counted in `rate_limits` with the keys `tts:<visitor>`, `tts-global-h` and `tts-global-d`, using the same SQL as the Turn limits (Requirement 5.5). No new table is needed.
+
+**Decisions made while building it (task 8, 13 Nov 2026).**
+
+- **The token's MAC input is a JSON array** (`[shopId, lang, exp, cacheable, sha256(text)]`) instead of the fields joined with "|", so a shop id that contains "|" cannot move a field boundary. The token format is unchanged.
+- **`tts-global-d` counts the Pacific day** (`quotaDayStart`), the same day as the free-tier quota. **A `tts-exhausted:<model>` row stores its expiry** (the next midnight Pacific) in `window_start`, so "exhausted now" is `window_start > now`, and the sweep, which deletes windows older than 24 hours, only removes a mark long after it expired.
+- **Before the first chunk the route makes one round trip:** the counter upsert, the read of the exhausted marks and the shop profile run in parallel, and the profile is kept in memory for 60 s (it holds the Voice_Profile override). If the counter fails, limits fail open, as for Turns.
+- **A `report` counts only in the visitor's minute** (`tts:<visitor>`, shared with `say`), not in the hourly or daily TTS caps, because it spends no TTS quota.
+- **The server has its own first-audio cap of 6 s** (`TTS_FIRST_AUDIO_TIMEOUT_MS`), above the browser's 2.5 s, for an SDK that ignores the abort, and a 30 s cap on a whole stream. The client races every SDK step against the signal, so a hung request ends when the signal aborts. When the browser has already given up (its request is aborted), the server logs nothing, because the browser's own `report` will.
+- **The client yields `{ pcm, sampleRate }`** rather than bare bytes, and the `Content-Type` carries the first chunk's rate (24 kHz in every spike call).
+- **`fixed` in a server `tts_fallback` line is the token's `cacheable` flag**: a cacheable line carries no caller data. Error messages are scrubbed before they are logged: the key becomes `***`, and the text, the token, the visitor key and every word of the text are removed, in case the API echoes part of the request.
+- **`/api/turn` adds `speech` in the voice adapter**, not in the Conversation_Core, which stays channel-agnostic. When `SPEECH_TOKEN_SECRET` is not set, replies carry no `speech` hint and the browser voice speaks.
 
 ### The voice cache (Requirements 2.3, 2.4, 10.4)
 
@@ -368,9 +381,47 @@ Every slot offer is far too many. Lola has 28 start times a day on the 15-minute
 - **Spacing:** one request every `--gap` ms (default 20 000). No per-minute cap was seen, but bursts are when the free tier answers 503. Non-streamed MP3 calls take 3–22 s each anyway.
 - **Resuming:** the plan is deterministic, and the script skips every key already in `voice_cache`, so a new run continues where the last one stopped. A 429 writes the same `tts-exhausted:<model>` row the app uses, so the deployed app also skips that model for the day. When every allowed model is exhausted or at its reserve, the script writes where it stopped (tier, line index, lines left, "resume after 09:00 Madrid") to `.measurements/voice-cache-run-<date>.json` and exits 0.
 - **Dry run:** `--plan` prints the exact list sizes and estimated days and makes no API call. Task 9 records its numbers here, and the measured size per line (min, median and max bytes and seconds per tier) after the first real run.
-- It runs with `node --env-file=.env.local --import tsx` and writes to the Neon database, so it runs only after the owner approves. Tests run it against PGlite with a fake TTS client.
+- It runs with `node --env-file=.env.local --conditions=react-server --import tsx` and writes to the Neon database, so it runs only after the owner approves. Tests run it against PGlite with a fake TTS client.
 
 **Expected effect on one demo booking call.** Greeting (tier 1), the 21:00 rejection (tier 2), "time accepted + ask name" (tier 2), the phone ask (tier 1) and the confirmation (tier 2) are all hits. Only the read-back, which holds the name and phone, stays live. That is **1 live request per call instead of 4**. The two 3.8 models give 20 live requests a day with the chosen voice (30 with `Kore` on the 3.1 model as the last neural fallback), so the free tier goes from 5–7 demo calls a day to about 20–30, as long as the agenda leaves the demo slots free and no pre-generation runs that day.
+
+#### What the docs said, and what was decided while building it (task 9, 13 Nov 2026)
+
+**Doc checks (9.1).**
+
+| Question | Source | Answer | What changed |
+|---|---|---|---|
+| Does `drizzle-orm` 0.45 have a `bytea` column? | `node_modules/drizzle-orm/pg-core/columns/` (0.45.4) | No: there is no `bytea` builder, only `customType`. | `bytea` in `lib/db/schema.ts` is a `customType` with data `Uint8Array`. |
+| How does the Neon HTTP driver send and return `bytea`? | `@neondatabase/serverless` `index.mjs`; `drizzle-orm/neon-http/driver.js` | It turns a Buffer parameter into Postgres hex text itself (`encodeBuffersAsBytea`) and parses `bytea` results with its bundled pg-types `parseBytea` into a Buffer. Drizzle's neon-http driver overrides only the date, time and interval parsers. | — |
+| How does PGlite? | the first test run | It returns a `Uint8Array`, and it rejects hex text as a `bytea` parameter ("Invalid input for bytea type"). | My first `toDriver` sent hex text. It now sends a Buffer, which both drivers accept; `fromDriver` reads a Buffer, a `Uint8Array` or hex text. |
+| A GET Route Handler with params under `cacheComponents` | bundled `01-getting-started/15-route-handlers.md`, "With Cache Components"; `headers.md` | GET handlers run at request time by default; prerendering stops at a database query or request data; `use cache` cannot sit in a handler body. A handler may set its own `Cache-Control`. | `app/api/voice/[key]/route.ts` has no `generateStaticParams`, no `use cache` and no `runtime` export; caching is left to the HTTP headers. |
+| Neon's free-tier storage (0.5 GB) and transfer | neon.com/pricing | **Not checked:** `web_fetch` was not available in this session (the permission request failed three times). | Nothing yet. The 200 MB default cap stays well under 0.5 GB either way. Open item for the owner's reviewer. |
+| Does Vercel's CDN cache a function response with `s-maxage`? | vercel.com/docs (CDN cache) | **Not checked**, for the same reason. | Nothing yet. Task 12.1 can confirm it in the network panel: a second GET of `/api/voice/<key>` should show `x-vercel-cache: HIT`. If the CDN does not cache it, each play is one Neon read of one file (about 65–130 kB), which is still no TTS request. |
+
+**Decisions.**
+
+- **Modules.** Pure: `lib/receptionist/voiceCacheKey.ts` (the key, `primaryVoiceModels`, `lineKeys`), `voiceCacheBudget.ts` (`planEviction`, the touch rule, the cap from `VOICE_CACHE_MAX_BYTES`, WAV wrapping, MP3 length from the Layer III frame headers with no dependency, and the `VoiceCacheStore` port), `fixedPhrases.ts`, `cachePlan.ts`. With ports: `buildVoiceCache.ts` (the pre-generation run). Database: `lib/db/voiceCacheRepository.ts`, and `createPregenQuotaStore` in `lib/db/ttsRepository.ts`. Migration `drizzle/0002_voice_cache.sql` (generated by `drizzle-kit generate`; it only adds the table, its checks and its index).
+- **The key's input is a JSON array** (`[model, voiceUsed, style, languageCode, text]`) instead of the fields joined with "|", as for the speech token, so a "|" in a style cannot move a field boundary.
+- **Eviction** reads the keys, sizes, pin flags and dates (never the audio) and deletes the keys the pure `planEviction` chooses.
+- **`/api/turn`.** Only a reply signed `cacheable` is looked up, under the key of each primary-voice model in `GEMINI_TTS_MODEL` order; a failed lookup (or a cache that cannot be built) gives a live hint, never a failed Turn. A cached line still needs `SPEECH_TOKEN_SECRET`: one switch turns the neural voice on or off.
+- **`/api/speech`.** The chunks are kept in memory only for a line signed `cacheable` and spoken with the primary voice. One `after()` task is registered when the response is created and waits for the end of the stream (clean end, model error, browser cancel, or the 30 s cap), so the write never calls `after()` from inside a stream callback. The WAV is stored only after a clean end.
+- **How the plan renders "today":** at local midnight of each of the 7 days, so no requested time is in the past. The demo service is the shop's first service, and the accepted time is the first alternative the rejection offers (19:30 at Lola). Tier 3 covers every half hour from an hour before opening to 90 minutes after closing that is outside the sessions. Tiers 4 and 5 use the first service that the Booking_Rules accept at that time. Every variant is found by trying 32 Variant_Seeds of one plan Call id (a template's variant depends only on the seed and the template). Lines are deduplicated by text per language, which is the same as by key for one Voice_Profile.
+- **The pre-generation script runs with `--conditions=react-server`**, like `check-turn.ts`, because the TTS client and the database client import `server-only`. The task text said `node --env-file=.env.local --import tsx`; without the condition the script cannot start.
+- **Quota across runs:** the script counts its successes per model per Pacific day in `rate_limits` (`tts-pregen:<model>`), so a second run on the same day spends only what the first left. A non-quota error leaves the line for the next run, with no retry; three in a row stop that model for the run.
+- **Before deploying:** apply `0002_voice_cache.sql` to Neon with `scripts/migrate.mjs`. Until then the app keeps working: lookups fail open to live lines, and each live cacheable line logs one `voice_cache_write_failed`.
+
+**`--plan` (task 9.11, first half).** `node --conditions=react-server --import tsx scripts/build-voice-cache.ts --plan`, run at 16:28 Madrid on 13 Nov 2026, with no API call and no database: today 2026-11-13, Spanish only, the default model list.
+
+| Tier | Lines (Spanish) | Estimate above | Why it differs |
+|---|---|---|---|
+| 1 | 20 | ≈ 18 | 15 templates, 5 of them with 2 variants |
+| 2 | 23 | ≈ 13 | When tomorrow is closed (today Saturday or Sunday), the rejection offers the next open day, and its accepted and `booked` lines differ; `booked` names the weekday, so it differs for each open tomorrow |
+| 3 | 18 | ≤ 36 | The haircut and the beard trim get the same rejections at every time; the colour differs at 6 times |
+| 4 | 78 | 84 | 6 lines are already in tier 2: the accepted demo times (today and tomorrow at half past seven, the day after at ten), 2 variants each |
+| 5 | 130 | 140 | 10 lines are already in tier 2 (`booked` at half past seven for each open tomorrow) |
+| **Total** | **269** | ≈ 290 | |
+
+The two 3.8 models give 16 lines a day at the default reserve (8 each), so tiers 1–2 (43 lines) need 3 days, tiers 1–3 (61 lines) 4 days, and the whole Spanish plan 17 days. The plan takes 228 ms to build. At the spike's ~65 kB per MP3 line, the whole Spanish plan is about 17 MB.
 
 ### Browser: the VoicePort
 
@@ -543,6 +594,16 @@ Spanish (variants separated by "‖"; `{t}` = speakTime, `{d}` = speakDay, `{D}`
 - **Gender.** No template uses a gendered word about the receptionist ("encantada", "lista"), so the voice can change without the text changing (9.6). The owner is the third person, as in "te llama" and "will call you back", never "she".
 - The owner's Message (`ownerMessage.ts`, `formatSlot`) keeps digits, because it is read, not spoken (12.3).
 
+### Decisions made while building the templates (task 6)
+
+- **`phrases(lang, pack, shop, seed?, now?)`** returns `Said` objects, `{ text, cacheable }`. `cacheable` is false for `readBack` (name and phone) and for `serviceNotOffered` when it repeats the caller's own word (only if short and plain, else the generic line); true for every other spoken line. `now` is a fifth parameter because days are relative to today in the shop's zone; without it days are said by weekday and day of the month. The `owner.*` texts stay plain strings with digits.
+- **The rejection echoes the hour the caller said, without its period.** The owner's real call (2026-11-13) expects "Mañana a las cuatro estamos cerrados, abrimos a las cinco", and Requirement 9.3 says "A las nueve ya hemos cerrado". `speakTime` keeps its rule (N3: a closed time always carries its period, so "a las cuatro de la tarde"), and the rejection reason uses it with a one-minute session around the requested minute, which drops the period except at noon and midnight. The caller has just said the hour, and the reason words ("ya hemos cerrado", "todavía no hemos abierto", "estamos cerrados, abrimos a las cinco") tell which one it was. This settles review point 2 for the echo only: every time the receptionist offers or confirms still follows the omission rule.
+- **The reason depends on where the time falls:** after the last close "ya hemos cerrado"; before the first opening "todavía no hemos abierto, abrimos a las diez"; between sessions "estamos cerrados, abrimos a las cinco"; on a closed day "Este domingo cerramos". The day is spoken first when it is not today ("Mañana a las cuatro…").
+- **Alternatives name their day only when it differs from the previous one** (the first against the requested day), and when naming them all would make a sentence longer than 25 words the farthest are left out.
+- **A service switch says what the new service takes and costs.** When the caller changes service mid-booking, the next line starts with "Claro, un tinte dura una hora y media y cuesta cuarenta y cinco euros." (`speakDuration`, `speakPrice`), after the Booking_Rules have re-checked the time for the longer service; if it no longer fits, the rejection comes instead.
+- **A name that is clearly not a name is asked for once more.** `looksLikeName` (pure) refuses a text with a digit, more than 5 words, a single letter, or made only of endearments, insults, greetings or filler words. The name is not stored, `CallState.nameReasked` is set and `askNameAgain` is spoken ("¿Y tu nombre, para la cita?") once the time is accepted; after that one re-ask whatever the caller says is taken.
+- **`timeAcceptedAskName` is said only when the time or the service changed this Turn;** later asks for the same missing name use `askName`.
+
 ### Honesty (Requirement 10)
 
 - Every greeting variant contains "asistente virtual" / "virtual assistant", before any question.
@@ -572,6 +633,22 @@ When `lang` is given, after the existing cleanup and before the sentence split:
 5. Any other run of digits → `speakNumber`.
 
 `handleTurn` always passes the Call's language. The existing calls without `lang` keep today's behaviour, so property S4 and its tests stay exactly as they are. The new property N9 covers the version with `lang`. Idempotence holds because the output has no digits left for a second pass to change.
+
+**Decisions made while building it (task 7, 13 Nov 2026).**
+
+- **Times in a row share one period of the day.** The owner's real reply "…a las 17:00, a las 17:15 o a las 17:30." with a period after each time is 28 words, and the 25-word clamp would cut the last period off ("…o a las cinco y media."), which leaves that time without its period. When consecutive times have the same period and only ", ", " o ", " y ", " or ", " and ", " to " or " a " stand between them, the period is said once, after the last: "a las cinco, a las cinco y cuarto o a las cinco y media de la tarde"; "de las cinco a las ocho de la tarde". Noon and midnight always keep their own words, and times in different sentences are not joined.
+- **A period the text already states is read, not repeated.** "las 4:00 de la tarde" → "las cuatro de la tarde"; "5:30 pm" → "half past five in the afternoon". A bare "a las 4" or "4:30", which could be morning or afternoon, gets the clock words with no period, rather than a guessed one; a time written with two digits ("04:00", "17:00") is read as a 24-hour time.
+- **"a.m." keeps its sentence end.** "At 9 a.m." ends with the dot of "a.m."; the dot is put back when nothing, or a capital letter, follows. "am." keeps its own dot.
+- **The prompt's history names the assistant** ("Asistente virtual:" / "Virtual assistant:"), as the Call_Page's transcript label does, instead of "Contestador:" / "Machine:".
+
+**Measured (task 7.4, 13 Nov 2026, 15:50 Madrid).** `node --env-file=.env.local --conditions=react-server --import tsx scripts/check-turn.ts --repeat=3 --gap=20000` on "Quiero cortarme el pelo mañana a las nueve de la noche" and "¿Cuánto cuesta un tinte?", one raw call per request on each of `gemini-3.5-flash-lite` and `gemini-flash-lite-latest`: 12 calls, 10 valid answers, 1 timeout at the 15 s cap, 1 503. The script now counts digits at three points (raw output: `.measurements/t7-check-turn.txt`):
+
+| Line | Valid answers | Digit in the model's `reply` | Digit in the decided reply, before the safety net | Digit heard by the caller |
+|---|---|---|---|---|
+| 21:00 haircut | 6 (3 + 3) | 0 | 0 | 0 |
+| "¿Cuánto cuesta un tinte?" | 4 (2 + 2) | 0 | 0 | 0 |
+
+With the CÓMO HABLAS block and the hours and prices in words, the model wrote no digit in 10 of 10 answers, so the safety net had nothing to convert in this sample, and no digit reached the caller. All 6 answers to the 21:00 line gave the code's offer, "Mañana a las nueve ya hemos cerrado. ¿Te viene bien a las siete y media? También tengo a las siete y cuarto o a las siete." Three of the four answers to the price question were the model's own line, "Un tinte cuesta cuarenta y cinco euros y dura una hora y media. ¿Qué día te viene bien?". The fourth was the code's ask "¿Qué día y a qué hora te viene bien?", with no price. The script does not record the model's `intent` or `service`, so the cause is not proven. The likely cause is the task 6 rule (S8): when the model returns a booking for a known service, a template asks for the next field and the model's line, with the price, is not spoken. It does not come from the safety net, and task 12's real call should check it. Latency was much higher than on 12 November (median of the valid answers 8.0 s and 8.4 s). The measurement ran while this Mac was under heavy load (iCloud sync, load average about 20), so these numbers are not comparable with the earlier latency tables.
 
 ## Correctness Properties
 

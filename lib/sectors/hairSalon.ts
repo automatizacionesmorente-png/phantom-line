@@ -19,7 +19,8 @@ export const hairSalon: SectorPack = {
   voice: {
     // Chosen by the owner after the spike (natural-voice task 2.1): Castilian, "warm and
     // engaging", on gemini-3.8-flash-tts and gemini-3.8-flash-lite-tts. Kore on other models.
-    // The style keeps "a ritmo natural" until task 3.8 decides the pace (see design.md "Pace").
+    // The style keeps "a ritmo natural": task 3.8 rejected the "algo ágil" pace words, which
+    // changed nothing on gemini-3.8-flash-tts (design.md "Pace"). The pace comes from speechRate.
     es: {
       voice: "es-es-commercial-3",
       classicVoice: "Kore",

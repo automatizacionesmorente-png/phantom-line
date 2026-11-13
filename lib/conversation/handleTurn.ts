@@ -1,10 +1,10 @@
 import { Temporal } from "temporal-polyfill";
 import { toInstant, type ExistingBooking } from "@/lib/booking";
 import { callReceptionist, type ModelFailure, type ModelFailureInfo } from "@/lib/receptionist/callModel";
-import { phrases } from "@/lib/receptionist/phrases";
+import { phrases, type PhraseSet, type Said } from "@/lib/receptionist/phrases";
 import { buildInput, buildSystemInstruction } from "@/lib/receptionist/prompt";
-import { toSpokenReply } from "@/lib/receptionist/speech";
-import { getSectorPack, type SectorPack } from "@/lib/sectors";
+import { spokenTemplate, toSpokenReply } from "@/lib/receptionist/speech";
+import { getSectorPack, type Lang, type SectorPack } from "@/lib/sectors";
 import { decideTurn, publicStateOf, type Decision } from "./decide";
 import { checkLimits, type LimitDecision } from "./limits";
 import { consoleFallbackLogger, type FallbackLogEvent } from "./fallbackLog";
@@ -98,18 +98,29 @@ function output(
   callId: string,
   state: CallState,
   shop: ShopProfile,
-  reply: string,
+  reply: { text: string; cacheable: boolean },
   complete: boolean,
   outcome?: Outcome,
 ): TurnOutput {
   return {
     callId,
-    reply,
+    reply: reply.text,
+    cacheable: reply.cacheable,
     language: state.language,
     state: publicStateOf(state, shop, complete),
     complete,
     ...(outcome ? { outcome } : {}),
   };
+}
+
+/** The phrases of one Turn: the Variant_Seed is the Call id and the Turn number (natural-voice 6.3). */
+function phraseSet(lang: Lang, pack: SectorPack, shop: ShopProfile, callId: string, turn: number, now: Temporal.Instant): PhraseSet {
+  return phrases(lang, pack, shop, { callId, turn }, now);
+}
+
+/** A code-owned line as the caller hears and reads it: up to 3 short sentences (Requirement 9.7). */
+function templateLine(line: Said, lang: Lang): { text: string; cacheable: boolean } {
+  return { text: spokenTemplate(line.text, lang), cacheable: line.cacheable };
 }
 
 async function start(
@@ -118,20 +129,20 @@ async function start(
   deps: CoreDeps,
 ): Promise<TurnOutput> {
   const { shop, language } = input;
-  const P = phrases(language, pack, shop);
-  const state = initialCallState(language);
   const callId = deps.newId();
+  const P = phraseSet(language, pack, shop, callId, 0, deps.clock());
+  const state = initialCallState(language);
 
   // Over the limit on the first request: no Call exists yet, so nothing is saved
   // and nothing reaches the Owner's tape (design, review point 3).
   const limited = await overLimit(input.visitorKey, deps);
   if (limited.blocked) {
     logFallback(deps, "start", { shopId: shop.id }, { reason: "rate_limit", limit: limited.limit });
-    return output(callId, { ...state, stage: "done" }, shop, P.rateLimitedStart(), true);
+    return output(callId, { ...state, stage: "done" }, shop, templateLine(P.rateLimitedStart(), language), true);
   }
 
   // The greeting is a fixed template (Requirement 4.8, receptionist-voice.md); no model call.
-  const greeting = P.greeting();
+  const greeting = templateLine(P.greeting(), language);
   await deps.repo.commit([
     {
       type: "insertCall",
@@ -142,7 +153,7 @@ async function start(
         language,
         status: "open",
         state,
-        transcript: [{ caller: "", receptionist: greeting }],
+        transcript: [{ caller: "", receptionist: greeting.text }],
         turnCount: 0,
       },
     },
@@ -168,8 +179,8 @@ async function endWithFallback(
   const { shop } = input;
   // Logged before the commit, so the cause is on record even if the database fails next.
   logFallback(deps, "end", { shopId: shop.id, callId: call.id, turn: state.turnCount + 1 }, cause);
-  const P = phrases(state.language, pack, shop);
-  const reply = P.fallbackEnd();
+  const P = phraseSet(state.language, pack, shop, call.id, state.turnCount + 1, deps.clock());
+  const reply = templateLine(P.fallbackEnd(), state.language);
   const final: CallState = {
     ...state,
     stage: "done",
@@ -184,7 +195,7 @@ async function endWithFallback(
       type: "updateCall",
       callId: call.id,
       state: final,
-      transcript: [...call.transcript, { caller: input.utterance, receptionist: reply }],
+      transcript: [...call.transcript, { caller: input.utterance, receptionist: reply.text }],
       turnCount: final.turnCount,
       status: "failed",
     },
@@ -292,8 +303,8 @@ async function say(
 
   if (call.status !== "open") {
     // A Turn after the end (a late retry, a second tab): nothing changes.
-    const P = phrases(call.state.language, pack, shop);
-    return output(call.id, call.state, shop, P.goodbye(), true);
+    const P = phraseSet(call.state.language, pack, shop, call.id, call.state.turnCount, deps.clock());
+    return output(call.id, call.state, shop, templateLine(P.goodbye(), call.state.language), true);
   }
 
   // The page's ES / EN switch decides the language of this Turn (2.7, 4.9).
@@ -322,14 +333,17 @@ async function say(
       return endWithFallback(call, { ...state, consecutiveInvalid: invalid }, input, pack, deps, cause);
     }
     logFallback(deps, "retry", { shopId: shop.id, callId: call.id, turn: state.turnCount + 1 }, cause);
-    const reply = phrases(state.language, pack, shop).fallbackRetry();
+    const reply = templateLine(
+      phraseSet(state.language, pack, shop, call.id, state.turnCount + 1, deps.clock()).fallbackRetry(),
+      state.language,
+    );
     const next: CallState = { ...state, consecutiveInvalid: invalid, turnCount: state.turnCount + 1 };
     await deps.repo.commit([
       {
         type: "updateCall",
         callId: call.id,
         state: next,
-        transcript: [...call.transcript, { caller: input.utterance, receptionist: reply }],
+        transcript: [...call.transcript, { caller: input.utterance, receptionist: reply.text }],
         turnCount: next.turnCount,
       },
     ]);
@@ -361,11 +375,19 @@ async function say(
       existing,
       callerBookings,
       maxTurns: deps.config.maxTurns,
+      callId: call.id,
     });
-    const spoken = toSpokenReply(decision.reply) || toSpokenReply(phrases(decision.state.language, pack, shop).dontKnow());
+    const lang = decision.state.language;
+    // A template may have 3 sentences, the model's own words keep 2 (Requirements 9.7, 11.3).
+    const text = decision.fromModel ? toSpokenReply(decision.reply, lang) : spokenTemplate(decision.reply, lang);
+    const dontKnow = text ? null : phrases(lang, pack, shop, undefined, now).dontKnow();
+    const spoken = dontKnow ? spokenTemplate(dontKnow.text, lang) : text;
+    const cacheable = dontKnow ? dontKnow.cacheable : decision.cacheable;
     const transcript = [...call.transcript, { caller: input.utterance, receptionist: spoken }];
     const committed = await deps.repo.commit(writesFor(decision, call, shop, transcript, deps));
-    if (committed.ok) return output(call.id, decision.state, shop, spoken, decision.complete, decision.outcome);
+    if (committed.ok) {
+      return output(call.id, decision.state, shop, { text: spoken, cacheable }, decision.complete, decision.outcome);
+    }
 
     // Someone took the resource between our read and our commit (23P01). The whole batch rolled
     // back; read again and decide again (another chair, or alternatives). At most 2 retries.
@@ -383,7 +405,10 @@ async function giveUpAfterConflicts(
   deps: CoreDeps,
 ): Promise<TurnOutput> {
   const { shop } = input;
-  const reply = toSpokenReply(phrases(state.language, pack, shop).slotJustTaken([]));
+  const reply = templateLine(
+    phraseSet(state.language, pack, shop, call.id, state.turnCount + 1, deps.clock()).slotJustTaken(null, []),
+    state.language,
+  );
   const final: CallState = { ...state, stage: "done", pending: undefined, turnCount: state.turnCount + 1 };
   const message = buildOwnerMessage(final, "message", shop, pack);
   await deps.repo.commit([
@@ -392,7 +417,7 @@ async function giveUpAfterConflicts(
       type: "updateCall",
       callId: call.id,
       state: final,
-      transcript: [...call.transcript, { caller: input.utterance, receptionist: reply }],
+      transcript: [...call.transcript, { caller: input.utterance, receptionist: reply.text }],
       turnCount: final.turnCount,
       status: "completed",
     },
@@ -409,7 +434,7 @@ async function hangup(
   const call = await deps.repo.getCall(input.callId, shop.id);
   if (!call) throw new CallNotFoundError();
   // Idempotent: a Call that already ended is left as it is (one Message per Call).
-  if (call.status !== "open") return output(call.id, call.state, shop, "", true, undefined);
+  if (call.status !== "open") return output(call.id, call.state, shop, { text: "", cacheable: false }, true, undefined);
 
   // Requirement 6.6: the fields collected so far. No Booking is ever created on hang-up.
   const final: CallState = { ...call.state, stage: "done", pending: undefined };
@@ -425,7 +450,7 @@ async function hangup(
       status: "abandoned",
     },
   ]);
-  return output(call.id, final, shop, "", true, "abandoned");
+  return output(call.id, final, shop, { text: "", cacheable: false }, true, "abandoned");
 }
 
 /**

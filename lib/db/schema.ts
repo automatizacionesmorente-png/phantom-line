@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  customType,
   index,
   integer,
   jsonb,
@@ -146,4 +147,58 @@ export const rateLimits = pgTable(
     count: integer().notNull(),
   },
   (t) => [primaryKey({ columns: [t.key, t.windowStart] })],
+);
+
+/**
+ * `bytea` as a Uint8Array. drizzle-orm 0.45 has no `bytea` column builder, so this is a custom
+ * type. Values are sent as a Buffer: PGlite binds it as binary, and the Neon HTTP driver encodes
+ * a Buffer parameter as Postgres hex text itself (`encodeBuffersAsBytea`). Neon returns a Buffer
+ * (its bundled pg-types parser), PGlite a Uint8Array, and hex text is decoded too (task 9.1).
+ */
+export const bytea = customType<{ data: Uint8Array; driverData: string | Uint8Array }>({
+  dataType: () => "bytea",
+  toDriver: (value) => Buffer.from(value.buffer, value.byteOffset, value.byteLength),
+  fromDriver: (value) => {
+    if (typeof value === "string") {
+      if (!value.startsWith("\\x")) throw new Error("bytea: expected hex output");
+      return new Uint8Array(Buffer.from(value.slice(2), "hex"));
+    }
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  },
+});
+
+/**
+ * Stored Neural_Voice audio, one row per line without caller data (natural-voice design.md,
+ * "The voice cache"). The key is content-addressed (model, voice, style, language and text), and
+ * the table holds no text, so a row cannot be read back as a transcript.
+ */
+export const voiceCache = pgTable(
+  "voice_cache",
+  {
+    /** 32 hex characters (lib/receptionist/voiceCacheKey.ts). */
+    key: text().primaryKey(),
+    shopId: text("shop_id")
+      .notNull()
+      .references(() => shops.id),
+    language: text().notNull(),
+    model: text().notNull(),
+    /** audio/mpeg (pre-generated) or audio/wav (live). */
+    mime: text().notNull(),
+    bytes: bytea().notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    durationMs: integer("duration_ms"),
+    /** pregen or live. */
+    source: text().notNull(),
+    /** Tiers 1–2 of the plan: never evicted. */
+    pinned: boolean().notNull().default(false),
+    createdAt: tstz("created_at").notNull().defaultNow(),
+    lastUsedAt: tstz("last_used_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("voice_cache_evict_idx").on(t.pinned, t.lastUsedAt),
+    check("voice_cache_key_ck", sql`${t.key} ~ '^[0-9a-f]{32}$'`),
+    check("voice_cache_language_ck", sql`${t.language} IN ('es', 'en')`),
+    check("voice_cache_source_ck", sql`${t.source} IN ('pregen', 'live')`),
+    check("voice_cache_size_ck", sql`${t.sizeBytes} > 0`),
+  ],
 );

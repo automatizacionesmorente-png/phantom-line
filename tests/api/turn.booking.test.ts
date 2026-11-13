@@ -6,10 +6,10 @@ import { lolaProfile } from "../fixtures/lola";
 import type { TestDb } from "../db/pglite";
 import { bookings, calls, messages } from "@/lib/db/schema";
 import { createScriptedModel } from "@/lib/receptionist/callModel";
-import { phrases } from "@/lib/receptionist/phrases";
+import { phrases, type Said } from "@/lib/receptionist/phrases";
 import { toSpokenReply } from "@/lib/receptionist/speech";
 import { getSectorPack, type Lang } from "@/lib/sectors";
-import { Caller, makeDeps, makePost, modelTurn, setupDb } from "./harness";
+import { Caller, makeDeps, makePost, modelTurn, NOW, setupDb } from "./harness";
 
 /**
  * Task 8.4: a full booking Call through POST /api/turn with a real Request,
@@ -71,9 +71,7 @@ afterAll(async () => {
 
 describe.each(scripts)("a full scripted booking Call in $lang", (sc) => {
   it("greets, rejects 21:00 with 19:30 offered, books 19:30 on a chair and leaves a complete Message", async () => {
-    const P = phrases(sc.lang, pack, lolaProfile);
-    const service = sc.lang === "es" ? "cortarme el pelo" : "haircut";
-    const heard = { language: sc.lang, intent: "booking" as const, reason: sc.model.reason, service };
+    const heard = { language: sc.lang, intent: "booking" as const, reason: sc.model.reason, service: sc.lang === "es" ? "cortarme el pelo" : "haircut" };
     const model = createScriptedModel([
       // 1. "tomorrow at 9 pm": the model resolves "tomorrow" from TODAY in the prompt.
       modelTurn({ ...heard, reply: "Mira, te lo apunto.", date: "2026-11-11", time: "21:00" }),
@@ -88,38 +86,52 @@ describe.each(scripts)("a full scripted booking Call in $lang", (sc) => {
     ]);
     const { POST, settle } = makePost(makeDeps(t, model));
     const caller = new Caller(POST, sc.lang);
+    /** The phrases of Turn n of this Call: the Variant_Seed is the Call id and the Turn number. */
+    const P = (n: number) => phrases(sc.lang, pack, lolaProfile, { callId: caller.callId, turn: n }, NOW);
+    const spokenTemplate = (line: Said) => toSpokenReply(line.text, sc.lang, { maxSentences: 3 });
 
     const hello = await caller.start();
     expect(hello.status).toBe(200);
-    expect(hello.body.reply).toBe(P.greeting());
+    expect(hello.body.reply).toBe(P(0).greeting().text);
     expect(hello.body.reply).toContain("Peluquería Lola");
+    expect(hello.body.reply).toContain(sc.lang === "es" ? "asistente virtual" : "virtual assistant");
+    expect(hello.body.cacheable).toBe(true);
     expect(hello.body.complete).toBe(false);
     expect(model.calls).toHaveLength(0); // the greeting is a template
 
     const r1 = await caller.say(sc.lines.ask);
     expect(r1.status).toBe(200);
-    expect(r1.body.reply).toBe(toSpokenReply(P.rejected("outside_hours", WED_2100, OFFERED)));
-    expect(r1.body.reply).toContain(sc.lang === "es" ? "19:30" : "7:30 pm");
+    expect(r1.body.reply).toBe(spokenTemplate(P(1).rejected("outside_hours", WED_2100, OFFERED)));
+    expect(r1.body.reply).toContain(sc.lang === "es" ? "las siete y media" : "half past seven");
+    expect(r1.body.reply).not.toMatch(/\d/);
+    expect(r1.body.cacheable).toBe(true);
     expect(r1.body.complete).toBe(false);
 
+    // The time was accepted, so the code asks for the name; the model's own line is not spoken.
     const r2 = await caller.say(sc.lines.vale);
-    expect(r2.body.reply).toBe(sc.model.askName);
+    expect(r2.body.reply).toBe(spokenTemplate(P(2).timeAcceptedAskName(WED_1930)));
+    expect(r2.body.reply).not.toBe(sc.model.askName);
+    expect(r2.body.reply).not.toMatch(/\d/);
     expect(r2.body.state.fields.requestedTime).toBe("2026-11-11T19:30");
 
     const r3 = await caller.say(sc.lines.name);
-    expect(r3.body.reply).toBe(sc.model.askPhone);
+    expect(r3.body.reply).toBe(spokenTemplate(P(3).askPhone()));
+    expect(r3.body.reply).not.toBe(sc.model.askPhone);
     expect(r3.body.state.fields.name).toBe(sc.name);
 
     const r4 = await caller.say(sc.lines.phone);
-    // The read-back is the code's template with day, time and service (4.13), not the model's line.
-    expect(r4.body.reply).toBe(toSpokenReply(P.readBack("haircut", WED_1930)));
+    // The read-back is the code's template with day, time, service, name and phone (4.13), not the model's line.
+    expect(r4.body.reply).toBe(spokenTemplate(P(4).readBack("haircut", WED_1930, sc.name, "+34612345678")));
+    expect(r4.body.reply).not.toMatch(/\d/);
+    expect(r4.body.cacheable).toBe(false); // it holds a name and a phone
     expect(r4.body.state.fields.phone).toBe("+34612345678");
     expect(r4.body.complete).toBe(false);
 
     const r5 = await caller.say(sc.lines.yes);
     expect(r5.status).toBe(200);
-    expect(r5.body.reply).toBe(toSpokenReply(P.booked("haircut", WED_1930)));
+    expect(r5.body.reply).toBe(spokenTemplate(P(5).booked("haircut", WED_1930)));
     expect(r5.body.reply).toContain("Lola"); // what happens next (4.15)
+    expect(r5.body.cacheable).toBe(true);
     expect(r5.body.complete).toBe(true);
     expect(r5.body.state.complete).toBe(true);
     expect(r5.body.outcome).toBe("booked");
