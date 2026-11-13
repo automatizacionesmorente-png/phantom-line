@@ -6,6 +6,35 @@ export const LANGS = ["es", "en"] as const;
 
 export type RequiredField = "service" | "requestedTime" | "name" | "phone";
 
+/** The BCP-47 code sent to the TTS model as speech_config.language, per Lang. */
+export const LANGUAGE_CODE = { es: "es-ES", en: "en-US" } as const satisfies Record<Lang, string>;
+
+/** How one language sounds: which voice, and how it says things (never what it says). */
+export interface VoiceProfile {
+  /** Catalog voice id, used by models that accept it (the 3.8 family), e.g. "es-es-commercial-3". */
+  voice: string;
+  /** A classic prebuilt voice (e.g. "Kore") for models that reject catalog ids. */
+  classicVoice: string;
+  /** BCP-47, sent as speech_config.language. */
+  languageCode: (typeof LANGUAGE_CODE)[Lang];
+  /** How to say it, never what to say. At most 200 characters. */
+  style: string;
+}
+
+/** A catalog id ("es-es-commercial-3") or a classic name ("Kore"): letters, digits and hyphens. */
+export const VoiceIdSchema = z
+  .string()
+  .regex(/^[A-Za-z][A-Za-z0-9-]{0,63}$/, "a voice id is letters, digits and hyphens, starting with a letter");
+/** The style prompt of Requirement 3.1: at most 200 characters, not blank. */
+export const VoiceStyleSchema = z.string().trim().min(1).max(200);
+
+export const VoiceProfileSchema = z.strictObject({
+  voice: VoiceIdSchema,
+  classicVoice: VoiceIdSchema,
+  languageCode: z.enum([LANGUAGE_CODE.es, LANGUAGE_CODE.en]),
+  style: VoiceStyleSchema,
+});
+
 /** A plain typed config that tells the engine how a kind of business works. */
 export interface SectorPack {
   /** e.g. "hair-salon". */
@@ -19,7 +48,10 @@ export interface SectorPack {
   slotStepMin: number;
   /** Sector-specific checks, all pure. */
   rules: readonly SectorRule[];
-  vocabulary: Record<Lang, { booking: string; bookingVerb: string; service: string }>;
+  /** `place` is how the receptionist names the business: "la peluquería" / "the salon". */
+  vocabulary: Record<Lang, { booking: string; bookingVerb: string; service: string; place: string }>;
+  /** The default voice per language. A Shop_Profile may override voice, classicVoice and style. */
+  voice: Record<Lang, VoiceProfile>;
   /** Never advise on these; take a message for the owner instead. */
   sensitiveTopics: Record<Lang, readonly string[]>;
   /** Never promise these. */
@@ -42,7 +74,11 @@ export const SectorPackDataSchema = z.strictObject({
     .refine((f) => new Set(f).size === f.length, "requiredFields must not repeat")
     .refine((f) => f.includes("requestedTime") && f.includes("name") && f.includes("phone"), "a booking needs a time, a name and a phone"),
   slotStepMin: z.number().int().min(5).max(60),
-  vocabulary: perLang(z.strictObject({ booking: text, bookingVerb: text, service: text })),
+  vocabulary: perLang(z.strictObject({ booking: text, bookingVerb: text, service: text, place: text })),
+  voice: z.strictObject({
+    es: VoiceProfileSchema.refine((v) => v.languageCode === LANGUAGE_CODE.es, "the es voice must use es-ES"),
+    en: VoiceProfileSchema.refine((v) => v.languageCode === LANGUAGE_CODE.en, "the en voice must use en-US"),
+  }),
   sensitiveTopics: perLang(z.array(text)),
   neverPromise: perLang(z.array(text)),
 });

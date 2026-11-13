@@ -24,6 +24,7 @@ export const lolaProfile: ShopProfile = {
       aliases: ["corte de pelo", "cortar el pelo", "cortarme el pelo", "cortarse el pelo", "cortar", "hair cut", "cut"],
       durationMin: 30,
       priceCents: 1500,
+      spokenName: { es: "un corte", en: "a haircut" },
     },
     {
       id: "colour",
@@ -31,6 +32,7 @@ export const lolaProfile: ShopProfile = {
       aliases: ["color", "teñir", "teñirme el pelo", "tinte de pelo", "dye", "hair colour", "hair color"],
       durationMin: 90,
       priceCents: 4500,
+      spokenName: { es: "un tinte", en: "a colour" },
     },
     {
       id: "beard",
@@ -38,12 +40,14 @@ export const lolaProfile: ShopProfile = {
       aliases: ["arreglo de barba", "arreglar la barba", "arreglarme la barba", "beard trim"],
       durationMin: 20,
       priceCents: 1000,
+      spokenName: { es: "un arreglo de barba", en: "a beard trim" },
     },
   ],
   resources: [
     { id: "chair-1", name: { es: "Sillón 1", en: "Chair 1" } },
     { id: "chair-2", name: { es: "Sillón 2", en: "Chair 2" } },
   ],
+  speechRate: 1.1,
 };
 
 export const lolaRules: ShopRules = toShopRules(lolaProfile);

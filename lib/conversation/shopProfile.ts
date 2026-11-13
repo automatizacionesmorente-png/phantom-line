@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ShopRules, Weekday, WeeklyHours } from "@/lib/booking";
+import { VoiceIdSchema, VoiceStyleSchema } from "@/lib/sectors/types";
 
 export const Lang = z.enum(["es", "en"]);
 
@@ -44,7 +45,22 @@ export const ServiceSchema = z.strictObject({
   aliases: z.array(z.string().min(1).max(60)).max(20).optional(),
   durationMin: z.number().int().min(5).max(480),
   priceCents: z.number().int().min(0),
+  /** How the receptionist says it, with its article: { es: "un corte", en: "a haircut" }. */
+  spokenName: Localized.optional(),
 });
+
+/** A shop's override of its pack's Voice_Profile, field by field. The language code stays the pack's. */
+export const VoiceOverrideSchema = z.strictObject({
+  voice: VoiceIdSchema.optional(),
+  classicVoice: VoiceIdSchema.optional(),
+  style: VoiceStyleSchema.optional(),
+});
+
+/** The player's playback rate for the neural voice, one per shop (design.md, "Pace"). */
+export const SPEECH_RATE_MIN = 0.8;
+export const SPEECH_RATE_MAX = 1.25;
+export const SPEECH_RATE_DEFAULT = 1.0;
+export const SpeechRateSchema = z.number().min(SPEECH_RATE_MIN).max(SPEECH_RATE_MAX).default(SPEECH_RATE_DEFAULT);
 
 export const ShopProfileSchema = z
   .strictObject({
@@ -58,11 +74,17 @@ export const ShopProfileSchema = z
     hours: WeeklyHoursSchema,
     services: z.array(ServiceSchema).min(1),
     resources: z.array(z.strictObject({ id: z.string().min(1), name: Localized })).min(1),
+    /** Optional per language; a stored profile without it uses the pack's voice. */
+    voice: z.strictObject({ es: VoiceOverrideSchema.optional(), en: VoiceOverrideSchema.optional() }).optional(),
+    /** Optional in storage; a profile without it reads as 1.0. */
+    speechRate: SpeechRateSchema,
   })
   .refine((p) => new Set(p.services.map((s) => s.id)).size === p.services.length, "service ids must be unique")
   .refine((p) => new Set(p.resources.map((r) => r.id)).size === p.resources.length, "resource ids must be unique");
 
 export type ShopProfile = z.infer<typeof ShopProfileSchema>;
+/** A profile as stored or written by hand: `speechRate` may be missing. */
+export type ShopProfileInput = z.input<typeof ShopProfileSchema>;
 export type ShopService = ShopProfile["services"][number];
 
 /** The parts of a profile the Booking_Rules use. */

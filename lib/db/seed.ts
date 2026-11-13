@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { ShopProfileSchema, type ShopProfile } from "@/lib/conversation/shopProfile";
+import { ShopProfileSchema, type ShopProfile, type ShopProfileInput } from "@/lib/conversation/shopProfile";
 import { getSectorPack } from "@/lib/sectors";
 import type { Db } from "./repository";
 import { shops } from "./schema";
@@ -30,6 +30,7 @@ export const lolaSeedProfile: ShopProfile = {
       aliases: ["corte de pelo", "cortar el pelo", "cortarme el pelo", "cortarse el pelo", "cortar", "hair cut", "cut"],
       durationMin: 30,
       priceCents: 1500,
+      spokenName: { es: "un corte", en: "a haircut" },
     },
     {
       id: "colour",
@@ -37,6 +38,7 @@ export const lolaSeedProfile: ShopProfile = {
       aliases: ["color", "teñir", "teñirme el pelo", "tinte de pelo", "dye", "hair colour", "hair color"],
       durationMin: 90,
       priceCents: 4500,
+      spokenName: { es: "un tinte", en: "a colour" },
     },
     {
       id: "beard",
@@ -44,12 +46,17 @@ export const lolaSeedProfile: ShopProfile = {
       aliases: ["arreglo de barba", "arreglar la barba", "arreglarme la barba", "beard trim"],
       durationMin: 20,
       priceCents: 1000,
+      spokenName: { es: "un arreglo de barba", en: "a beard trim" },
     },
   ],
   resources: [
     { id: "chair-1", name: { es: "Sillón 1", en: "Chair 1" } },
     { id: "chair-2", name: { es: "Sillón 2", en: "Chair 2" } },
   ],
+  // The voice is the hair-salon pack's (es-es-commercial-3 / Kore), so no `voice` override.
+  // Pace option 2 (design.md "Pace"): play the neural voice 10 % faster with the pitch kept,
+  // while option 1 (pace words in the style) waits for a day's TTS quota (task 3.7 / 3.8).
+  speechRate: 1.1,
 };
 
 export interface SeedResult {
@@ -64,7 +71,7 @@ export interface SeedResult {
  * never reaches the database. The id of an existing row is kept, so calls,
  * bookings and messages that point at it stay valid.
  */
-export async function seedShop(db: Db, input: ShopProfile = lolaSeedProfile): Promise<SeedResult> {
+export async function seedShop(db: Db, input: ShopProfileInput = lolaSeedProfile): Promise<SeedResult> {
   const profile = ShopProfileSchema.parse(input);
   getSectorPack(profile.sectorPackId); // throws on an unknown pack
 

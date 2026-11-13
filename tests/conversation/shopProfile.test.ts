@@ -29,6 +29,66 @@ describe("ShopProfileSchema", () => {
   });
 });
 
+/** natural-voice 3.2 and 3.5: the new fields are optional, so stored profiles stay valid. */
+describe("ShopProfileSchema: spokenName and speechRate", () => {
+  // A profile as core-call-loop stored it: no spokenName, no voice, no speechRate.
+  const { speechRate: _rate, ...rest } = lolaProfile;
+  void _rate;
+  const storedProfile = {
+    ...rest,
+    services: lolaProfile.services.map(({ spokenName: _s, ...s }) => {
+      void _s;
+      return s;
+    }),
+  };
+
+  it("an existing stored profile without the new fields stays valid, and reads speechRate as 1.0", () => {
+    expect(Object.keys(storedProfile)).not.toContain("speechRate");
+    expect(storedProfile.services.every((s) => !("spokenName" in s))).toBe(true);
+    const parsed = ShopProfileSchema.parse(storedProfile);
+    expect(parsed.speechRate).toBe(1);
+    expect(parsed.voice).toBeUndefined();
+    expect(parsed.services.map((s) => s.spokenName)).toEqual([undefined, undefined, undefined]);
+  });
+
+  it("Lola's spoken names carry their article in both languages", () => {
+    expect(lolaProfile.services.map((s) => s.spokenName)).toEqual([
+      { es: "un corte", en: "a haircut" },
+      { es: "un tinte", en: "a colour" },
+      { es: "un arreglo de barba", en: "a beard trim" },
+    ]);
+  });
+
+  it("a spokenName needs both languages, not empty, and no extra keys", () => {
+    const withName = (spokenName: unknown) => ({
+      ...lolaProfile,
+      services: [{ ...lolaProfile.services[0], spokenName }, ...lolaProfile.services.slice(1)],
+    });
+    expect(ShopProfileSchema.safeParse(withName({ es: "un corte" })).success).toBe(false);
+    expect(ShopProfileSchema.safeParse(withName({ es: "", en: "a haircut" })).success).toBe(false);
+    expect(ShopProfileSchema.safeParse(withName({ es: "un corte", en: "a haircut", fr: "une coupe" })).success).toBe(false);
+  });
+
+  it("speechRate: the default is 1.0, both bounds are valid, and values outside them fail", () => {
+    const withRate = (speechRate: unknown) => ShopProfileSchema.safeParse({ ...storedProfile, speechRate });
+    expect(withRate(undefined).data?.speechRate).toBe(1);
+    expect(withRate(0.8).data?.speechRate).toBe(0.8);
+    expect(withRate(1.25).data?.speechRate).toBe(1.25);
+    expect(withRate(1.1).data?.speechRate).toBe(1.1);
+    for (const bad of [0.79, 0.7999, 1.2501, 1.3, 0, -1, 2, Number.NaN, Number.POSITIVE_INFINITY, "1.1", null]) {
+      expect(withRate(bad).success, String(bad)).toBe(false);
+    }
+  });
+
+  it("one speechRate per shop, for both languages: a per-language object fails", () => {
+    expect(ShopProfileSchema.safeParse({ ...storedProfile, speechRate: { es: 1.1, en: 1 } }).success).toBe(false);
+  });
+
+  it("Lola plays at 1.1 (pace option 2 while option 1 waits for quota)", () => {
+    expect(ShopProfileSchema.parse(lolaProfile).speechRate).toBe(1.1);
+  });
+});
+
 describe("ModelTurnSchema", () => {
   const valid = {
     reply: "Hola, ¿en qué te ayudo?",

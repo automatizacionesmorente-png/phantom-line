@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
-import { SectorPackDataSchema, allSectorPacks, getSectorPack, hairSalon, term } from "@/lib/sectors";
+import { SectorPackDataSchema, VoiceProfileSchema, allSectorPacks, getSectorPack, hairSalon, term } from "@/lib/sectors";
 import { NUM_RUNS, PACKS, arbCase } from "../booking/arbitraries";
 
 const stringsOf = (v: unknown): string[] =>
@@ -32,6 +32,26 @@ describe("sector pack registry", () => {
   it("term() looks up the vocabulary", () => {
     expect(term(getSectorPack("hair-salon"), "es", "booking")).toBe("cita");
     expect(term(getSectorPack("hair-salon"), "en", "booking")).toBe("appointment");
+    expect(term(getSectorPack("hair-salon"), "es", "place")).toBe("la peluquería");
+    expect(term(getSectorPack("hair-salon"), "en", "place")).toBe("the salon");
+  });
+
+  it("every pack has a valid Voice_Profile per language, with the matching language code", () => {
+    for (const pack of allSectorPacks()) {
+      expect(VoiceProfileSchema.safeParse(pack.voice.es).success, pack.id).toBe(true);
+      expect(VoiceProfileSchema.safeParse(pack.voice.en).success, pack.id).toBe(true);
+      expect(pack.voice.es.languageCode).toBe("es-ES");
+      expect(pack.voice.en.languageCode).toBe("en-US");
+    }
+  });
+
+  it("the schema rejects a pack without a place word", () => {
+    const { rules: _rules, ...data } = hairSalon;
+    void _rules;
+    const { place: _place, ...esNoPlace } = data.vocabulary.es;
+    void _place;
+    expect(SectorPackDataSchema.safeParse({ ...data, vocabulary: { ...data.vocabulary, es: esNoPlace } }).success).toBe(false);
+    expect(SectorPackDataSchema.safeParse({ ...data, vocabulary: { ...data.vocabulary, en: { ...data.vocabulary.en, place: "" } } }).success).toBe(false);
   });
 
   it("the property tests run over every pack in the registry", () => {
