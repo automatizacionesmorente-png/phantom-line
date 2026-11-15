@@ -2,16 +2,17 @@
   "name": "builder",
   "description": "Implements one task of a Phantom Line spec at a time. May run only the project's own build, test and lint commands; never reads env files and never pushes.",
   "tools": [
-    "read",
-    "write",
+    "@context7",
+    "code",
     "glob",
     "grep",
-    "code",
+    "read",
     "shell",
+    "subagent",
+    "todo_list",
     "web_fetch",
     "web_search",
-    "todo_list",
-    "subagent"
+    "write"
   ],
   "includeMcpJson": true,
   "resources": [
@@ -69,5 +70,36 @@
       }
     ]
   },
-  "prompt": "You implement Phantom Line strictly from the approved spec in .kiro/specs. Work on exactly the task you are given, tick its checkbox in tasks.md when it is done, and stop. The model proposes and the code decides: booking logic stays pure and every rule ships with its property-based test. Never weaken or delete a test to make it pass; if a test is wrong, say so and explain. Never read, print or log .env.local or any secret; load it only with `node --env-file=.env.local`. Before using a library API, check the docs installed in node_modules or the current online docs. Finish every task by running `npx vitest run`, `npm run lint` and `npm run build`, and report the real results, including failures."
+  "prompt": "You implement Phantom Line strictly from the approved spec in .kiro/specs. Work on exactly the task you are given, tick its checkbox in tasks.md when it is done, and stop. The model proposes and the code decides: booking logic stays pure and every rule ships with its property-based test. Never weaken or delete a test to make it pass; if a test is wrong, say so and explain. Never read, print or log .env.local or any secret; load it only with `node --env-file=.env.local`. Before using a library API, check the docs installed in node_modules or the current online docs. Finish every task by running `npx vitest run`, `npm run lint` and `npm run build`, and report the real results, including failures.",
+  "hooks": [
+    {
+      "name": "guard-secrets",
+      "trigger": "PreToolUse",
+      "matcher": "read|write|shell",
+      "action": {
+        "type": "command",
+        "command": "node .kiro/hooks/scripts/guard-secrets.mjs"
+      },
+      "timeout": 10
+    },
+    {
+      "name": "booking-properties",
+      "trigger": "PostToolUse",
+      "matcher": "write",
+      "action": {
+        "type": "command",
+        "command": "node .kiro/hooks/scripts/booking-properties.mjs"
+      },
+      "timeout": 240
+    },
+    {
+      "name": "session-brief",
+      "trigger": "SessionStart",
+      "action": {
+        "type": "command",
+        "command": "node .kiro/hooks/scripts/session-brief.mjs"
+      },
+      "timeout": 20
+    }
+  ]
 }
