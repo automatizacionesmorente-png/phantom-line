@@ -110,6 +110,9 @@ function concatByte(first: number, rest: Uint8Array): Uint8Array {
   return out;
 }
 
+/** A 44-byte WAV with no samples: played inside the call button's gesture to unlock the shared element. */
+const SILENT_WAV = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
+
 /** The sample rate in `audio/L16; rate=24000; channels=1`. */
 export function sampleRateOf(contentType: string | null): number {
   const m = /rate=(\d{4,6})/.exec(contentType ?? "");
@@ -131,6 +134,10 @@ export function createNeuralVoicePort(browser: NeuralWindowLike | Window, fallba
   const now = opts.now ?? (() => Date.now());
   const AudioCtor = win.AudioContext ?? win.webkitAudioContext;
   let ctx: AudioContextLike | null = null;
+  // Safari and iOS only let an <audio> element play after a user gesture if that same element was
+  // played inside the gesture. The call button unlocks this one element and every cached line reuses
+  // it; a new element per line was refused there (NotAllowedError, owner's call, 2026-11-16).
+  let sharedEl: AudioElementLike | null = null;
   let quotaOut = false;
   let current: { cancel(): void } | null = null;
 
@@ -350,7 +357,7 @@ export function createNeuralVoicePort(browser: NeuralWindowLike | Window, fallba
         dispatch({ type: "ERROR", at: at(), kind: "playback_error" });
         return;
       }
-      const el = new Ctor();
+      const el = sharedEl ?? new Ctor();
       audio = el;
       const on = (type: string, fn: () => void) => {
         listeners.push([type, fn]);
@@ -399,6 +406,15 @@ export function createNeuralVoicePort(browser: NeuralWindowLike | Window, fallba
     unlock() {
       const c = audioContext();
       void c?.resume().catch(() => undefined);
+      if (!sharedEl && win.Audio) {
+        try {
+          sharedEl = new win.Audio();
+          sharedEl.src = SILENT_WAV;
+          void sharedEl.play().catch(() => undefined);
+        } catch {
+          sharedEl = null;
+        }
+      }
       fallback.unlock?.();
     },
     stop() {
