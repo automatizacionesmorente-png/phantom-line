@@ -275,3 +275,21 @@ describe("useCallLoop (call session)", () => {
     expect(session.getSnapshot().loop).toMatchObject({ phase: "idle", callId: null, transcript: [] });
   });
 });
+
+describe("useCallLoop (call session): the neural voice hooks (natural-voice 10.5, 10.6)", () => {
+  it("passes the reply's speech hint to the port, and unlocks audio once, inside the call button press", async () => {
+    const hint = { kind: "cached" as const, url: "/api/voice/0123456789abcdef0123456789abcdef", rate: 1.1 };
+    const net = mockFetch([{ ...out("Hola, ¿en qué te ayudo?"), speech: hint } as TurnOutput]);
+    const session = createCallSession({ shopId: SHOP, lang: "es", fetch: net.fn, timeoutSignal: () => new AbortController().signal });
+    const port = createFakeSpeechPort();
+    const unlock = vi.fn();
+    session.attach({ port: Object.assign(port, { unlock }), target: new EventTarget(), lang: "es" });
+
+    session.dispatch({ type: "PRESS_CALL" });
+    expect(unlock).toHaveBeenCalledTimes(1); // synchronously, in the click
+    session.dispatch({ type: "PRESS_CALL" }); // a second press does nothing
+    await settle();
+    expect(unlock).toHaveBeenCalledTimes(1);
+    expect(port.spoken).toEqual([{ text: "Hola, ¿en qué te ayudo?", lang: "es", hint }]);
+  });
+});

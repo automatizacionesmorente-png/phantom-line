@@ -326,3 +326,47 @@ describe("callLoop: the client timeout (2.10) and hang-ups", () => {
     expect(port.listened).toEqual([]);
   });
 });
+
+describe("callLoop: the speech hint (natural-voice 10.6)", () => {
+  const live = { kind: "live" as const, token: "exp.flag.mac-of-the-reply", rate: 1.1 };
+  const cached = { kind: "cached" as const, url: "/api/voice/0123456789abcdef0123456789abcdef", rate: 1.1 };
+
+  it("the speak effect carries the reply's hint with its rate, and the transcript has the reply in the same step", () => {
+    const s0 = initialCallLoop({ shopId: "peluqueria-lola", lang: "es", recognition: true, synthesis: true });
+    const [s1] = callLoop(s0, { type: "PRESS_CALL" });
+    const [s2, effects] = callLoop(s1, { type: "REPLY", out: { ...reply(GREETING), speech: cached } });
+    expect(effects).toEqual([{ type: "speak", text: GREETING, lang: "es", speech: cached }]);
+    expect(s2.phase).toBe("speaking");
+    expect(s2.transcript).toEqual([{ who: "receptionist", text: GREETING }]);
+
+    const [s3] = callLoop(s2, { type: "SPOKEN" });
+    const [s4] = callLoop(s3, { type: "RECOGNIZED", text: "quiero un corte" });
+    const [, more] = callLoop(s4, { type: "REPLY", out: { ...reply("¿Para qué día?"), speech: live } });
+    expect(more).toEqual([{ type: "speak", text: "¿Para qué día?", lang: "es", speech: live }]);
+  });
+
+  it("a reply without a hint asks for speech without one (the browser voice speaks)", () => {
+    const s0 = initialCallLoop({ shopId: "peluqueria-lola", lang: "es", recognition: true, synthesis: true });
+    const [s1] = callLoop(s0, { type: "PRESS_CALL" });
+    const [, effects] = callLoop(s1, { type: "REPLY", out: reply(GREETING) });
+    expect(effects).toEqual([{ type: "speak", text: GREETING, lang: "es" }]);
+    expect("speech" in effects[0]).toBe(false);
+  });
+
+  it("the port receives the hint, and listening starts only after it resolves", async () => {
+    const port = createFakeSpeechPort();
+    const h = createHarness({ port, server: scriptedServer([{ ...reply(GREETING), speech: cached }]) });
+    h.dispatch({ type: "PRESS_CALL" });
+    await h.settle();
+    expect(port.spoken).toEqual([{ text: GREETING, lang: "es", hint: cached }]);
+    const kinds = h.log.map((l) => l.effect.type);
+    expect(kinds.indexOf("listen")).toBeGreaterThan(kinds.indexOf("speak"));
+  });
+
+  it("in Typed_Mode with synthesis, the hint is still passed: the neural voice reads the reply aloud", () => {
+    const s0 = initialCallLoop({ shopId: "peluqueria-lola", lang: "es", recognition: false, synthesis: true });
+    const [s1] = callLoop(s0, { type: "PRESS_CALL" });
+    const [, effects] = callLoop(s1, { type: "REPLY", out: { ...reply(GREETING), speech: live } });
+    expect(effects[0]).toEqual({ type: "speak", text: GREETING, lang: "es", speech: live });
+  });
+});

@@ -1,5 +1,6 @@
 import type { Lang } from "@/lib/conversation/types";
 import { localeOf, type CallEvent, type RecognitionErrorKind, type SynthesisErrorKind } from "./callLoop";
+import type { SpeechHint } from "./speechRequest";
 
 /**
  * The speech port: the only place that touches the Web Speech API. The pure
@@ -28,7 +29,13 @@ export interface SpeechPort {
   readonly supports: { recognition: boolean; synthesis: boolean };
   /** One utterance (`continuous = false`). Starting a new listen aborts the previous one. */
   listen(opts: ListenOptions): Promise<ListenResult>;
-  speak(text: string, lang: Lang): Promise<SpeakResult>;
+  /**
+   * Speaks one reply. `hint` is the Turn_API's speech hint: the neural port uses it, the Web
+   * Speech port ignores it.
+   */
+  speak(text: string, lang: Lang, hint?: SpeechHint): Promise<SpeakResult>;
+  /** Called inside the user's gesture (the call button), so audio may start later. Optional. */
+  unlock?(): void;
   /** Stops recognition and synthesis; pending promises settle with `aborted`. */
   stop(): void;
 }
@@ -71,6 +78,8 @@ export interface RecognitionCtorLike {
 export interface VoiceLike {
   lang: string;
   name: string;
+  /** False for a network voice (Chrome's "Google …" voices, Android's "-network" voices). */
+  localService?: boolean;
 }
 export interface UtteranceLike {
   lang: string;
@@ -112,14 +121,33 @@ const toRecognitionError = (code: string): RecognitionErrorKind =>
 
 export const VOICE_WAIT_MS = 1000;
 
-/** The first voice for the exact locale, else the first whose lang starts with the language. */
+/** Names that mark a better-sounding voice (Requirement 4.2). */
+const NATURAL = /natural|neural|enhanced|premium|online/i;
+
+/**
+ * Rank of a voice, lower is better (natural-voice design.md, "Browser voice choice"):
+ * a natural, neural, enhanced, premium or online voice; then Google's network voices; then any
+ * other network voice; then the rest, in the browser's order.
+ */
+export function voiceRank(v: VoiceLike): number {
+  if (NATURAL.test(v.name)) return 0;
+  if (/google/i.test(v.name)) return 1;
+  if (v.localService === false) return 2;
+  return 3;
+}
+
+/**
+ * The best voice for the exact locale, else the best voice of the language, else null.
+ * Within a group, the lowest `voiceRank` wins, and the browser's order breaks ties.
+ */
 export function pickVoice<V extends VoiceLike>(voices: readonly V[], lang: Lang): V | null {
   const norm = (l: string) => l.replace("_", "-").toLowerCase();
   const exact = localeOf(lang).toLowerCase();
+  const best = (group: readonly V[]) =>
+    group.reduce<V | null>((b, v) => (b === null || voiceRank(v) < voiceRank(b) ? v : b), null);
   return (
-    voices.find((v) => norm(v.lang) === exact) ??
-    voices.find((v) => norm(v.lang) === lang || norm(v.lang).startsWith(`${lang}-`)) ??
-    null
+    best(voices.filter((v) => norm(v.lang) === exact)) ??
+    best(voices.filter((v) => norm(v.lang) === lang || norm(v.lang).startsWith(`${lang}-`)))
   );
 }
 
@@ -310,7 +338,8 @@ export interface FakeSpeechScript {
 }
 
 export interface FakeSpeechPort extends SpeechPort {
-  readonly spoken: { text: string; lang: Lang }[];
+  /** Every reply asked for; `hint` is present only when the reply carried one. */
+  readonly spoken: { text: string; lang: Lang; hint?: SpeechHint }[];
   readonly listened: Lang[];
   readonly stops: number;
 }
@@ -318,7 +347,7 @@ export interface FakeSpeechPort extends SpeechPort {
 export function createFakeSpeechPort(script: FakeSpeechScript = {}): FakeSpeechPort {
   const listens = [...(script.listens ?? [])];
   const speaks = [...(script.speaks ?? [])];
-  const spoken: { text: string; lang: Lang }[] = [];
+  const spoken: { text: string; lang: Lang; hint?: SpeechHint }[] = [];
   const listened: Lang[] = [];
   let stops = 0;
   return {
@@ -333,8 +362,8 @@ export function createFakeSpeechPort(script: FakeSpeechScript = {}): FakeSpeechP
       const next = listens.shift();
       return next ? Promise.resolve(next) : new Promise<ListenResult>(() => {});
     },
-    speak(text, lang) {
-      spoken.push({ text, lang });
+    speak(text, lang, hint) {
+      spoken.push(hint ? { text, lang, hint } : { text, lang });
       return Promise.resolve(speaks.shift() ?? { type: "done" });
     },
     stop() {

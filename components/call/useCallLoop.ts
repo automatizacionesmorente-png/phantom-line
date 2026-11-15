@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { Lang } from "@/lib/conversation/types";
+import { createNeuralVoicePort } from "@/lib/voice/neuralVoice";
 import { defaultLang } from "@/lib/voice/publicShop";
 import { createWebSpeechPort } from "@/lib/voice/speechPort";
 import { createCallSession, type CallSession } from "./callSession";
@@ -32,14 +33,19 @@ export function useCallLoop({ shopId, languages, speechPhrases }: UseCallLoopOpt
     }),
   );
   // Fixed for the life of the page, so a re-render never re-attaches mid-call.
-  const [setup] = useState(() => ({ languages, speechPhrases }));
+  const [setup] = useState(() => ({ languages, speechPhrases, shopId }));
 
   const snapshot = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
 
   useEffect(
     () =>
       session.attach({
-        port: createWebSpeechPort(window, { phrases: setup.speechPhrases }),
+        // The neural voice speaks when the reply carries a speech hint; the Web Speech port listens,
+        // and speaks every reply the neural voice cannot (natural-voice 10.5).
+        port: createNeuralVoicePort(window, createWebSpeechPort(window, { phrases: setup.speechPhrases }), {
+          shopId: setup.shopId,
+          now: () => performance.now(),
+        }),
         target: window,
         lang: defaultLang(navigator.language, setup.languages),
       }),

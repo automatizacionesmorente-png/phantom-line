@@ -1,4 +1,5 @@
-import type { Lang, Line, Outcome, TurnOutput } from "@/lib/conversation/types";
+import type { Lang, Line, Outcome } from "@/lib/conversation/types";
+import type { SpeechHint, TurnResponse } from "./speechRequest";
 import { MAX_CONVERSATION, MAX_UTTERANCE, type TurnRequest } from "./turnRequest";
 
 /**
@@ -56,7 +57,7 @@ export type CallEvent =
   | { type: "PRESS_CALL" }
   | { type: "RECOGNIZED"; text: string }
   | { type: "TYPED"; text: string }
-  | { type: "REPLY"; out: TurnOutput }
+  | { type: "REPLY"; out: TurnResponse }
   | { type: "SPOKEN" }
   | { type: "SPEECH_ERROR"; kind: SpeechErrorKind }
   | { type: "SWITCH_LANG"; lang: Lang }
@@ -66,7 +67,11 @@ export type CallEvent =
 
 export type CallEffect =
   | { type: "listen"; lang: Lang }
-  | { type: "speak"; text: string; lang: Lang }
+  /**
+   * Speak a reply. `speech` is the Turn_API's hint for the neural voice (a cached line's URL or a
+   * live token, with the shop's rate); without it the browser voice speaks (natural-voice 10.6).
+   */
+  | { type: "speak"; text: string; lang: Lang; speech?: SpeechHint }
   | { type: "post"; body: TurnRequest; timeoutMs: number }
   | { type: "focusInput" }
   /** Stop recognition and synthesis now (hang-up, timeout, switching to typing mid-listen). */
@@ -245,7 +250,7 @@ function sendLine(state: CallLoopState, raw: string, before: CallEffect[]): Step
   ];
 }
 
-function onReply(state: CallLoopState, out: TurnOutput): Step {
+function onReply(state: CallLoopState, out: TurnResponse): Step {
   if (state.phase !== "starting" && state.phase !== "thinking") return [state, []];
   // A reply for another Call (a stale response) is ignored.
   if (state.phase === "thinking" && out.callId !== state.callId) return [state, []];
@@ -263,7 +268,11 @@ function onReply(state: CallLoopState, out: TurnOutput): Step {
     pending: null,
     transcript: [...state.transcript, { who: "receptionist", text: out.reply }],
   };
-  const voice = canSpeak(next) ? [{ type: "speak", text: out.reply, lang: next.lang } as const] : [];
+  // The transcript shows the reply in this same step, before any audio is asked for (1.5).
+  const speak: CallEffect = out.speech
+    ? { type: "speak", text: out.reply, lang: next.lang, speech: out.speech }
+    : { type: "speak", text: out.reply, lang: next.lang };
+  const voice = canSpeak(next) ? [speak] : [];
 
   if (out.complete) {
     // The goodbye is still spoken, but nothing listens afterwards.

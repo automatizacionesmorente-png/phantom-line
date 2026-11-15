@@ -1,5 +1,6 @@
-import type { Lang, TurnOutput } from "@/lib/conversation/types";
+import type { Lang } from "@/lib/conversation/types";
 import { callLoop, initialCallLoop, type CallEffect, type CallEvent, type CallLoopState } from "@/lib/voice/callLoop";
+import type { TurnResponse } from "@/lib/voice/speechRequest";
 import { createTypedOnlyPort, listenEvent, speakEvent, type SpeechPort } from "@/lib/voice/speechPort";
 import type { TurnRequest } from "@/lib/voice/turnRequest";
 
@@ -68,6 +69,9 @@ export function createCallSession(opts: CallSessionOptions): CallSession {
   }
 
   function dispatch(event: CallEvent) {
+    // The call button is the user's gesture: let the port unlock audio now, so the neural voice
+    // may start when the first reply arrives (Chrome's autoplay policy).
+    if (event.type === "PRESS_CALL" && snapshot.loop.phase === "idle") port.unlock?.();
     const [loop, effects] = callLoop(snapshot.loop, event);
     if (loop !== snapshot.loop) set({ loop });
     for (const effect of effects) run(effect);
@@ -87,7 +91,7 @@ export function createCallSession(opts: CallSessionOptions): CallSession {
       }
       case "speak": {
         const p = port;
-        void p.speak(effect.text, effect.lang).then((r) => {
+        void p.speak(effect.text, effect.lang, effect.speech).then((r) => {
           if (p === port) dispatch(speakEvent(r));
         });
         return;
@@ -109,7 +113,7 @@ export function createCallSession(opts: CallSessionOptions): CallSession {
   }
 
   async function postTurn(body: TurnRequest, timeoutMs: number) {
-    let out: TurnOutput;
+    let out: TurnResponse;
     try {
       const res = await doFetch(endpoint, {
         method: "POST",
@@ -118,7 +122,7 @@ export function createCallSession(opts: CallSessionOptions): CallSession {
         signal: timeoutSignal(timeoutMs),
       });
       if (!res.ok) throw new Error(`turn ${res.status}`);
-      out = (await res.json()) as TurnOutput;
+      out = (await res.json()) as TurnResponse;
     } catch {
       // A timeout, a network failure or an error status all stop the Call with
       // the line-cut notice (2.10). The reducer sends the hang-up when a Call exists.

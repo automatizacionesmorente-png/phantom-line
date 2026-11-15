@@ -9,6 +9,7 @@ import {
   type CallLoopState,
 } from "@/lib/voice/callLoop";
 import { listenEvent, speakEvent, type SpeechPort } from "@/lib/voice/speechPort";
+import type { TurnResponse } from "@/lib/voice/speechRequest";
 import { TurnRequestSchema, type TurnRequest } from "@/lib/voice/turnRequest";
 
 /**
@@ -18,7 +19,7 @@ import { TurnRequestSchema, type TurnRequest } from "@/lib/voice/turnRequest";
  */
 export const CALL_ID = "4f9c2b1e-8a3d-4c6e-9b7a-1d2e3f4a5b6c";
 
-export type ServerAnswer = TurnOutput | "timeout" | "pending";
+export type ServerAnswer = TurnResponse | "timeout" | "pending";
 export type Server = (body: TurnRequest) => ServerAnswer;
 
 export function reply(text: string, opts: { complete?: boolean; language?: Lang; outcome?: Outcome; callId?: string } = {}): TurnOutput {
@@ -85,7 +86,7 @@ export function createHarness(init: Partial<CallLoopInit> & { port: SpeechPort; 
         void init.port.listen({ lang: effect.lang }).then((r) => dispatch(listenEvent(r)));
         return;
       case "speak":
-        void init.port.speak(effect.text, effect.lang).then((r) => dispatch(speakEvent(r)));
+        void init.port.speak(effect.text, effect.lang, effect.speech).then((r) => dispatch(speakEvent(r)));
         return;
       case "post": {
         // Every body the browser sends must pass the server's strict schema.
