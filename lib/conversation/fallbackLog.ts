@@ -61,7 +61,7 @@ export function summarizeError(err: unknown): ErrorSummary {
     ? `${className(outer, "Error")}(${e ? className(e, "Error") : "no cause"})`
     : className(e, typeof err);
   const code = typeof e?.code === "string" ? e.code : undefined;
-  const message = typeof e?.message === "string" ? e.message.slice(0, MAX_MESSAGE) : undefined;
+  const message = typeof e?.message === "string" ? redactCredentials(e.message).slice(0, MAX_MESSAGE) : undefined;
   const frame =
     typeof outer?.stack === "string"
       ? outer.stack
@@ -125,6 +125,18 @@ export const consoleTtsFallbackLogger: TtsFallbackLogger = (event) => {
 };
 
 /**
+ * Removes credentials an error message may carry whatever its source: the user and password of any
+ * `scheme://user:pass@host` URL (a Neon driver error quotes the whole connection string), Neon
+ * passwords (`npg_…`) and Google API keys (`AIza…`). Found in production on 2026-11-16.
+ */
+export function redactCredentials(message: string): string {
+  return message
+    .replace(/([a-z][a-z0-9+.-]*:\/\/)[^\s/@"']+@/gi, "$1***@")
+    .replace(/npg_[A-Za-z0-9]+/g, "npg_***")
+    .replace(/AIza[0-9A-Za-z_-]{20,}/g, "AIza***");
+}
+
+/**
  * An error message made safe to log: the API key becomes `***`; the token, the visitor key and
  * the whole text are removed; and so is every word of the text with 2 or more characters (a
  * name, a phone's digit words) in case the API echoed part of it. Then cut to 300 characters.
@@ -133,7 +145,7 @@ export function scrubMessage(
   message: string,
   secrets: { apiKey?: string; text?: string; token?: string; visitorKey?: string },
 ): string {
-  let out = message;
+  let out = redactCredentials(message);
   if (secrets.apiKey) out = out.split(secrets.apiKey).join("***");
   // The placeholder has no letters or digits, so a later word can never match inside it.
   for (const s of [secrets.text, secrets.token, secrets.visitorKey]) if (s) out = out.split(s).join(REMOVED);
