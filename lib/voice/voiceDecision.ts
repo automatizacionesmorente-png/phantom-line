@@ -20,7 +20,10 @@
  * - the reply is `done` only after the voice that spoke it has finished.
  */
 
-export const TTS_DEADLINE_MS = 2500;
+// 2500 ms was measured on localhost. On Vercel a cold function plus the first TTS chunk often took
+// longer, so the owner heard the browser voice on every reply of his first public call (2026-11-16).
+// The natural voice a little later beats the robotic one at once.
+export const TTS_DEADLINE_MS = 4500;
 /** Output audio buffered before live playback starts. */
 export const START_BUFFER_MS = 300;
 export const STALL_LIMIT_MS = 3000;

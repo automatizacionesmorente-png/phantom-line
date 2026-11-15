@@ -23,8 +23,8 @@ function run(mode: VoiceMode, events: VoiceEvent[]): { state: VoiceDecisionState
 }
 
 describe("voiceDecision: the constants from the spike", () => {
-  it("2.5 s deadline, 300 ms start buffer, 3 s stall limit", () => {
-    expect([TTS_DEADLINE_MS, START_BUFFER_MS, STALL_LIMIT_MS]).toEqual([2500, 300, 3000]);
+  it("4.5 s deadline, 300 ms start buffer, 3 s stall limit", () => {
+    expect([TTS_DEADLINE_MS, START_BUFFER_MS, STALL_LIMIT_MS]).toEqual([4500, 300, 3000]);
   });
 });
 
@@ -50,18 +50,18 @@ describe("voiceDecision: live stream", () => {
     expect(effects).toEqual([[], [{ type: "play" }]]);
   });
 
-  it("no audio started by 2.5 s: browser voice, a deadline report, and later chunks are dropped", () => {
+  it("no audio started by 4.5 s: browser voice, a deadline report, and later chunks are dropped", () => {
     const { state, effects } = run("stream", [
       { type: "CHUNK", at: 2000, ms: 200 },
-      { type: "CHUNK", at: 2500, ms: 400 },
-      { type: "CHUNK", at: 2600, ms: 400 },
+      { type: "CHUNK", at: 4500, ms: 400 },
+      { type: "CHUNK", at: 4600, ms: 400 },
       { type: "ENDED", at: 2700 },
       { type: "FALLBACK_ENDED", at: 6000 },
     ]);
     expect(effects[1]).toEqual([
       { type: "stopNeural" },
       { type: "fallback", reason: "deadline" },
-      { type: "report", reason: "deadline", latencyMs: 2500 },
+      { type: "report", reason: "deadline", latencyMs: 4500 },
     ]);
     expect(effects.slice(2, 4)).toEqual([[], []]);
     expect(effects[4]).toEqual([{ type: "finish", by: "browser" }]);
@@ -167,7 +167,7 @@ describe("voiceDecision: cached line in an <audio> element", () => {
     ).toBe("stall");
   });
 
-  it("no playing event by 2.5 s is the deadline", () => {
-    expect(run("element", [{ type: "STARTED", at: 2500 }]).state).toMatchObject({ fallback: "deadline", neuralStarted: false });
+  it("no playing event by 4.5 s is the deadline", () => {
+    expect(run("element", [{ type: "STARTED", at: 4500 }]).state).toMatchObject({ fallback: "deadline", neuralStarted: false });
   });
 });

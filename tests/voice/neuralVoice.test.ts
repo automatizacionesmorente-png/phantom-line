@@ -15,7 +15,7 @@ import type { SpeechHint } from "@/lib/voice/speechRequest";
 
 /**
  * natural-voice 10.5: the neural SpeechPort with fake browser objects. A manual clock drives
- * `now`, `setTimeout` and the AudioContext's `currentTime`, so the 2.5 s deadline, the 300 ms
+ * `now`, `setTimeout` and the AudioContext's `currentTime`, so the 4.5 s deadline, the 300 ms
  * buffer and the end of the audio are tested exactly.
  */
 const SHOP = "peluqueria-lola";
@@ -248,16 +248,16 @@ describe("neuralVoice: live lines streamed from /api/speech", () => {
     expect(reports(sent)).toEqual([]);
   });
 
-  it("no audio by 2.5 s: the request is aborted, the browser voice speaks, a deadline report is sent, and late audio is dropped", async () => {
+  it("no audio by 4.5 s: the request is aborted, the browser voice speaks, a deadline report is sent, and late audio is dropped", async () => {
     const stream = pcmStream();
     const { port, fallback, sent, sources, advance } = setup(() => stream.response);
     const p = port.speak(TEXT, "es", LIVE);
     await advance(2000);
     stream.push(100);
-    await advance(500);
+    await advance(2500);
     expect(sent[0].signal?.aborted).toBe(true);
     expect(fallback.spoken).toEqual([{ text: TEXT, lang: "es" }]);
-    expect(reports(sent)).toEqual([{ kind: "report", shopId: SHOP, language: "es", reason: "deadline", fixed: true, latencyMs: 2500 }]);
+    expect(reports(sent)).toEqual([{ kind: "report", shopId: SHOP, language: "es", reason: "deadline", fixed: true, latencyMs: 4500 }]);
     expect(await p).toEqual({ type: "done" });
     expect(sources).toHaveLength(0);
   });
