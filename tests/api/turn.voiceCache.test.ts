@@ -75,14 +75,14 @@ describe("/api/turn with the voice cache", () => {
     expect(keys.size).toBe(2);
     const { status, body } = await post(turnPost(makeDeps(t, createScriptedModel([]))), { kind: "start", shopId: SHOP, language: "es" });
     expect(status).toBe(200);
-    expect(body.speech).toEqual({ kind: "cached", url: `/api/voice/${keys.get(body.reply)}`, rate: 1.1 });
+    expect(body.speech).toEqual({ kind: "cached", url: `/api/voice/${keys.get(body.reply)}?r=2`, rate: 1.1 });
   });
 
   it("a line stored only for the second model is still a hit, under that model's key", async () => {
     const keys = new Map<string, string>();
     for (const g of greetings()) keys.set(g.text, await store(g.text, { model: MODELS[1] }));
     const { body } = await post(turnPost(makeDeps(t, createScriptedModel([]))), { kind: "start", shopId: SHOP, language: "es" });
-    expect(body.speech).toEqual({ kind: "cached", url: `/api/voice/${keys.get(body.reply)}`, rate: 1.1 });
+    expect(body.speech).toEqual({ kind: "cached", url: `/api/voice/${keys.get(body.reply)}?r=2`, rate: 1.1 });
   });
 
   it("audio in the classic fallback voice (Kore on the 3.1 model) is never handed out for Spanish", async () => {
@@ -102,7 +102,7 @@ describe("/api/turn with the voice cache", () => {
     const keys = new Map<string, string>();
     for (const g of greetings("es", shop)) keys.set(g.text, await store(g.text, { shop }));
     const hit = await post(turnPost(makeDeps(t, createScriptedModel([]))), { kind: "start", shopId: SHOP, language: "es" });
-    expect(hit.body.speech).toEqual({ kind: "cached", url: `/api/voice/${keys.get(hit.body.reply)}`, rate: 1.1 });
+    expect(hit.body.speech).toEqual({ kind: "cached", url: `/api/voice/${keys.get(hit.body.reply)}?r=2`, rate: 1.1 });
   });
 
   it("the other language's audio is not a hit", async () => {

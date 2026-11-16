@@ -48,7 +48,11 @@ export interface VoiceCacheLookup {
 }
 
 /** The URL a cached line is served from (app/api/voice/[key]/route.ts). */
-export const voiceUrl = (key: string) => `/api/voice/${key}`;
+/**
+ * `?r=2`: audio sent before 2026-11-16 was cached by browsers for a year as a whole 200, which
+ * Safari cannot play (no Range support then). A new URL makes every browser fetch it again.
+ */
+export const voiceUrl = (key: string) => `/api/voice/${key}?r=2`;
 
 /**
  * The adapter's `speech` hint for a reply (natural-voice 8.5 and 9.4). A cacheable reply whose
