@@ -30,7 +30,7 @@ export type VoiceContext = { params: Promise<{ key: string }> };
 const notFound = () => Response.json({ error: "not_found" }, { status: 404, headers: { "cache-control": MISS_CACHE } });
 
 export function makeVoiceHandler(opts: VoiceHandlerOptions): (request: Request, ctx: VoiceContext) => Promise<Response> {
-  return async function GET(_request: Request, ctx: VoiceContext): Promise<Response> {
+  return async function GET(request: Request, ctx: VoiceContext): Promise<Response> {
     const { key } = await ctx.params;
     // A malformed key never reaches the database.
     if (!isCacheKey(key)) return notFound();
@@ -49,13 +49,39 @@ export function makeVoiceHandler(opts: VoiceHandlerOptions): (request: Request, 
       const store = deps.store;
       opts.schedule(() => store.touch(key, nowMs).catch(() => undefined));
     }
-    return new Response(hit.bytes as Uint8Array<ArrayBuffer>, {
-      status: 200,
-      headers: {
-        "content-type": hit.mime,
-        "content-length": String(hit.bytes.byteLength),
-        "cache-control": IMMUTABLE,
-      },
-    });
+    const bytes = hit.bytes as Uint8Array<ArrayBuffer>;
+    const base = { "content-type": hit.mime, "cache-control": IMMUTABLE, "accept-ranges": "bytes" };
+    const range = parseRange(request.headers.get("range"), bytes.byteLength);
+    if (range === "unsatisfiable") {
+      return new Response(null, { status: 416, headers: { ...base, "content-range": `bytes */${bytes.byteLength}` } });
+    }
+    if (range) {
+      const [start, end] = range;
+      return new Response(bytes.slice(start, end + 1), {
+        status: 206,
+        headers: { ...base, "content-length": String(end - start + 1), "content-range": `bytes ${start}-${end}/${bytes.byteLength}` },
+      });
+    }
+    return new Response(bytes, { status: 200, headers: { ...base, "content-length": String(bytes.byteLength) } });
   };
+}
+
+/**
+ * One `Range: bytes=…` request (RFC 9110 14.1.2): `start-end`, `start-` or `-suffix`, as inclusive
+ * offsets clamped to the body. Safari's <audio> asks for `bytes=0-1` first and refuses to play a
+ * body sent without 206 (found on the owner's calls, 2026-11-16). Several ranges, or anything
+ * malformed, are ignored and the whole body is sent, as the RFC allows.
+ */
+export function parseRange(header: string | null, size: number): [number, number] | "unsatisfiable" | null {
+  const m = header?.trim().match(/^bytes=(\d*)-(\d*)$/);
+  if (!m || (m[1] === "" && m[2] === "")) return null;
+  if (m[1] === "") {
+    const suffix = Number(m[2]);
+    if (suffix === 0 || size === 0) return "unsatisfiable";
+    return [Math.max(0, size - suffix), size - 1];
+  }
+  const start = Number(m[1]);
+  const end = m[2] === "" ? size - 1 : Math.min(Number(m[2]), size - 1);
+  if (start >= size || end < start) return "unsatisfiable";
+  return [start, end];
 }
