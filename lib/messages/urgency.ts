@@ -6,7 +6,7 @@
 import type { Temporal } from "temporal-polyfill";
 import type { Line, Outcome, Urgency } from "@/lib/conversation/types";
 import { LANGS, type Lang, type SectorPack } from "@/lib/sectors";
-import { findTerm } from "./terms";
+import { findTerm, maskPhrases } from "./terms";
 
 export type { Urgency } from "@/lib/conversation/types";
 
@@ -80,12 +80,19 @@ function findInLangs(lines: readonly string[], vocabulary: SectorPack["vocabular
   return null;
 }
 
+/** Every Not_Urgent_Phrase of every pack language: a Caller may mix languages (5.3). */
+function notUrgentOf(vocabulary: SectorPack["vocabulary"]): string[] {
+  return LANGS.flatMap((lang) => vocabulary[lang].notUrgent ?? []);
+}
+
 function ruleOf(input: UrgencyInput): { rule: Urgency; basis: UrgencyBasis } {
-  // 1. An urgent term in any pack language (5.3).
-  const urgent = findInLangs(input.callerLines, input.vocabulary, "urgent");
+  // 1. An urgent term in any pack language (5.3), outside every Not_Urgent_Phrase (front-desk-brain 16.5).
+  const phrases = notUrgentOf(input.vocabulary);
+  const masked = input.callerLines.flatMap((line) => maskPhrases(line, phrases));
+  const urgent = findInLangs(masked, input.vocabulary, "urgent");
   if (urgent) return { rule: "urgent", basis: { rule: "urgent_term", term: urgent.term, lang: urgent.lang } };
 
-  // 2. Today (5.4, 5.5): a today term, the requested day, or the Booking's day.
+  // 2. Today (5.4, 5.5): a today term, the requested day, or the Booking's day. Unmasked lines.
   const today = input.now.toZonedDateTimeISO(input.timeZone).toPlainDate();
   const todayTerm = findInLangs(input.callerLines, input.vocabulary, "today");
   const via: "term" | "requested_day" | "booking_day" | null = todayTerm

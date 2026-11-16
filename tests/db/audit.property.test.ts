@@ -12,7 +12,7 @@ import { ACTOR, addBooking, addCall, addMessage, auditRows, bookingRow, messageR
  * of owner commands on PGlite, with stale revisions, overlapping moves, started Bookings and
  * repeats: one new owner_actions row per `applied` result and none otherwise; its `before`
  * is the row as it was and its `after` the row as it is right after; and no Audit_Record ever
- * holds a seeded customer name or phone. numRuns 50 (design).
+ * holds a seeded customer name or phone. numRuns 50 random runs (design) plus one fixed example.
  */
 const SHOP = lolaProfile.id;
 const NOW = Temporal.Instant.from("2026-11-10T08:00:00Z");
@@ -52,6 +52,34 @@ const bookingState = (b: Awaited<ReturnType<typeof bookingRow>>) => ({
   ownerConfirmed: b.ownerConfirmedAt !== null,
 });
 const messageState = (m: Awaited<ReturnType<typeof messageRow>>) => ({ heard: m.readAt !== null, erased: m.erasedAt !== null });
+
+/**
+ * A fixed run that always reaches every branch the test counts. The random generator reaches the
+ * overlap branch only when a move lands on a slot whose chair holds another active Booking, and
+ * on some seeds none of the 50 runs did, so `seen.overlap` stayed 0 and the test failed without
+ * any wrong behaviour. Here both chairs are taken at 10:00: the 10:30 Booking on chair-1 is moved
+ * to 10:00 on chair-1 with the revision the Owner saw (`overlap`, no Audit_Record), then a
+ * confirm with the right revision (`applied`), then a cancel with a revision one ahead (`stale`).
+ * fast-check runs `examples` first and counts them inside `numRuns` (4.10.2, SourceValuesIterator),
+ * so numRuns is 51: the design's 50 random runs plus this one.
+ */
+type Seed = typeof arbSeed extends fc.Arbitrary<infer S> ? S : never;
+type Cmd = typeof arbCmd extends fc.Arbitrary<infer C> ? C : never;
+const OVERLAP_EXAMPLE: [Seed, Cmd[]] = [
+  {
+    bookings: [
+      { k: 0, res: "chair-1", name: "Nombre-fijoaa", phone: "+34611111111" },
+      { k: 0, res: "chair-2", name: "Nombre-fijobb", phone: "+34622222222" },
+      { k: 2, res: "chair-1", name: "Nombre-fijocc", phone: "+34633333333" },
+    ],
+    messages: [{ name: "Nombre-fijodd", phone: "+34644444444" }],
+  },
+  [
+    { target: "booking", j: 2, kind: "move", revisionDelta: 0, k: 0, res: "chair-1" }, // overlap
+    { target: "booking", j: 0, kind: "confirm", revisionDelta: 0, k: 0, res: "chair-1" }, // applied
+    { target: "booking", j: 1, kind: "cancel", revisionDelta: 1, k: 0, res: "chair-1" }, // stale
+  ],
+];
 
 let t: TestDb;
 let owner: OwnerRepository;
@@ -133,7 +161,7 @@ describe("M16: Audit_Records match applied actions", () => {
         const json = JSON.stringify(all.map((a) => ({ before: a.before, after: a.after, label: a.actorLabel, session: a.actorSession })));
         for (const s of secrets) expect(json).not.toContain(s);
       }),
-      { numRuns: 50 },
+      { numRuns: 51, examples: [OVERLAP_EXAMPLE] },
     );
     expect(seen.applied).toBeGreaterThan(0);
     expect(seen.overlap).toBeGreaterThan(0);

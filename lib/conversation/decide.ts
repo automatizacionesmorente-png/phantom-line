@@ -3,6 +3,7 @@ import { checkBooking, toInstant, type ExistingBooking, type RuleContext } from 
 import { phrases, type Said } from "@/lib/receptionist/phrases";
 import type { ModelTurn } from "@/lib/receptionist/schema";
 import type { RequiredField, SectorPack } from "@/lib/sectors";
+import { serviceView } from "./catalog";
 import { mergeFields } from "./fields";
 import { matchesCaller } from "./matchCaller";
 import { looksLikeName } from "./names";
@@ -316,14 +317,16 @@ export function decideTurn(input: DecideInput): Decision {
 
 /** Requirement 3.5: what the browser may display. Derived from server state. */
 export function publicStateOf(state: CallState, shop: ShopProfile, complete: boolean): PublicState {
-  const service = shop.services.find((x) => x.id === state.fields.serviceId);
+  const id = state.fields.serviceId;
+  const view = id === undefined ? null : serviceView(id, shop);
   const r = state.fields.requested;
   return {
     intent: state.intent,
     fields: {
       name: state.fields.name ?? null,
       phone: state.fields.phone ?? null,
-      service: service ? service.name[state.language] : null,
+      // A Service_Combo by its parts ("Corte de hombre + Degradado"); an id outside the catalog shows nothing.
+      service: view?.known ? view.name[state.language] : null,
       requestedTime: r ? `${r.date}T${r.time}` : null,
     },
     complete,

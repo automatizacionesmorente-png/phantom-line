@@ -36,6 +36,8 @@ export const hairSalon: SectorPack = {
         "dolor",
       ],
       today: ["hoy", "esta mañana", "esta tarde", "esta noche", "ahora mismo", "cuanto antes", "lo antes posible"],
+      // A question about the allergy test is not urgent; "me ha dado alergia" still is (front-desk-brain 16.5).
+      notUrgent: ["prueba de alergia", "test de alergia", "prueba del tinte"],
     },
     en: {
       booking: "appointment",
@@ -44,6 +46,7 @@ export const hairSalon: SectorPack = {
       place: "the salon",
       urgent: ["urgent", "urgently", "emergency", "allergy", "allergic", "reaction", "itching", "burn", "burning", "pain"],
       today: ["today", "this morning", "this afternoon", "tonight", "right now", "asap", "as soon as possible"],
+      notUrgent: ["allergy test", "patch test"],
     },
   },
   voice: {

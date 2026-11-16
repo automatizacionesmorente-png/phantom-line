@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
 import { checkBooking, evaluateBooking, type ShopRules, type Weekday } from "@/lib/booking";
-import { NUM_RUNS, arbCase, ctxOf, gridOracle } from "./arbitraries";
+import { NUM_RUNS, arbCase, ctxOf, gridOracle, serviceOf } from "./arbitraries";
 
 const MINUTE = 60_000;
 const WINDOW = 14 * 24 * 60 * MINUTE;
@@ -26,7 +26,8 @@ describe("P4: rejections come with the nearest valid slot", () => {
         const ctx = ctxOf(c);
         const v = checkBooking(c.req, ctx);
         if (v.ok || v.reason === "unknown_service") return;
-        const service = c.shop.services.find((s) => s.id === c.req.serviceId)!;
+        // The oracle's service: a catalog service, or a Combo_Id's summed duration (task 2.4).
+        const service = serviceOf(c.shop, c.req.serviceId)!;
         const r = c.req.start.epochMilliseconds;
         const alts = v.alternatives;
         const dist = (ms: number) => Math.abs(ms - r);

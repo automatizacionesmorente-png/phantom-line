@@ -154,6 +154,60 @@ export function oracleSessions(date: Temporal.PlainDate, shop: ShopRules): { ope
 }
 
 // ---------------------------------------------------------------------------
+// Service ids, including Service_Combos (front-desk-brain task 2.4)
+
+/** The design's limits, written here again so the oracle does not read them from lib/booking. */
+const ORACLE_MAX_PARTS = 3;
+const ORACLE_MAX_COMBO_MIN = 480;
+/** About 1 request in 3 asks for a Service_Combo when the shop has one. */
+const COMBO_ROLLS = 3;
+
+export interface RequestOptions {
+  /** Draw Combo_Ids as service ids too. Default true; the owner-machine generators pass false. */
+  combos?: boolean;
+}
+
+/**
+ * Every valid Combo_Id of a shop, built independently of `lib/booking/services`: each
+ * subset of 2–3 catalog services in catalog order, joined with "+", whose durations sum
+ * to at most 480 minutes.
+ */
+export function comboIdsOf(shop: ShopRules): string[] {
+  const out: string[] = [];
+  const s = shop.services;
+  const walk = (from: number, picked: number[]) => {
+    if (picked.length >= 2) {
+      const total = picked.reduce((sum, k) => sum + s[k].durationMin, 0);
+      if (total <= ORACLE_MAX_COMBO_MIN) out.push(picked.map((k) => s[k].id).join("+"));
+    }
+    if (picked.length === ORACLE_MAX_PARTS) return;
+    for (let k = from; k < s.length; k++) walk(k + 1, [...picked, k]);
+  };
+  walk(0, []);
+  return out;
+}
+
+/**
+ * Oracle: the service a generated id stands for. A catalog id is that service; a
+ * generated Combo_Id (always valid) is its parts' summed duration. Independent of
+ * `resolveService`, so a broken sum in the code cannot hide in the oracle.
+ */
+export function serviceOf(shop: ShopRules, id: string): { id: string; durationMin: number } | undefined {
+  const exact = shop.services.find((s) => s.id === id);
+  if (exact) return exact;
+  const parts = id.split("+").map((p) => shop.services.find((s) => s.id === p));
+  if (parts.length < 2 || parts.some((p) => !p)) return undefined;
+  return { id, durationMin: parts.reduce((sum, p) => sum + p!.durationMin, 0) };
+}
+
+/** A service id for a draw: a catalog id, or (1 roll in `COMBO_ROLLS`) a Combo_Id when the shop has any. */
+export function drawServiceId(shop: ShopRules, idx: number, roll: number, opts: RequestOptions = {}): string {
+  const combos = opts.combos === false ? [] : comboIdsOf(shop);
+  if (combos.length > 0 && roll % COMBO_ROLLS === 0) return combos[idx % combos.length];
+  return shop.services[idx % shop.services.length].id;
+}
+
+// ---------------------------------------------------------------------------
 // Requests
 
 const POINTS = ["open", "fit", "close"] as const;
@@ -161,9 +215,9 @@ const POINTS = ["open", "fit", "close"] as const;
 /**
  * A request at minute granularity, within −3 … +21 days of `now`, biased toward
  * session boundaries (open, close − duration, close, ±1 minute) and toward the
- * 2026 DST weekends when they are in range.
+ * 2026 DST weekends when they are in range. About 1 in 3 asks for a Combo_Id.
  */
-export function arbRequest(sc: ShopCase, now: Temporal.Instant): fc.Arbitrary<BookingRequest> {
+export function arbRequest(sc: ShopCase, now: Temporal.Instant, opts: RequestOptions = {}): fc.Arbitrary<BookingRequest> {
   const { shop } = sc;
   const today = localDate(now, shop.timeZone);
   return fc
@@ -177,9 +231,10 @@ export function arbRequest(sc: ShopCase, now: Temporal.Instant): fc.Arbitrary<Bo
       minuteOfDay: fc.integer({ min: 0, max: DAY_MIN - 1 }),
       dstIdx: fc.nat(),
       serviceIdx: fc.nat(),
+      comboRoll: fc.nat(),
     })
     .map((g) => {
-      const service = shop.services[g.serviceIdx % shop.services.length];
+      const service = serviceOf(shop, drawServiceId(shop, g.serviceIdx, g.comboRoll, opts))!;
       const uniform = now.add({ minutes: g.offset });
       let date = today.add({ days: g.dayOffset });
       if (g.mode === "uniform") return { serviceId: service.id, start: uniform };
@@ -209,30 +264,39 @@ export function arbRequest(sc: ShopCase, now: Temporal.Instant): fc.Arbitrary<Bo
  * A request whose start is inside a session and leaves room for the service,
  * on a day after today, whenever the shop has such a session in range.
  */
-export function arbValidRequest(sc: ShopCase, now: Temporal.Instant): fc.Arbitrary<BookingRequest> {
+export function arbValidRequest(sc: ShopCase, now: Temporal.Instant, opts: RequestOptions = {}): fc.Arbitrary<BookingRequest> {
   const { shop } = sc;
   const today = localDate(now, shop.timeZone);
+  const catalog = shop.services.map((s) => s.id);
+  const combos = opts.combos === false ? [] : comboIdsOf(shop);
   return fc
     .record({
       dayOffset: fc.integer({ min: 1, max: REQUEST_DAYS.max }),
       pick: fc.nat(),
       frac: fc.double({ min: 0, max: 1, noNaN: true }),
-      fallback: arbRequest(sc, now),
+      comboRoll: fc.nat(),
+      fallback: arbRequest(sc, now, opts),
     })
     .map((g) => {
-      // Search forward from the drawn day for a (session, service) pair that fits.
-      for (let d = 0; d < REQUEST_DAYS.max; d++) {
-        const offset = 1 + ((g.dayOffset - 1 + d) % REQUEST_DAYS.max);
-        const pairs = oracleSessions(today.add({ days: offset }), shop).flatMap((s) =>
-          shop.services
-            .filter((svc) => s.close - s.open >= svc.durationMin * MINUTE)
-            .map((svc) => ({ s, svc })),
-        );
-        if (pairs.length === 0) continue;
-        const { s, svc } = pairs[g.pick % pairs.length];
-        const room = Math.floor((s.close - s.open) / MINUTE) - svc.durationMin;
-        const start = s.open + Math.floor(g.frac * room) * MINUTE;
-        return { serviceId: svc.id, start: Temporal.Instant.fromEpochMilliseconds(start) };
+      // About 1 in 3 asks for a Combo_Id; if no combo fits anywhere, a catalog service.
+      const pools =
+        combos.length > 0 && g.comboRoll % COMBO_ROLLS === 0 ? [combos, catalog] : [catalog];
+      for (const ids of pools) {
+        const candidates = ids.map((id) => serviceOf(shop, id)!);
+        // Search forward from the drawn day for a (session, service) pair that fits.
+        for (let d = 0; d < REQUEST_DAYS.max; d++) {
+          const offset = 1 + ((g.dayOffset - 1 + d) % REQUEST_DAYS.max);
+          const pairs = oracleSessions(today.add({ days: offset }), shop).flatMap((s) =>
+            candidates
+              .filter((svc) => s.close - s.open >= svc.durationMin * MINUTE)
+              .map((svc) => ({ s, svc })),
+          );
+          if (pairs.length === 0) continue;
+          const { s, svc } = pairs[g.pick % pairs.length];
+          const room = Math.floor((s.close - s.open) / MINUTE) - svc.durationMin;
+          const start = s.open + Math.floor(g.frac * room) * MINUTE;
+          return { serviceId: svc.id, start: Temporal.Instant.fromEpochMilliseconds(start) };
+        }
       }
       return g.fallback;
     });
@@ -287,7 +351,7 @@ export interface OracleResult {
  * nearest one that `evaluateBooking` accepts.
  */
 export function gridOracle(req: BookingRequest, ctx: RuleContext, windowDays = 14): OracleResult {
-  const service = ctx.shop.services.find((s) => s.id === req.serviceId);
+  const service = serviceOf(ctx.shop, req.serviceId);
   const grid = new Set<number>();
   if (!service) return { grid, nearest: null };
   const r = req.start.epochMilliseconds;
@@ -321,6 +385,12 @@ export function gridOracle(req: BookingRequest, ctx: RuleContext, windowDays = 1
 
 /** Move starts are drawn from −2 to +16 days around `now` (design, M7). */
 export const MOVE_START_DAYS = { min: -2, max: 16 } as const;
+
+/**
+ * The owner-machine generators draw catalog services only: naming a Combo_Id on the owner
+ * screens is front-desk-brain task 4.4, so M7–M11 keep the catalog they were written for.
+ */
+const NO_COMBOS: RequestOptions = { combos: false };
 
 /** The Shop_Profile and Sector_Pack behind a generated shop, so owner code that takes them can run on it. */
 export function profileOf(sc: ShopCase): { profile: ShopProfile; sectorPack: SectorPack } {
@@ -365,10 +435,14 @@ export function arbAgendaBookings(sc: ShopCase, now: Temporal.Instant): fc.Arbit
       const bookedAt = now.subtract({ minutes: lag });
       return fc.record({
         bookedAt: fc.constant(bookedAt),
-        reqs: fc.array(fc.oneof(arbValidRequest(sc, bookedAt), arbValidRequest(sc, bookedAt), arbRequest(sc, bookedAt)), {
-          minLength: 1,
-          maxLength: 10,
-        }),
+        reqs: fc.array(
+          fc.oneof(
+            arbValidRequest(sc, bookedAt, NO_COMBOS),
+            arbValidRequest(sc, bookedAt, NO_COMBOS),
+            arbRequest(sc, bookedAt, NO_COMBOS),
+          ),
+          { minLength: 1, maxLength: 10 },
+        ),
         flags: fc.array(
           fc.record({
             cancelled: fc.integer({ min: 0, max: 4 }).map((n) => n === 0),
@@ -556,7 +630,7 @@ export const arbMoveSequence: fc.Arbitrary<MoveSequenceCase> = arbShop.chain((sc
   arbNow.chain((now) =>
     fc
       .record({
-        pool: fc.array(fc.oneof(arbMoveStart(sc, now), arbValidRequest(sc, now).map((r) => r.start)), { minLength: 1, maxLength: 6 }),
+        pool: fc.array(fc.oneof(arbMoveStart(sc, now), arbValidRequest(sc, now, NO_COMBOS).map((r) => r.start)), { minLength: 1, maxLength: 6 }),
         ops: fc.array(
           fc.oneof(
             { weight: 4, arbitrary: fc.record({ kind: fc.constant("call" as const), k: fc.nat(), service: fc.nat(), shift: fc.integer({ min: -20, max: 20 }) }) },

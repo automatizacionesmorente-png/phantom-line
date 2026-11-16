@@ -17,13 +17,17 @@ import {
 } from "@/lib/owner/demo";
 import { phrases } from "@/lib/receptionist/phrases";
 import { getSectorPack } from "@/lib/sectors";
+import { lolaProfile } from "../fixtures/lola";
 
 const pack = getSectorPack("hair-salon");
 const at = (iso: string) => Temporal.Instant.from(iso);
 const madrid = (i: Temporal.Instant) => i.toZonedDateTimeISO("Europe/Madrid").toPlainDateTime().toString();
-const englishLola: ShopProfile = { ...lolaSeedProfile, languages: ["en", "es"] };
+// The samples' texts are pinned on the V1_Profile ("Cita de corte …"), which they were written
+// against; the seed is now the Rich_Profile (front-desk-brain 16.2). Its own samples are
+// pinned in tests/conversation/richProfile.test.ts.
+const englishLola: ShopProfile = { ...lolaProfile, languages: ["en", "es"] };
 
-function samples(now: Temporal.Instant, shop: ShopProfile = lolaSeedProfile): Record<string, DemoSample> {
+function samples(now: Temporal.Instant, shop: ShopProfile = lolaProfile): Record<string, DemoSample> {
   let n = 0;
   const list = demoSamples(["urgent", "booking", "question"], { now, shop, pack, newId: () => `call-${n++}` });
   return Object.fromEntries(list.map((s) => [s.key, s]));
@@ -113,7 +117,7 @@ describe("demoSamples", () => {
     // Friday 13, the next open day, at the first session's 10:00 + 1 hour.
     expect(s.agreedSlot?.start.toString()).toBe("2026-11-13T10:00:00Z");
     expect(s.message.agreed).toBe("Cita de corte el viernes 13 a las 11:00 (Sillón 1)");
-    const o = phrases("es", pack, lolaSeedProfile, undefined, thursday).owner;
+    const o = phrases("es", pack, lolaProfile, undefined, thursday).owner;
     expect(s.message.agreed).toBe(o.agreedBooked("haircut", at("2026-11-13T10:00:00Z"), "chair-1"));
     // Nothing that could become a Booking row: no booking id, no customer fields.
     expect(Object.keys(s).sort()).toEqual(["agreedSlot", "call", "key", "message"]);
@@ -169,7 +173,7 @@ describe("demoSamples", () => {
     let n = 0;
     const list = demoSamples(["question", "urgent"], {
       now: thursday,
-      shop: lolaSeedProfile,
+      shop: lolaProfile,
       pack,
       newId: () => `id-${n++}`,
     });
@@ -181,6 +185,6 @@ describe("demoSamples", () => {
       expect(s.call.startedAt.toString()).toBe(thursday.toString());
       expect(s.message.modelFailed).toBe(false);
     }
-    expect(demoSamples([], { now: thursday, shop: lolaSeedProfile, pack, newId: () => "x" })).toEqual([]);
+    expect(demoSamples([], { now: thursday, shop: lolaProfile, pack, newId: () => "x" })).toEqual([]);
   });
 });

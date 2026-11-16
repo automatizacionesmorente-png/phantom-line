@@ -127,3 +127,17 @@ describe("agendaWhat", () => {
     expect(agendaWhat(booking({ start, serviceId: "perm" }), lolaProfile, pack, "es")).toBe("perm");
   });
 });
+
+describe("agendaWhat with a Service_Combo (front-desk-brain 4.4, Requirement 7.6)", () => {
+  const pack = getSectorPack("hair-salon");
+  const start = at("2026-11-14", "10:00");
+  it("names a Combo_Id by its parts, in the Owner's language", () => {
+    expect(agendaWhat(booking({ start, serviceId: "haircut+beard" }), lolaProfile, pack, "es")).toBe("corte + barba");
+    expect(agendaWhat(booking({ start, serviceId: "haircut+colour+beard" }), lolaProfile, pack, "en")).toBe(
+      "haircut + colour + beard",
+    );
+  });
+  it("a Combo_Id with a part that left the profile shows the id", () => {
+    expect(agendaWhat(booking({ start, serviceId: "haircut+perm" }), lolaProfile, pack, "es")).toBe("haircut+perm");
+  });
+});

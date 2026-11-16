@@ -70,22 +70,31 @@ export interface PackVocabulary {
   urgent: readonly string[];
   /** A request for today (owner-machine 5.4, 5.5). */
   today: readonly string[];
+  /**
+   * Not_Urgent_Phrases (front-desk-brain 16.5): urgent terms inside these phrases do not count
+   * ("prueba de alergia" is a question, "me ha dado alergia" is not). Today terms still do.
+   */
+  notUrgent?: readonly string[];
 }
 
 /** Only the string entries, so `term()` always returns a string. */
 export type VocabularyKey = {
-  [K in keyof PackVocabulary]: PackVocabulary[K] extends string ? K : never;
+  [K in keyof PackVocabulary]-?: PackVocabulary[K] extends string ? K : never;
 }[keyof PackVocabulary];
 
 const text = z.string().trim().min(1).max(200);
 
 /** 1–40 Urgency_Terms of 1–40 characters, each with a letter or digit, none repeated after normalization. */
-const urgencyTerms = z
-  .array(z.string().trim().min(1).max(40))
-  .min(1)
-  .max(40)
-  .refine((ts) => ts.every((t) => normalizeForMatch(t) !== ""), "every term needs a letter or a digit")
-  .refine((ts) => new Set(ts.map(normalizeForMatch)).size === ts.length, "terms must not repeat after normalization");
+const termList = (max: number) =>
+  z
+    .array(z.string().trim().min(1).max(40))
+    .min(1)
+    .max(max)
+    .refine((ts) => ts.every((t) => normalizeForMatch(t) !== ""), "every term needs a letter or a digit")
+    .refine((ts) => new Set(ts.map(normalizeForMatch)).size === ts.length, "terms must not repeat after normalization");
+const urgencyTerms = termList(40);
+/** Not_Urgent_Phrases: the same shape as the urgent terms, at most 20 (front-desk-brain design). */
+const notUrgentPhrases = termList(20);
 const perLang = <T extends z.ZodType>(t: T) => z.strictObject({ es: t, en: t });
 
 /** zod for the data part of a pack (everything except the rule functions). */
@@ -100,7 +109,15 @@ export const SectorPackDataSchema = z.strictObject({
     .refine((f) => f.includes("requestedTime") && f.includes("name") && f.includes("phone"), "a booking needs a time, a name and a phone"),
   slotStepMin: z.number().int().min(5).max(60),
   vocabulary: perLang(
-    z.strictObject({ booking: text, bookingVerb: text, service: text, place: text, urgent: urgencyTerms, today: urgencyTerms }),
+    z.strictObject({
+      booking: text,
+      bookingVerb: text,
+      service: text,
+      place: text,
+      urgent: urgencyTerms,
+      today: urgencyTerms,
+      notUrgent: notUrgentPhrases.optional(),
+    }),
   ),
   voice: z.strictObject({
     es: VoiceProfileSchema.refine((v) => v.languageCode === LANGUAGE_CODE.es, "the es voice must use es-ES"),

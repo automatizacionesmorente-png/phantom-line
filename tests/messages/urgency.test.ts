@@ -132,6 +132,65 @@ describe("decideUrgency: the rules in order (owner-machine 5.3–5.8)", () => {
   });
 });
 
+describe("decideUrgency: Not_Urgent_Phrases (front-desk-brain 16.5, design.md \"Not_Urgent_Phrases\")", () => {
+  // A question about the allergy test is not urgent; a real reaction still is. Before task 18
+  // the first row came out urgent, basis urgent_term "alergia" (recorded in design.md).
+  const rows: readonly [string, "low" | "urgent", object][] = [
+    ["¿Hacéis la prueba de alergia?", "low", { rule: "none" }],
+    [
+      "Quiero la prueba de alergia, que me ha dado alergia otro tinte",
+      "urgent",
+      { rule: "urgent_term", term: "alergia", lang: "es" },
+    ],
+    ["Me pica la cabeza desde el tinte", "urgent", { rule: "urgent_term", term: "me pica", lang: "es" }],
+    ["Allergy test before my colour, please", "low", { rule: "none" }],
+    ["I had a reaction after the patch test", "urgent", { rule: "urgent_term", term: "reaction", lang: "en" }],
+  ];
+  for (const [line, rule, basis] of rows) {
+    it(`"${line}" is ${rule}`, () => {
+      const d = decideUrgency(base({ callerLines: ["Hola", line] }));
+      expect(d.rule).toBe(rule);
+      expect(d.basis).toEqual(basis);
+    });
+  }
+
+  it("the other Not_Urgent_Phrases of the hair-salon pack are masked too, in any case and accent", () => {
+    for (const line of ["¿Necesito un TEST DE ALERGIA?", "¿La prueba del tinte cuánto dura?", "Do you do a Patch-Test?"]) {
+      expect(decideUrgency(base({ callerLines: [line] })).basis, line).toEqual({ rule: "none" });
+    }
+  });
+
+  it('the today rule still reads the unmasked line: "prueba de alergia para hoy" is today_open by "hoy", in both languages', () => {
+    expect(decideUrgency(base({ callerLines: ["¿Me hacéis la prueba de alergia para hoy?"] }))).toMatchObject({
+      rule: "urgent",
+      basis: { rule: "today_open", via: "term", term: "hoy" },
+    });
+    expect(decideUrgency(base({ callerLines: ["Can I have the allergy test today?"] }))).toMatchObject({
+      rule: "urgent",
+      basis: { rule: "today_open", via: "term", term: "today" },
+    });
+    // Handled the same day: normal, as for any other today Call (5.5).
+    expect(decideUrgency(base({ callerLines: ["prueba de alergia para hoy"], outcome: "booked" })).basis).toEqual({
+      rule: "today_handled",
+      via: "term",
+      term: "hoy",
+    });
+  });
+
+  it("the words on either side of a masked phrase do not join into a new term", () => {
+    // "me" + "pica" around the phrase would read "me pica" if the mask closed the gap.
+    expect(decideUrgency(base({ callerLines: ["me prueba de alergia pica"] })).basis).toEqual({ rule: "none" });
+  });
+
+  it("an urgent term in another line is never masked by a phrase in this one", () => {
+    expect(decideUrgency(base({ callerLines: ["la prueba de alergia", "es urgente"] })).basis).toEqual({
+      rule: "urgent_term",
+      term: "urgente",
+      lang: "es",
+    });
+  });
+});
+
 describe("suggestedFrom", () => {
   it("the initial \"normal\" of a Call with no valid Turn is not a suggestion", () => {
     const initial = initialCallState("es").note;

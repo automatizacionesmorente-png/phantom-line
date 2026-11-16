@@ -1,6 +1,7 @@
 import { Temporal } from "temporal-polyfill";
 import { localDateOf, sessionsOn } from "./time";
 import { evaluateWith } from "./rules";
+import { resolveService } from "./services";
 import type {
   BookingRequest,
   RuleContext,
@@ -80,7 +81,7 @@ export function daySlots(
   date: Temporal.PlainDate,
   ctx: RuleContext,
 ): Slot[] {
-  const service = ctx.shop.services.find((s) => s.id === req.serviceId);
+  const service = resolveService(req.serviceId, ctx.shop.services);
   const step = ctx.pack.slotStepMin;
   if (!service || step <= 0) return [];
   const cmp = Temporal.Instant.compare;
@@ -105,6 +106,85 @@ export function daySlots(
   return slots;
 }
 
+/** A part of the day as local start minutes, `[fromMin, toMin)`. Morning is `[0, 840)`, afternoon `[840, 1440)`. */
+export interface MinuteRange {
+  fromMin: number;
+  toMin: number;
+}
+
+export interface FirstSlotsOptions {
+  /** Default 3. */
+  limit?: number;
+  /** How far the walk goes from `from`, in days of 24 real hours. Default 14. */
+  windowDays?: number;
+  /** Keep only slots whose local start minute is in `[fromMin, toMin)`. */
+  within?: MinuteRange;
+}
+
+/**
+ * Accepted slots at or after `from`, earliest first, inside `within` (local start minutes
+ * in the shop's zone) when given (front-desk-brain 8.1–8.3, the First_Offer). It walks the
+ * same grid as `findNearestSlots` (each session's opening plus multiples of `slotStepMin`,
+ * the service ending by the close) forward over [from, from + windowDays], and returns the
+ * first `limit` starts `evaluateBooking` accepts. A day's starts are sorted and de-duplicated
+ * first, because on a spring-forward day two sessions can map to overlapping instants.
+ * Pure: `now`, the bookings and the rules all come from `ctx`.
+ */
+export function firstSlotsFrom(
+  req: { serviceId: string; from: Temporal.Instant; ignoreBookingId?: string },
+  ctx: RuleContext,
+  opts: FirstSlotsOptions = {},
+): Slot[] {
+  const limit = opts.limit ?? DEFAULT_LIMIT;
+  const windowHours = (opts.windowDays ?? DEFAULT_WINDOW_DAYS) * 24;
+  const service = resolveService(req.serviceId, ctx.shop.services);
+  const step = ctx.pack.slotStepMin;
+  if (!service || limit <= 0 || step <= 0) return [];
+
+  const cmp = Temporal.Instant.compare;
+  const tz = ctx.shop.timeZone;
+  const from = req.from;
+  const to = from.add({ hours: windowHours });
+  const within = opts.within;
+  const inside = (start: Temporal.Instant) => {
+    if (!within) return true;
+    const z = start.toZonedDateTimeISO(tz);
+    const m = z.hour * 60 + z.minute;
+    return m >= within.fromMin && m < within.toMin;
+  };
+  const sessionsOf = cachedSessions(ctx);
+  const evalReq = { serviceId: req.serviceId, ignoreBookingId: req.ignoreBookingId };
+  const slots: Slot[] = [];
+  const last = localDateOf(to, tz);
+  let lastMs: number | null = null;
+
+  for (let date = localDateOf(from, tz); Temporal.PlainDate.compare(date, last) <= 0; date = date.add({ days: 1 })) {
+    const starts: Temporal.Instant[] = [];
+    for (const session of sessionsOf(date)) {
+      for (let k = 0; ; k++) {
+        const start = session.open.add({ minutes: k * step });
+        if (cmp(start.add({ minutes: service.durationMin }), session.close) > 0) break;
+        if (cmp(start, to) > 0) break;
+        if (cmp(start, from) >= 0) starts.push(start);
+      }
+    }
+    starts.sort(cmp);
+    for (const start of starts) {
+      // Strictly after the last start looked at: de-duplicates within a day and keeps the
+      // whole list increasing across days.
+      if (lastMs !== null && start.epochMilliseconds <= lastMs) continue;
+      lastMs = start.epochMilliseconds;
+      if (!inside(start)) continue;
+      const e = evaluateWith({ ...evalReq, start }, ctx, sessionsOf);
+      if (e.ok) {
+        slots.push({ start: e.start, end: e.end, resourceId: e.resourceId });
+        if (slots.length >= limit) return slots;
+      }
+    }
+  }
+  return slots;
+}
+
 /**
  * Up to `limit` grid slots that `evaluateBooking` accepts, nearest to the
  * requested start in real time (ties: earlier first), inside
@@ -117,7 +197,7 @@ export function findNearestSlots(
 ): Slot[] {
   const limit = opts.limit ?? DEFAULT_LIMIT;
   const windowHours = (opts.windowDays ?? DEFAULT_WINDOW_DAYS) * 24;
-  const service = ctx.shop.services.find((s) => s.id === req.serviceId);
+  const service = resolveService(req.serviceId, ctx.shop.services);
   if (!service || limit <= 0) return [];
 
   const r = req.start;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
 import { checkBooking, overlaps, type BookingRequest, type ExistingBooking } from "@/lib/booking";
-import { NUM_RUNS, arbNow, arbRequest, arbShop, arbValidRequest, ctxOf } from "./arbitraries";
+import { NUM_RUNS, arbNow, arbRequest, arbShop, arbValidRequest, ctxOf, drawServiceId } from "./arbitraries";
 
 /**
  * Sequences of 1–40 requests drawn from a small pool of start times, so many
@@ -12,16 +12,17 @@ const arbSequence = arbShop.chain((sc) =>
     fc
       .record({
         pool: fc.array(fc.oneof(arbRequest(sc, now), arbValidRequest(sc, now)), { minLength: 1, maxLength: 8 }),
-        picks: fc.array(fc.record({ k: fc.nat(), service: fc.nat(), shift: fc.integer({ min: -20, max: 20 }) }), {
-          minLength: 1,
-          maxLength: 40,
-        }),
+        picks: fc.array(
+          fc.record({ k: fc.nat(), service: fc.nat(), combo: fc.nat(), shift: fc.integer({ min: -20, max: 20 }) }),
+          { minLength: 1, maxLength: 40 },
+        ),
       })
       .map(({ pool, picks }) => ({
         ...sc,
         now,
-        reqs: picks.map(({ k, service, shift }): BookingRequest => ({
-          serviceId: sc.shop.services[service % sc.shop.services.length].id,
+        reqs: picks.map(({ k, service, combo, shift }): BookingRequest => ({
+          // A catalog service or, about 1 in 3, a Combo_Id (task 2.4).
+          serviceId: drawServiceId(sc.shop, service, combo),
           start: pool[k % pool.length].start.add({ minutes: shift % 3 === 0 ? shift : 0 }),
         })),
       })),

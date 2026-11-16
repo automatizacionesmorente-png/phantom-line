@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import fc from "fast-check";
 import { Temporal } from "temporal-polyfill";
 import { checkBooking, evaluateBooking, type ExistingBooking } from "@/lib/booking";
-import { NUM_RUNS, arbNow, arbShop, arbValidRequest, ctxOf } from "./arbitraries";
+import { NUM_RUNS, arbNow, arbShop, arbValidRequest, ctxOf, serviceOf } from "./arbitraries";
 
 const MINUTE = 60_000;
 const at = (ms: number) => Temporal.Instant.fromEpochMilliseconds(ms);
@@ -39,7 +39,8 @@ describe("P6: resources", () => {
         // Only requests that pass rules 1–6 (no bookings involved yet).
         if (!evaluateBooking(g.req, base).ok) return;
         applied++;
-        const service = g.shop.services.find((s) => s.id === g.req.serviceId)!;
+        // The oracle's service: a catalog service, or a Combo_Id's summed duration (task 2.4).
+        const service = serviceOf(g.shop, g.req.serviceId)!;
         const s = g.req.start.epochMilliseconds;
         const e = s + service.durationMin * MINUTE;
 

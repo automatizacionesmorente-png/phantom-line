@@ -38,6 +38,11 @@ export const ALL_TERMS: readonly string[] = [
 ];
 const TERM_TOKENS: ReadonlySet<string> = new Set(ALL_TERMS.flatMap(oracleTokens));
 
+/** Every Not_Urgent_Phrase of every pack and language (front-desk-brain 16.5). */
+export const ALL_PHRASES: readonly string[] = [
+  ...new Set(URGENCY_PACKS.flatMap((p) => LANGS.flatMap((l) => p.vocabulary[l].notUrgent ?? []))),
+];
+
 /** Words that look close to a term but are not one as a whole word. */
 export const NEAR_MISSES = [
   "hoyo",
@@ -137,11 +142,16 @@ export function arbTermVariant(term: string): fc.Arbitrary<string> {
     });
 }
 
-/** One word for a Caller line: mostly plain, some near-misses, some term variants. */
+/**
+ * One word for a Caller line: mostly plain, some near-misses, some term variants, and now and
+ * then a Not_Urgent_Phrase (front-desk-brain task 18), so the urgent terms inside a phrase and
+ * the terms next to one both turn up.
+ */
 const arbWord: fc.Arbitrary<string> = fc.oneof(
   { weight: 6, arbitrary: fc.constantFrom(...PLAIN) },
   { weight: 2, arbitrary: fc.constantFrom(...NEAR_MISSES) },
   { weight: 1, arbitrary: fc.constantFrom(...ALL_TERMS).chain(arbTermVariant) },
+  { weight: 1, arbitrary: fc.constantFrom(...ALL_PHRASES).chain(arbTermVariant) },
 );
 const lineOf = (word: fc.Arbitrary<string>) => fc.array(word, { maxLength: 10 }).map((ws) => ws.join(" "));
 

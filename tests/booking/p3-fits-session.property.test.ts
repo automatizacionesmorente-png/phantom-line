@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
 import { checkBooking } from "@/lib/booking";
-import { NUM_RUNS, arbCase, arbShop, arbNow, arbExisting, arbValidRequest, ctxOf, oracleSessions } from "./arbitraries";
+import { NUM_RUNS, arbCase, arbShop, arbNow, arbExisting, arbValidRequest, ctxOf, oracleSessions, serviceOf } from "./arbitraries";
 
 const MINUTE = 60_000;
 
@@ -21,7 +21,8 @@ describe("P3: accepted services end by the session's close", () => {
       fc.property(fc.oneof(arbCase, arbMostlyValid), (c) => {
         const v = checkBooking(c.req, ctxOf(c));
         if (!v.ok) return;
-        const service = c.shop.services.find((s) => s.id === c.req.serviceId)!;
+        // The oracle's service: a catalog service, or a Combo_Id's summed duration (task 2.4).
+        const service = serviceOf(c.shop, c.req.serviceId)!;
         const start = c.req.start.epochMilliseconds;
         const end = start + service.durationMin * MINUTE; // real minutes, not wall-clock
         const date = c.req.start.toZonedDateTimeISO(c.shop.timeZone).toPlainDate();

@@ -1,6 +1,8 @@
 import { z } from "zod";
 import type { ShopRules, Weekday, WeeklyHours } from "@/lib/booking";
+import { MAX_WORDS, splitSentences } from "@/lib/receptionist/speech";
 import { VoiceIdSchema, VoiceStyleSchema } from "@/lib/sectors/types";
+import { normalizeText } from "./fields";
 
 export const Lang = z.enum(["es", "en"]);
 
@@ -38,16 +40,90 @@ export const WeeklyHoursSchema = z.strictObject({
 
 const Localized = z.strictObject({ es: z.string().min(1).max(80), en: z.string().min(1).max(80) });
 
+/**
+ * A service, Category or FAQ id: lowercase letters, digits and hyphens, starting with a
+ * letter (front-desk-brain 11.3). No id can contain `+`, so a Combo_Id is never ambiguous.
+ * Every id stored before this pattern (`haircut`, `colour`, `beard`) matches it.
+ */
+export const IdSchema = z.string().regex(/^[a-z][a-z0-9-]{0,59}$/, "lowercase letters, digits and hyphens");
+
+/** The built-in Profile_Topics; an FAQ_Entry may not take one of these ids (11.2). */
+export const BUILT_IN_TOPICS: ReadonlySet<string> = new Set(["hours", "address", "services", "price", "duration"]);
+
+/** Characters that only make sense as markup (the same set `toSpokenReply` removes). */
+const MARKUP = /[*_#`~<>[\]{}|\\^=]/;
+const EMOJI = /[\p{Extended_Pictographic}\p{Emoji_Modifier}\p{Regional_Indicator}\u20e3]/u;
+const SPOKEN_ANSWER_SENTENCES = 2;
+const wordCount = (s: string) => s.split(/\s+/).filter(Boolean).length;
+
+/**
+ * An FAQ answer as the Receptionist says it, word for word (11.2): Spoken_Form (no digit),
+ * no markup or emoji, 1 or 2 sentences of at most 25 words each.
+ */
+export const SpokenAnswerSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(300)
+  .refine((s) => !/\d/.test(s), "Spoken_Form: no digits")
+  .refine((s) => !MARKUP.test(s) && !EMOJI.test(s), "no markup or emoji")
+  .refine((s) => {
+    const sentences = splitSentences(s);
+    return (
+      sentences.length >= 1 &&
+      sentences.length <= SPOKEN_ANSWER_SENTENCES &&
+      sentences.every((x) => wordCount(x) <= MAX_WORDS)
+    );
+  }, "1 or 2 sentences of at most 25 words");
+
+/** A word or phrase a Caller may say; it must keep at least one letter or digit after normalization. */
+const AliasSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(60)
+  .refine((s) => normalizeText(s) !== "", "an alias needs a letter or a digit");
+
 export const ServiceSchema = z.strictObject({
-  id: z.string().min(1).max(60),
+  id: IdSchema,
   name: Localized,
   /** Other words callers use for it ("cortarme el pelo"); used only to match what the caller said. */
-  aliases: z.array(z.string().min(1).max(60)).max(20).optional(),
+  aliases: z.array(z.string().min(1).max(60)).max(30).optional(),
   durationMin: z.number().int().min(5).max(480),
   priceCents: z.number().int().min(0),
   /** How the receptionist says it, with its article: { es: "un corte", en: "a haircut" }. */
   spokenName: Localized.optional(),
+  /** The Category it belongs to, by id. */
+  category: IdSchema.optional(),
+  /** Services it is usually combined with (Goes_With): breaks a Service_Choice tie. */
+  goesWith: z.array(IdSchema).max(10).optional(),
+  /** The service is an Add_On of these: it is only booked together with one of them (4.10). */
+  addOnTo: z.array(IdSchema).min(1).max(5).optional(),
+  /** The price is a starting price: said "desde" / "from". */
+  priceFrom: z.boolean().optional(),
 });
+
+/** A named group of services ("color"), with Spanish and English plural names. */
+export const CategorySchema = z.strictObject({
+  id: IdSchema,
+  name: Localized,
+  aliases: z.array(z.string().min(1).max(60)).max(30).optional(),
+});
+
+/** An everyday question the profile answers word for word (FAQ_Entry, 11.2). */
+export const FaqEntrySchema = z.strictObject({
+  id: IdSchema.refine((id) => !BUILT_IN_TOPICS.has(id), "reserved topic id"),
+  aliases: z.strictObject({
+    es: z.array(AliasSchema).min(1).max(30),
+    en: z.array(AliasSchema).min(1).max(30),
+  }),
+  answer: z.strictObject({ es: SpokenAnswerSchema, en: SpokenAnswerSchema }),
+});
+
+/** How long the Call_Page waits after the caller's last word before it ends the Turn (17.2). */
+export const END_OF_SPEECH_MS_MIN = 300;
+export const END_OF_SPEECH_MS_MAX = 1500;
+export const END_OF_SPEECH_MS_DEFAULT = 600;
 
 /** A shop's override of its pack's Voice_Profile, field by field. The language code stays the pack's. */
 export const VoiceOverrideSchema = z.strictObject({
@@ -75,12 +151,86 @@ export const ShopProfileSchema = z
     services: z.array(ServiceSchema).min(1),
     resources: z.array(z.strictObject({ id: z.string().min(1), name: Localized })).min(1),
     /** Optional per language; a stored profile without it uses the pack's voice. */
-    voice: z.strictObject({ es: VoiceOverrideSchema.optional(), en: VoiceOverrideSchema.optional() }).optional(),
+    voice: z
+      .strictObject({
+        es: VoiceOverrideSchema.optional(),
+        en: VoiceOverrideSchema.optional(),
+        /** The Silence_Cut for this shop (17.2); the Call_Page uses 600 ms without it. */
+        endOfSpeechMs: z.number().int().min(END_OF_SPEECH_MS_MIN).max(END_OF_SPEECH_MS_MAX).optional(),
+      })
+      .optional(),
     /** Optional in storage; a profile without it reads as 1.0. */
     speechRate: SpeechRateSchema,
+    categories: z.array(CategorySchema).max(12).optional(),
+    faq: z.array(FaqEntrySchema).max(40).optional(),
   })
   .refine((p) => new Set(p.services.map((s) => s.id)).size === p.services.length, "service ids must be unique")
-  .refine((p) => new Set(p.resources.map((r) => r.id)).size === p.resources.length, "resource ids must be unique");
+  .refine((p) => new Set(p.resources.map((r) => r.id)).size === p.resources.length, "resource ids must be unique")
+  .superRefine((p, ctx) => {
+    for (const issue of profileReferenceIssues(p)) ctx.addIssue({ code: "custom", ...issue });
+  });
+
+type ProfileShape = {
+  services: readonly z.infer<typeof ServiceSchema>[];
+  categories?: readonly z.infer<typeof CategorySchema>[];
+  faq?: readonly z.infer<typeof FaqEntrySchema>[];
+};
+
+/**
+ * The cross-references and uniqueness rules of 11.2 and 11.3, as a list of issues so each
+ * refusal says where it is. Every `category`, `goesWith` and `addOnTo` id exists; an `addOnTo`
+ * target is not itself an Add_On; no service is its own Add_On; Category and FAQ ids are unique;
+ * and an FAQ alias, after `normalizeText`, belongs to one FAQ_Entry only and is none of the
+ * words the service matcher already reads (a service's id, names and aliases, a Category's
+ * names and aliases). The same alias in an entry's Spanish and English lists ("parking") is fine.
+ */
+function profileReferenceIssues(p: ProfileShape): { path: (string | number)[]; message: string }[] {
+  const issues: { path: (string | number)[]; message: string }[] = [];
+  const serviceIds = new Set(p.services.map((s) => s.id));
+  const addOns = new Set(p.services.filter((s) => s.addOnTo).map((s) => s.id));
+  const categories = p.categories ?? [];
+  const categoryIds = new Set(categories.map((c) => c.id));
+
+  if (categoryIds.size !== categories.length) issues.push({ path: ["categories"], message: "category ids must be unique" });
+
+  p.services.forEach((s, i) => {
+    if (s.category !== undefined && !categoryIds.has(s.category))
+      issues.push({ path: ["services", i, "category"], message: `unknown category "${s.category}"` });
+    (s.goesWith ?? []).forEach((id, j) => {
+      if (!serviceIds.has(id)) issues.push({ path: ["services", i, "goesWith", j], message: `unknown service "${id}"` });
+    });
+    (s.addOnTo ?? []).forEach((id, j) => {
+      const path = ["services", i, "addOnTo", j];
+      if (id === s.id) issues.push({ path, message: "a service cannot be an Add_On of itself" });
+      else if (!serviceIds.has(id)) issues.push({ path, message: `unknown service "${id}"` });
+      else if (addOns.has(id)) issues.push({ path, message: `"${id}" is itself an Add_On` });
+    });
+  });
+
+  const faq = p.faq ?? [];
+  if (new Set(faq.map((f) => f.id)).size !== faq.length) issues.push({ path: ["faq"], message: "FAQ ids must be unique" });
+
+  const matcherWords = new Set<string>();
+  for (const s of p.services)
+    for (const w of [s.id.replace(/-/g, " "), s.name.es, s.name.en, ...(s.aliases ?? [])]) matcherWords.add(normalizeText(w));
+  for (const c of categories) for (const w of [c.name.es, c.name.en, ...(c.aliases ?? [])]) matcherWords.add(normalizeText(w));
+
+  const owner = new Map<string, string>();
+  faq.forEach((f, i) => {
+    for (const lang of ["es", "en"] as const) {
+      f.aliases[lang].forEach((alias, j) => {
+        const key = normalizeText(alias);
+        const path = ["faq", i, "aliases", lang, j];
+        if (matcherWords.has(key)) issues.push({ path, message: `FAQ alias "${alias}" is also a service or Category word` });
+        const first = owner.get(key);
+        if (first !== undefined && first !== f.id)
+          issues.push({ path, message: `FAQ alias "${alias}" is already an alias of "${first}"` });
+        else owner.set(key, f.id);
+      });
+    }
+  });
+  return issues;
+}
 
 export type ShopProfile = z.infer<typeof ShopProfileSchema>;
 /** A profile as stored or written by hand: `speechRate` may be missing. */

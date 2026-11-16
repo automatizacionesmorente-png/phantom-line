@@ -21,7 +21,20 @@ The model still proposes and the code still decides. Nothing in this spec change
 
 ## Where current documentation changed my first choice
 
-**No documentation could be read in this session.** The Context7 MCP call and every shell command failed at the permission step, so `@modelcontextprotocol/sdk`, `axe-core`, MDN's compatibility data, the Next.js metadata file conventions and the Kiro hook docs were not checked. Nothing below depends on memory without saying so: each open point is a sub-task of task 1, and design decisions that a finding could change are marked *(check in 1.x)*.
+The design session could read no documentation (the Context7 call and every shell command failed at the permission step), so it marked each point that a finding could change with *(check in 1.x)*. Task 1 checked them on 2026-11-16. The web tool failed at its permission step again, so pages were fetched with Node's `fetch` into the git-ignored `.measurements/`; packages were read from the registry (`npm view`) and from `node_modules`.
+
+### Task 1 findings (2026-11-16)
+
+| Area | Source | Finding | What it changed |
+|---|---|---|---|
+| MCP SDK (1.1) | `npm view @modelcontextprotocol/sdk`; its `package.json`, `README.md` and `.d.ts` files in `node_modules`; the SDK's v2 migration guide (ts.sdk.modelcontextprotocol.io/v2/migration/upgrade-to-v2) | Newest `@modelcontextprotocol/sdk` is **1.32.2** (`latest`), `engines: node >=18`, zod as a required peer `^3.25 \|\| ^4.0`, so the app's zod 4.6.7 is used as is. The README says 1.x is now the **maintenance line**: v2 (`@modelcontextprotocol/server` 2.4.0, Node >=20, zod `^4.2.0` as a dependency) is the current stable release and ships as separate server, client and core packages. In 1.32.2: `McpServer` from `@modelcontextprotocol/sdk/server/mcp.js`, `registerTool(name, { description, inputSchema, ... }, cb)` where `inputSchema` may be a zod raw shape **or a zod schema object** (`ZodRawShapeCompat \| AnySchema`); `StdioServerTransport` from `.../server/stdio.js`; `InMemoryTransport.createLinkedPair()` from `.../inMemory.js`; `Client` from `.../client/index.js`. The migration guide says a v2 server that keeps `server.connect(new StdioServerTransport())` serves 2025-era clients only, and that v1 and v2 currently negotiate the same newest revision, 2025-11-25 | Kept `@modelcontextprotocol/sdk` 1.32.2, as the requirements name it: one dev package holds the server, the stdio transport, the in-memory transport and the test client, and Kiro's MCP client speaks the 2025 handshake. v2 would add three packages for no feature this server uses. `tools.ts` passes a `z.strictObject(...)` (not a raw shape) as `inputSchema`, which is also the only form v2 accepts, so a later move to v2 changes imports, not schemas. Support for 1.x: bug and security fixes for at least six months after 2026-07-27 |
+| Kiro hooks (1.2) | kiro.dev/docs/hooks, /docs/hooks/types (as Markdown), /docs/hooks/actions, /docs/custom-agents/configuration-reference (as Markdown); pages updated 2026-10-10 to 2026-11-12 | Standalone hooks are `.kiro/hooks/*.json` with `version: "v1"` and a `hooks` array (`name`, `trigger` in PascalCase, `matcher`, `action: { type: "command", command }`, `timeout` in seconds, `enabled`), read by **IDE 1.x and CLI V3**. The `.kiro.hook` files the design wondered about are the IDE 0.x format. Triggers used here exist: `PreToolUse`, `PostToolUse`, `SessionStart` (CLI V3; `agentSpawn` is a 2.x alias), `PostFileSave` (IDE and CLI V3, fired only by the agent's own saves). Tool matchers accept the category tags `read`, `write`, `shell`, `web`, `spec`, `@mcp`, `@<server>`, `@<server>/<tool>`, wildcards or a regex on the tool id. A command that exits non-zero blocks a `PreToolUse` call and its stderr goes to the agent. Profile hooks in an agent file use the same fields as an array (the current V3 form); the 2.x object keyed by camelCase events is legacy. For MCP tools the event's `tool_name` is `mcp_<server>_<tool>` | **Both files are in a form their reader accepts**: `.kiro/hooks/booking-properties.json` matches the v1 schema for IDE 1.x and CLI V3, and `builder.json`'s `hooks` is the current V3 array form. Open question 10 is answered: nothing to convert. **New finding:** CLI V3 loads the workspace `.kiro/hooks/` files beside the profile hooks, so in a builder session `guard-secrets` runs twice before each read, write or shell call, and a write to `lib/booking/` runs the booking tests twice (the file's `PostFileSave` and the profile's `PostToolUse`, up to 240 s each). Nothing was changed; this is open question 11 |
+| Speech recognition (1.3) | `@mdn/browser-compat-data` 8.1.9 (data timestamp 2026-11-12), `npm pack` into `.measurements/`, read with a throwaway Node script | `SpeechRecognition` constructor: Chrome 139 unprefixed (33 `webkit`); **Safari 14.1 and Safari on iOS 14.5, `webkit` prefix only**; **Firefox 160 (the current release) unprefixed and `webkit`**; **Firefox for Android: not supported** (bug 1244242). `SpeechRecognition.available()` (static): Chrome 139, Firefox 160; **not in Safari or Safari on iOS**. `processLocally`: Chrome 139, Firefox 160. `SpeechSynthesis`: all five. Current releases in the data: Safari 27.2, Safari on iOS 27.2, Firefox 160, Firefox for Android 160 | The design's memory ("Firefox has none") is out of date. With Requirement 6.2 unchanged, the Capability_Mode is `voice` on Safari (prefixed constructor, no `available()`, so the existing port treats it as available) and on Firefox 160+, and `typed` on Firefox for Android, Firefox before 160, and wherever `available()` answers `unavailable`. That makes the approved No_Recognition_Notice wording ("La voz funciona en Chrome; aquí puedes escribir.") inaccurate, so a new wording is proposed (open question 12). Open question 3 is answered with this data below. The manual checklist (task 15.1) has to cover Firefox desktop (voice) and Firefox for Android (typed) separately |
+| axe-core (1.4) | `npm view axe-core`; its README in `node_modules`; `doc/API.md` and `doc/rule-descriptions.md` at tag v4.14.1; a throwaway jsdom 29.1.1 run in `.measurements/` | Newest is **4.14.1**, `engines: node >=4`, no dependencies. The README: "limited support for JSDOM ... Currently the `color-contrast` rule is known not to work with JSDOM", and turn such rules off. In the jsdom run, `axe.run(container, options)` worked and found the planted `button-name` and `image-alt` violations. `color-contrast` came back *incomplete* ("Axe encountered an error", it needs canvas). `link-in-text-block` and `scrollable-region-focusable` came back *inapplicable* although the page had a link inside a paragraph and an `overflow:auto` box: they need computed colours and scroll sizes, which jsdom does not have. `target-size` and `color-contrast-enhanced` are off by default. Page-level rules (`document-title`, `html-has-lang`, `landmark-one-main`, `page-has-heading-one`, `region`) are inapplicable when the context is a container | Task 13.1 turns off `color-contrast`, `link-in-text-block` and `scrollable-region-focusable`, each listed in the test with this reason; contrast stays covered by `contrast.test.ts` and Lighthouse (15.8). It leaves `target-size` at its default (off). The page-level rules run only where the test renders a whole page into `document` (the Landing_Page); component scans pass their container |
+| Metadata files (1.5) | `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/01-metadata/{app-icons,opengraph-image,index}.md`, `04-functions/{image-response,generate-metadata}.md`, `05-config/01-next-config-js/cacheComponents.md`; a throwaway script in `.measurements/` (deleted) | Static files in `app/`: `icon` accepts `.ico .jpg .jpeg .png .svg` (an SVG gets `sizes="any"`), `apple-icon` accepts `.jpg .jpeg .png`, `opengraph-image` accepts `.jpg .jpeg .png .gif` (at most 8 MB, or the build fails) with `opengraph-image.alt.txt` beside it for `og:image:alt`; `favicon` is `.ico` in the root of `app/` only. Generated (`.tsx`) variants are cached special Route Handlers, prerendered unless they use request-time APIs; static files need nothing from `cacheComponents`. A relative URL-based metadata field needs `metadataBase`. `ImageResponse` (Satori + Resvg) takes `ttf`, `otf` or `woff` fonts only. The spike, on Node 20.19.6: `import { ImageResponse } from "next/og"` **fails in plain Node ESM** (`ERR_MODULE_NOT_FOUND`, Next has no exports map, it would need `next/og.js`), and **runs under `node --import tsx`**, the way the repo's scripts already run: a 1200 × 630 PNG (valid signature, 25.6 kB) with an embedded SVG data URL and text in the bundled default sans font, in 1.2 s, byte-identical on a second render | The Brand_Assets plan stands: `scripts/build-brand-assets.ts` runs with `node --import tsx`, draws the reels from the SVG sources as data URLs, and writes static PNGs that the build serves as files. Newsreader and Inter need their `ttf` files for the text (open question 7 still stands; the default font is the fallback if the owner declines). Task 10 checks the build output for a `metadataBase` warning and sets it from one constant if the OG URL is wrong |
+| Mermaid (1.6) | docs.github.com "Creating diagrams"; Mermaid's `flowchart.md` (develop branch) | GitHub renders a fenced block with the `mermaid` identifier in Markdown files; the Mermaid version GitHub runs is shown by a block containing `info`. Mermaid documents `<br>` for line breaks in quoted labels (and newlines inside Markdown strings); `\n` is not documented | The two diagrams in this design used `\n` inside labels; they now use `<br>`. The manual checklist checks the rendered README on GitHub once the repository exists |
+
+The table below is the design session's first plan, kept for the record.
 
 | Area | First choice from memory | To check in task 1 | What would change |
 |---|---|---|---|
@@ -37,16 +50,16 @@ The model still proposes and the code still decides. Nothing in this spec change
 ```mermaid
 flowchart LR
   subgraph Browser
-    CP["Call_Page\nCallScreen + Call_Visuals"]
+    CP["Call_Page<br>CallScreen + Call_Visuals"]
     LP["Landing_Page (static)"]
     VS["voiceStatus (pure)"]
     CM["capabilityMode (pure)"]
     CV["callVisuals (pure)"]
   end
   subgraph Server
-    TA["/api/turn\nspeechFor: live | cached | browser"]
-    SA["/api/speech\n+ tts_usage line"]
-    RL[("rate_limits\ntts-used:<model>\ntts-exhausted:<model>")]
+    TA["/api/turn<br>speechFor: live | cached | browser"]
+    SA["/api/speech<br>+ tts_usage line"]
+    RL[("rate_limits<br>tts-used:#lt;model#gt;<br>tts-exhausted:#lt;model#gt;")]
   end
   CP --> CM
   CP --> VS
@@ -56,7 +69,7 @@ flowchart LR
   TA --> RL
   SA --> RL
   subgraph Dev["Build time only"]
-    MCP["mcp/phantom-booking\n(stdio, PGlite)"]
+    MCP["mcp/phantom-booking<br>(stdio, PGlite)"]
     BR["lib/booking (pure)"]
     GEN["scripts/readme-kiro.ts"]
     BA["scripts/build-brand-assets.ts"]
@@ -131,7 +144,7 @@ If the IDE hook file turns out not to be in a format the IDE reads (task 1.2), i
 
 ### The booking MCP server (Requirement 2)
 
-**Shape.** `server.ts` is about 40 lines: build the demo DB, register three tools from `tools.ts`, connect `StdioServerTransport` *(check in 1.1)*. `tools.ts` is pure apart from one injected port:
+**Shape.** `server.ts` is about 40 lines: build the demo DB, register three tools from `tools.ts`, connect `StdioServerTransport` (confirmed in 1.1: `@modelcontextprotocol/sdk` 1.32.2, `McpServer.registerTool` with a `z.strictObject` as `inputSchema`). `tools.ts` is pure apart from one injected port:
 
 ```ts
 interface BookingAgenda {
@@ -233,10 +246,10 @@ function capabilityMode(i: CapabilityInput): "voice" | "typed";
 
 On screen, when the mode is `typed`:
 
-- the No_Recognition_Notice sits right under the heading, above the language switch, so it is visible at 375 px before the Call ("La voz funciona en Chrome; aquí puedes escribir." / "Voice works in Chrome; here you can type.");
+- the No_Recognition_Notice sits right under the heading, above the language switch, so it is visible at 375 px before the Call. The approved wording is "La voz funciona en Chrome; aquí puedes escribir." / "Voice works in Chrome; here you can type." Task 1.3 found that Safari and Firefox 160+ do have recognition, so the notice will mostly show on Firefox for Android, older Firefox, and browsers whose `available()` says no, where "works in Chrome" sends the Caller to the wrong fix. Proposed instead: "Este navegador no reconoce la voz; aquí puedes escribir." / "This browser can't recognise speech; you can type here." (open question 12; the glossary wording stays until the owner approves);
 - the Call button keeps its label and starts the Call in Typed_Mode; `focusInput` already runs on the first `typing` phase;
 - `TypeInsteadButton` is not rendered (`state.typed && !state.recognition`), because there is nothing to switch from (the core-call-loop 2.11 amendment, open question 4);
-- replies are still spoken when the browser can speak (Safari and Firefox have `speechSynthesis`; the Neural_Voice works with `<audio>`).
+- replies are still spoken when the browser can speak (MDN: `speechSynthesis` in Safari 7+, Firefox 49+ and Firefox for Android 62+; the Neural_Voice works with `<audio>`).
 
 Copy lives in `callCopy.ts` (`noRecognition`, `voiceResting`).
 
@@ -296,13 +309,13 @@ Under reduced motion the reels and light are still (the classes are not added, a
 
 ### Brand_Assets (Requirement 10)
 
-Sources in `assets/brand/`: `icon.svg` (an espresso reel with a gold hub and a terracotta dot on `--bg`) and `og.svg` (1200 × 630: the machine's ivory body, two reels, the light, "Phantom Line" in Newsreader with "nobody answered" in gold, and one line of Inter). `scripts/build-brand-assets.ts` writes `app/icon.svg` (copied), `app/apple-icon.png` (180 × 180) and `app/opengraph-image.png` with `app/opengraph-image.alt.txt`, using `ImageResponse` from `next/og` *(check in 1.5)*. Text in the image needs the font file itself: Newsreader and Inter come from the Google Fonts repository under the SIL Open Font License and are committed in `assets/brand/fonts/` with `OFL.txt` (Requirement 10.6, open question 7). The PNGs are committed; the build reads them as static files. `app/favicon.ico` and the unused SVGs in `public/` are deleted after a search shows nothing references them. `metadata.description` becomes "An AI answering machine for small shops: it answers, books by the shop's rules, and leaves the owner a message."
+Sources in `assets/brand/`: `icon.svg` (an espresso reel with a gold hub and a terracotta dot on `--bg`) and `og.svg` (1200 × 630: the machine's ivory body, two reels, the light, "Phantom Line" in Newsreader with "nobody answered" in gold, and one line of Inter). `scripts/build-brand-assets.ts` writes `app/icon.svg` (copied), `app/apple-icon.png` (180 × 180) and `app/opengraph-image.png` with `app/opengraph-image.alt.txt`, using `ImageResponse` from `next/og`, run with `node --import tsx` (confirmed in 1.5; plain Node ESM cannot resolve `next/og`). Text in the image needs the font file itself: Newsreader and Inter come from the Google Fonts repository under the SIL Open Font License and are committed in `assets/brand/fonts/` with `OFL.txt` (Requirement 10.6, open question 7). The PNGs are committed; the build reads them as static files. `app/favicon.ico` and the unused SVGs in `public/` are deleted after a search shows nothing references them. `metadata.description` becomes "An AI answering machine for small shops: it answers, books by the shop's rules, and leaves the owner a message."
 
 ## Part 5: Presentation
 
 ### README (Requirement 11)
 
-New order: title and one-line pitch; **Try it in 30 seconds** (DEMO_URL placeholder, `/call/peluqueria-lola`, `/machine/peluqueria-lola`, the PIN on the landing page, "voice in Chrome; Safari and Firefox type"); GIF placeholders; **How it works** with the Mermaid diagram; **How we used Kiro** (generated); **The numbers** (generated); **Roadmap**; then the existing "Run it locally" and "Deploy" sections, unchanged.
+New order: title and one-line pitch; **Try it in 30 seconds** (DEMO_URL placeholder, `/call/peluqueria-lola`, `/machine/peluqueria-lola`, the PIN on the landing page, "voice where the browser can recognise speech (tested in Chrome), typing everywhere" (wording from task 1.3's data; Safari and Firefox are named only after the manual checklist passes on them)); GIF placeholders; **How it works** with the Mermaid diagram; **How we used Kiro** (generated); **The numbers** (generated); **Roadmap**; then the existing "Run it locally" and "Deploy" sections, unchanged.
 
 Diagram:
 
@@ -311,10 +324,10 @@ flowchart LR
   V["Voice in the browser"] --> H
   W["WhatsApp (Roadmap)"] -.-> H
   C["Web chat (Roadmap)"] -.-> H
-  H["handleTurn\n(one core for every channel)"] --> M["Gemini: proposes a reply and fields"]
+  H["handleTurn<br>(one core for every channel)"] --> M["Gemini: proposes a reply and fields"]
   M --> H
-  H --> R["Booking_Rules in TypeScript:\nthe code decides"]
-  R --> P[("Postgres on Neon:\nno-overlap constraint")]
+  H --> R["Booking_Rules in TypeScript:<br>the code decides"]
+  R --> P[("Postgres on Neon:<br>no-overlap constraint")]
   P --> O["Owner's machine: tape and agenda"]
 ```
 
@@ -333,7 +346,7 @@ Outside this spec's own surfaces, task 12 lists the other places (steering `prod
 
 ## Part 6: Accessibility (Requirement 13)
 
-- `axe-core` (dev) in `tests/components/a11y/axe.test.tsx`: Landing_Page content in both languages, CallScreen in each phase with a fake port (idle voice, idle typed with the No_Recognition_Notice, typing, speaking with the Resting_Notice, ended), and PinGate. `color-contrast` and any rule task 1.4 finds layout-dependent are off, and listed in the test. Machine screens are scanned too; a violation there is recorded and asked about (13.6).
+- `axe-core` (dev) in `tests/components/a11y/axe.test.tsx`: Landing_Page content in both languages, CallScreen in each phase with a fake port (idle voice, idle typed with the No_Recognition_Notice, typing, speaking with the Resting_Notice, ended), and PinGate. `color-contrast`, `link-in-text-block` and `scrollable-region-focusable` are off (task 1.4: the first errors in jsdom, the other two silently become inapplicable without layout), and listed in the test with that reason; `target-size` stays at its default, off. Machine screens are scanned too; a violation there is recorded and asked about (13.6).
 - Names: CallButton ("Llamar" / "Call", "Colgar" / "Hang up", "Volver a llamar"), TypeInsteadButton, HissToggle, both language switches, the landing links, by role and name.
 - Order and ring: the same `tabbables` helper as the machine tests, for the Landing_Page and the Call_Page, against the visual order listed in the test; no `tabindex` above 0; every tabbable has `focus-ring`.
 - Contrast: `contrast.test.ts` gains the new pairs: the problem line (`--text` on `--bg`), the gold tagline phrase (large, `--gold` on `--bg`), the step text, the notices (`--text` on `--section`), the hiss toggle label, the OG image's text on its ivory (from the SVG's own fills).
@@ -408,7 +421,7 @@ Each property is one fast-check test with `numRuns: 200` unless noted. Shared ge
 | `findUnlabelledClaims` matches only lowercase | J12 |
 | `startElement` builds a new `Audio` per line | the unlock test (Requirement 14) |
 
-**Unit tests:** the English real-call lines; `names.ts` for "idiot" and "darling" if they are added; `speechFor` returning `browser` only on a miss with all models marked; the `/api/speech` usage counter on PGlite (a model answering increments only its own window; a 429 does not increment); `projectNumbers` on fixture specs (a generator-fault catch-log row is not a bug); `splice` with a missing or duplicated marker; `replyChecks` for each check; Call_Check_Script refusing a remote base; the MCP server in-process through the SDK's in-memory transport *(check in 1.1)*, listing exactly three tools and answering one `check_slot`; the isolation test.
+**Unit tests:** the English real-call lines; `names.ts` for "idiot" and "darling" if they are added; `speechFor` returning `browser` only on a miss with all models marked; the `/api/speech` usage counter on PGlite (a model answering increments only its own window; a 429 does not increment); `projectNumbers` on fixture specs (a generator-fault catch-log row is not a bug); `splice` with a missing or duplicated marker; `replyChecks` for each check; Call_Check_Script refusing a remote base; the MCP server in-process through the SDK's in-memory transport (`InMemoryTransport.createLinkedPair()` and `Client`, confirmed in 1.1), listing exactly three tools and answering one `check_slot`; the isolation test.
 
 **DOM tests** (`// @vitest-environment jsdom`, `cleanup` called in each file, as the machine tests do): the whole typed Call with no `SpeechRecognition` (notice before the Call, no "type instead", the Call button starts typing and focuses the field, a typed line, the reply, hang-up); the Resting_Notice after a scripted 429; the language switch visible before the Call; Call_Visuals' `data-reels` and `data-light` per phase, with and without reduced motion; the hiss toggle's name and `aria-pressed`; the landing page in both languages with the PIN shown only for 6 digits; axe; names; order and focus ring.
 
@@ -416,7 +429,7 @@ Each property is one fast-check test with `numRuns: 200` unless noted. Shared ge
 
 ## Dependencies and configuration
 
-- New dev dependencies: `@modelcontextprotocol/sdk` (the MCP server; the app never imports it) and `axe-core` (DOM tests). Versions chosen in task 1 for Node 20.19 and zod 4. Nothing else: noise, icons and the README generator use what is installed.
+- New dev dependencies: `@modelcontextprotocol/sdk` (the MCP server; the app never imports it) and `axe-core` (DOM tests). Versions chosen in task 1 for Node 20.19 and zod 4: `@modelcontextprotocol/sdk` 1.32.2 and `axe-core` 4.14.1, installed as dev dependencies. Nothing else: noise, icons and the README generator use what is installed.
 - `.env.example` gains, names only: `TTS_MODEL_REQUESTS_PER_DAY`.
 - `.kiro/settings/mcp.json` gains `phantom-booking`; `builder.json` gains `@phantom-booking` in `tools`.
 - `scripts/check-client-bundle.mjs` refuses `@modelcontextprotocol` and `phantom-booking`.
@@ -424,13 +437,18 @@ Each property is one fast-check test with `numRuns: 200` unless noted. Shared ge
 
 ## Open questions
 
-1. **"Owner-machine files".** I read it as the spec files in `.kiro/specs/owner-machine/`. If it also means the code owner-machine wrote, then `app/page.tsx` (Requirement 8) cannot be rewritten, and the machine half of the accessibility pass can only report.
-2. **Landing language.** The static page renders English first and switches to Spanish after mount for Spanish browsers, so a Spanish visitor may see English for a moment. The alternative is two routes (`/` and `/es`), which avoids the flash but adds a route.
+Status after task 1 (2026-11-16): 10 is answered; 11 and 12 are new; 1–9 are still open, and 3 now has its data.
+
+1. **"Owner-machine files".** I read it as the spec files in `.kiro/specs/owner-machine/`. If it also means the code owner-machine wrote, then `app/page.tsx` (Requirement 8) cannot be rewritten, and the machine half of the accessibility pass can only report. *Still open.*
+2. **Landing language.** The static page renders English first and switches to Spanish after mount for Spanish browsers, so a Spanish visitor may see English for a moment. The alternative is two routes (`/` and `/es`), which avoids the flash but adds a route. *Still open.*
 3. **Safari's recognition.** If MDN's data shows Safari has a working `webkitSpeechRecognition`, should Safari use it (voice mode, notice only on Firefox), or should we force typed mode on Safari because its recognition was not tested?
-4. **Hiding "Prefiero escribir".** When the call starts typed, that button has nothing to do. Hiding it changes core-call-loop 2.11. Approve the amendment, or keep the button (it would focus the field)?
-5. **English Resting_Notice wording.** "The natural voice is resting; your browser's voice is answering." OK?
-6. **Call_Check_Script and the database.** `next dev` uses `DATABASE_URL`, so the check writes Calls and Bookings to the Neon demo shop. Run it only as an owner step, against a Neon branch, or not at all?
-7. **Fonts for the images.** Committing Newsreader and Inter TTF files (OFL) is what lets the OG image draw text with no network. OK, or draw the heading as outlined SVG paths instead?
-8. **Repo_URL.** The GitHub repository does not exist yet (review item 1). Which owner and name should the constant use?
-9. **Counting mutation proofs.** Owner-machine recorded mutation results in NOTAS rows, not in its `tasks.md` tables, and a row can hold several mutations. Count NOTAS rows (sessions), or have each future mutation logged as its own row in one ledger so the number is exact?
-10. **Kiro hook file format.** If task 1.2 finds that `.kiro/hooks/booking-properties.json` is not a format the IDE reads, should it be converted, or should the evidence stay CLI-only?
+   *Data from task 1.3 (MDN browser-compat-data 8.1.9, 2026-11-12):* Safari 14.1+ and Safari on iOS 14.5+ have `webkitSpeechRecognition` (prefix only) and no `available()`; Firefox 160 (current) has both constructors and `available()`; Firefox for Android has none. Under Requirement 6.2 as written, Safari and Firefox 160 start in voice mode. My recommendation: follow 6.2 (voice on Safari), because Typed_Mode is still one tap away through "Prefiero escribir" in voice mode, and test Safari's recognition by hand in task 15.1 before the README names it. Still open: the owner decides.
+4. **Hiding "Prefiero escribir".** When the call starts typed, that button has nothing to do. Hiding it changes core-call-loop 2.11. Approve the amendment, or keep the button (it would focus the field)? *Still open.*
+5. **English Resting_Notice wording.** "The natural voice is resting; your browser's voice is answering." OK? *Still open.*
+6. **Call_Check_Script and the database.** `next dev` uses `DATABASE_URL`, so the check writes Calls and Bookings to the Neon demo shop. Run it only as an owner step, against a Neon branch, or not at all? *Still open.*
+7. **Fonts for the images.** Committing Newsreader and Inter TTF files (OFL) is what lets the OG image draw text with no network. OK, or draw the heading as outlined SVG paths instead? *Still open. Task 1.5 showed `next/og` runs under `node --import tsx` and draws text in its bundled default sans font with no font file, so a third option is that font for the OG text, which breaks design.md's "headings in Newsreader".*
+8. **Repo_URL.** The GitHub repository does not exist yet (review item 1). Which owner and name should the constant use? *Still open.*
+9. **Counting mutation proofs.** Owner-machine recorded mutation results in NOTAS rows, not in its `tasks.md` tables, and a row can hold several mutations. Count NOTAS rows (sessions), or have each future mutation logged as its own row in one ledger so the number is exact? *Still open.*
+10. **Kiro hook file format.** If task 1.2 finds that `.kiro/hooks/booking-properties.json` is not a format the IDE reads, should it be converted, or should the evidence stay CLI-only? *Answered by task 1.2: both `.kiro/hooks/booking-properties.json` (v1 schema, IDE 1.x and CLI V3) and the `hooks` array in `builder.json` (current CLI V3 profile form) are in a form their readers accept. Nothing to convert.*
+11. **Hooks that run twice.** *(New, task 1.2.)* CLI V3 loads the workspace `.kiro/hooks/*.json` beside the builder profile's own hooks, and both define `guard-secrets` (`PreToolUse`), so in a builder session it runs twice per read, write and shell call. A write to `lib/booking/` also runs the booking tests twice: the file's `PostFileSave` hook and the profile's `PostToolUse` hook, each with a 240 s limit. Options: (a) leave it, since both are idempotent and only cost time; (b) drop `guard-secrets` and `booking-properties` from `builder.json` and let the shared file serve IDE and CLI; (c) drop the `guard-secrets` entry from the shared file and keep it per profile. Nothing was changed. Task 2's evidence will show whichever copy fires.
+12. **No_Recognition_Notice wording.** *(New, task 1.3.)* The glossary's "La voz funciona en Chrome; aquí puedes escribir." / "Voice works in Chrome; here you can type." was written when Firefox had no recognition. With the notice now showing mostly on Firefox for Android, older Firefox and browsers whose `available()` says no, I propose "Este navegador no reconoce la voz; aquí puedes escribir." / "This browser can't recognise speech; you can type here." Approve, or keep the approved wording?

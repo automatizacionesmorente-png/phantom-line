@@ -73,6 +73,12 @@ export interface CallFields {
   serviceId?: string;
   /** Shop-local date "YYYY-MM-DD" and time "HH:MM". */
   requested?: { date: string; time: string };
+  /** An open Service_Choice (front-desk-brain 4.5): the candidates, and the other services said with it. */
+  serviceChoice?: { candidates: string[]; with: string[] };
+  /** A day heard without a time, "YYYY-MM-DD" (front-desk-brain 5.6). */
+  day?: string;
+  /** Narrows the First_Offer (front-desk-brain 5.4, 8.3). */
+  partOfDay?: "morning" | "afternoon";
 }
 
 export interface CallState {

@@ -6,6 +6,7 @@
  */
 import { Temporal } from "temporal-polyfill";
 import { localDateOf, toInstant } from "@/lib/booking";
+import { nameByParts } from "@/lib/conversation/catalog";
 import type { ShopProfile } from "@/lib/conversation/shopProfile";
 import type { Channel } from "@/lib/conversation/types";
 import type { Lang, SectorPack } from "@/lib/sectors";
@@ -113,7 +114,8 @@ export function groupAgenda(
 /**
  * What was booked, in the pack's words. For an `appointment` pack it is the Service name;
  * the `table` and `order` units show the Service name too until the sector-packs spec
- * stores party size and items. An unknown Service shows its id rather than nothing.
+ * stores party size and items. A Service_Combo is named by its parts ("Corte de hombre +
+ * Degradado"). An unknown Service shows its id rather than nothing.
  */
 export function agendaWhat(
   b: Pick<AgendaBooking, "serviceId">,
@@ -121,8 +123,7 @@ export function agendaWhat(
   pack: SectorPack,
   lang: Lang,
 ): string {
-  const service = shop.services.find((s) => s.id === b.serviceId);
-  const name = service ? service.name[lang] : b.serviceId;
+  const name = nameByParts(b.serviceId, shop.services, lang) ?? b.serviceId;
   switch (pack.unit) {
     case "appointment":
     case "table":

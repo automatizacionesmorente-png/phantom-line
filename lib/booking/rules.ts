@@ -10,6 +10,7 @@ import type {
   Verdict,
 } from "./types";
 import { findNearestSlots } from "./slots";
+import { resolveService } from "./services";
 
 type SessionsOf = (date: Temporal.PlainDate) => readonly SessionInstants[];
 
@@ -25,8 +26,9 @@ export function evaluateWith(
 ): Evaluation {
   const cmp = Temporal.Instant.compare;
 
-  // 1. The service must be in the catalog.
-  const service = ctx.shop.services.find((s) => s.id === req.serviceId);
+  // 1. The service must be in the catalog, or be a valid Combo_Id of catalog services
+  //    (one service of the summed duration from here on).
+  const service = resolveService(req.serviceId, ctx.shop.services);
   if (!service) return { ok: false, reason: "unknown_service" };
 
   // 2. Never in the past.

@@ -5,6 +5,7 @@
  * Demo_Shop. Hours, prices, the address, the PIN hash and the voice settings stay on the
  * server. Pure.
  */
+import { nameByParts } from "@/lib/conversation/catalog";
 import type { ShopProfile } from "@/lib/conversation/shopProfile";
 import type { Lang, SectorPack } from "@/lib/sectors";
 import { isDemoShop } from "./demo";
@@ -44,9 +45,12 @@ export function toMachineShop(shop: ShopProfile, pack: SectorPack): MachineShop 
   };
 }
 
-/** A Service's name in `lang`, or its id when it left the profile, so a row never renders empty. */
+/**
+ * A Service's name in `lang`, a Service_Combo's by its parts ("Corte de hombre + Degradado"),
+ * or the id when it left the profile, so a row never renders empty.
+ */
 export function serviceName(shop: Pick<MachineShop, "services">, id: string, lang: Lang): string {
-  return shop.services.find((s) => s.id === id)?.name[lang] ?? id;
+  return nameByParts(id, shop.services, lang) ?? id;
 }
 
 export function resourceName(shop: Pick<MachineShop, "resources">, id: string, lang: Lang): string {

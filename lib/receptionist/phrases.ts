@@ -1,8 +1,9 @@
 import type { Temporal } from "temporal-polyfill";
 import type { RejectionReason } from "@/lib/booking";
+import { catalogItems, serviceView } from "@/lib/conversation/catalog";
 import type { ShopProfile } from "@/lib/conversation/shopProfile";
 import type { Lang, SectorPack } from "@/lib/sectors";
-import { formatSlot, joinAnd, joinOr } from "./format";
+import { formatSlot, joinOr } from "./format";
 import {
   clockWords,
   minuteSessions,
@@ -169,14 +170,7 @@ function kit(lang: Lang, pack: SectorPack, shop: ShopProfile, seed: VariantSeed 
   const whenOn = (i: Temporal.Instant, withWeekday = false) =>
     lang === "en" ? joinDayTime(enOn(day(dateOf(i), withWeekday)), time(i)) : when(i, withWeekday);
 
-  const spokenService = (id: string): string => {
-    const s = shop.services.find((x) => x.id === id);
-    if (!s) return id;
-    if (s.spokenName) return s.spokenName[lang];
-    const name = s.name[lang];
-    if (lang === "es") return `${/o$/i.test(booking) ? "un" : "una"} ${booking} de ${name}`;
-    return `${/^[aeiou]/i.test(name) ? "an" : "a"} ${name} ${booking}`;
-  };
+  const spokenService = (id: string): string => serviceView(id, shop, pack).spoken[lang];
 
   /** What follows "¿Te viene bien …?": the time, with its day only when it differs from the one before. */
   const alternative = (i: Temporal.Instant, before: Temporal.PlainDate | null): string => {
@@ -237,8 +231,9 @@ function kit(lang: Lang, pack: SectorPack, shop: ShopProfile, seed: VariantSeed 
     offer,
     speakableName,
     plainAsked,
-    catalog: () => joinAnd(shop.services.map((s) => s.name[lang]), lang),
-    service: (id: string) => shop.services.find((s) => s.id === id)?.name[lang] ?? id,
+    catalog: () => catalogItems(shop, lang),
+    service: (id: string) => serviceView(id, shop, pack).name[lang],
+    view: (id: string) => serviceView(id, shop, pack),
     resource: (id: string) => shop.resources.find((r) => r.id === id)?.name[lang] ?? id,
     slot: (i: Temporal.Instant) => formatSlot(i, tz, lang),
   };
@@ -384,9 +379,12 @@ function spanish(k: Kit): PhraseSet {
         ]),
       ),
     serviceInfo: (id) => {
-      const s = shop.services.find((x) => x.id === id);
-      if (!s) return said("Claro.");
-      return said(`Claro, ${k.spokenService(id)} dura ${speakDuration(s.durationMin, "es")} y cuesta ${speakPrice(s.priceCents, "es")}.`);
+      const v = k.view(id);
+      if (!v.known) return said("Claro.");
+      const price = `${v.priceFrom ? "desde " : ""}${speakPrice(v.priceCents, "es")}`;
+      // A Service_Combo is plural ("un corte y un degradado"), so it says "son", as the First_Offer does.
+      if (v.parts.length > 1) return said(`Claro, ${v.spoken.es} son ${speakDuration(v.durationMin, "es")} y ${price}.`);
+      return said(`Claro, ${v.spoken.es} dura ${speakDuration(v.durationMin, "es")} y cuesta ${price}.`);
     },
     readBack: (id, start, name, phone) => {
       const phoneSentence = `Tu teléfono es el ${speakPhone(phone, "es")}, ¿vale?`;
@@ -539,9 +537,11 @@ function english(k: Kit): PhraseSet {
         ]),
       ),
     serviceInfo: (id) => {
-      const s = shop.services.find((x) => x.id === id);
-      if (!s) return said("Sure.");
-      return said(`Sure, ${k.spokenService(id)} takes ${speakDuration(s.durationMin, "en")} and costs ${speakPrice(s.priceCents, "en")}.`);
+      const v = k.view(id);
+      if (!v.known) return said("Sure.");
+      const price = `${v.priceFrom ? "from " : ""}${speakPrice(v.priceCents, "en")}`;
+      if (v.parts.length > 1) return said(`Sure, ${v.spoken.en} take ${speakDuration(v.durationMin, "en")} and cost ${price}.`);
+      return said(`Sure, ${v.spoken.en} takes ${speakDuration(v.durationMin, "en")} and costs ${price}.`);
     },
     readBack: (id, start, name, phone) => {
       const phoneSentence = `Your number is ${speakPhone(phone, "en")}, right?`;

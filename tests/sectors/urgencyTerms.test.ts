@@ -56,6 +56,21 @@ describe("Urgency_Terms in the sector packs (owner-machine 5.2, 5.12)", () => {
     expect(hairSalon.vocabulary.en.urgent).toContain("allergy");
   });
 
+  it("Not_Urgent_Phrases are optional, the urgent-terms shape, at most 20 (front-desk-brain 16.5)", () => {
+    const data = dataOf();
+    const { notUrgent: _n, ...esNoPhrases } = data.vocabulary.es;
+    void _n;
+    expect(SectorPackDataSchema.safeParse({ ...data, vocabulary: { ...data.vocabulary, es: esNoPhrases } }).success).toBe(true);
+    expect(SectorPackDataSchema.safeParse(withEs({ notUrgent: Array.from({ length: 20 }, (_, k) => `p${k}`) })).success).toBe(true);
+    expect(SectorPackDataSchema.safeParse(withEs({ notUrgent: Array.from({ length: 21 }, (_, k) => `p${k}`) })).success).toBe(false);
+    expect(SectorPackDataSchema.safeParse(withEs({ notUrgent: [] })).success).toBe(false);
+    expect(SectorPackDataSchema.safeParse(withEs({ notUrgent: ["Prueba de alergia", "prueba de ALERGIA"] })).success).toBe(false);
+    expect(SectorPackDataSchema.safeParse(withEs({ notUrgent: ["x".repeat(41)] })).success).toBe(false);
+    expect(SectorPackDataSchema.safeParse(withEs({ notUrgent: ["¡?"] })).success).toBe(false);
+    expect(hairSalon.vocabulary.es.notUrgent).toEqual(["prueba de alergia", "test de alergia", "prueba del tinte"]);
+    expect(hairSalon.vocabulary.en.notUrgent).toEqual(["allergy test", "patch test"]);
+  });
+
   it("term() still returns the string entries", () => {
     expect(term(hairSalon, "es", "service")).toBe("servicio");
     expect(typeof term(hairSalon, "en", "place")).toBe("string");

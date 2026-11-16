@@ -1,5 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { findTerm, normalizeForMatch, wordsOf } from "@/lib/messages/terms";
+import { findTerm, maskPhrases, normalizeForMatch, wordsOf } from "@/lib/messages/terms";
+
+describe("maskPhrases (front-desk-brain 16.5)", () => {
+  it("cuts every phrase out and returns the pieces around it", () => {
+    expect(maskPhrases("¿Hacéis la PRUEBA de alergia?", ["prueba de alergia"])).toEqual(["haceis la"]);
+    expect(maskPhrases("me prueba de alergia pica", ["prueba de alergia"])).toEqual(["me", "pica"]);
+    expect(maskPhrases("prueba de alergia", ["prueba de alergia"])).toEqual([]);
+    expect(maskPhrases("prueba de alergia y otra prueba de alergia hoy", ["prueba de alergia"])).toEqual(["y otra", "hoy"]);
+  });
+
+  it("masks the union of overlapping occurrences, and only whole words", () => {
+    expect(maskPhrases("allergy test de alergia", ["test de alergia", "allergy test"])).toEqual([]);
+    expect(maskPhrases("pruebas de alergia", ["prueba de alergia"])).toEqual(["pruebas de alergia"]);
+  });
+
+  it("with no phrases it is the normalized line", () => {
+    expect(maskPhrases("  Hola, ¿qué tal?  ", [])).toEqual(["hola que tal"]);
+    expect(maskPhrases("¿?", [])).toEqual([]);
+  });
+});
 
 describe("normalizeForMatch and wordsOf", () => {
   it("drops case, accents, punctuation and extra spaces", () => {

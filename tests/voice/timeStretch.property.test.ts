@@ -7,7 +7,7 @@ import { createTimeStretcher, FRAME_MS, stretchAll } from "@/lib/voice/timeStret
  * For all rates in [0.8, 1.25], sums of 1–3 sine tones between 100 and 400 Hz, and random
  * splits of the signal into stream chunks:
  * - the output length is the input length divided by the rate, within one frame (20 ms);
- * - the dominant period (autocorrelation) of the output is within 2 % of the input's;
+ * - the dominant period (from the spectrum peak of the dominant tone) of the output is within 2 % of the input's;
  * - the output is the same however the input was chunked;
  * - at rate 1.0 the output equals the input.
  */
@@ -72,51 +72,148 @@ function chunked(x: Float32Array, cuts: number[], rate: number): Float32Array {
 }
 
 /**
- * The dominant period in samples, from the autocorrelation: the lag of the highest normalized
- * autocorrelation within ±15 % of four periods of the dominant tone, over the signal without its
- * first and last 30 ms, refined by a parabola through its neighbours, divided by four.
- * A pitch change of more than 15 % (plain resampling at 0.8 or 1.25 moves it by 20–25 %) lands on
- * the edge of the window and fails the 2 % check.
- * Why four periods: a quieter second tone tilts the autocorrelation near each peak, which moves
- * the peak by a few samples whatever the lag. At one period of a 100 Hz tone that is several
- * percent of the input's own period (100 Hz plus 339.6 Hz at 0.154 read 231.5 samples instead of
- * 240, catch log 10.4); at four periods the same shift is a quarter as large. The neighbouring
- * peaks (three and five periods) stay outside the ±15 % window.
+ * The dominant period in samples, as SR / the frequency of the dominant tone. The frequency is the
+ * peak of the Hann-windowed spectrum of the signal without its first and last 30 ms: first the
+ * strongest bin of a zero-padded FFT between 0.7 and 1.4 times the tone, then a golden-section
+ * search of the exact windowed DFT within one padded bin of it.
+ *
+ * Why not the autocorrelation any more (catch log, front-desk-brain task 4): the first oracle took
+ * the autocorrelation peak near four periods. Its error was not floating-point noise. The quieter
+ * tones tilt that peak by an amount that depends on the window, and the input and the output have
+ * different lengths, so the tilt does not cancel. Seed 1460320275, run 94 (100 Hz with 145 Hz and
+ * 288 Hz, 319 ms, rate 1.138) read 2.32 % while the spectrum of the same two signals moved 0.30 %;
+ * over 1500 generated cases it read more than 2 % six times. It was also blind to plain
+ * resampling at exactly 1.25: five periods of the shifted tone land on four of the original, so a
+ * pure 100 Hz tone resampled at 1.25 read 0.00 %. The spectrum peak reads every resampling with
+ * |rate − 1| > 0.05 as at least 4.8 % off (1245 cases), because the 0.7–1.4 range holds the
+ * shifted tone for every rate in [0.8, 1.25], and the 0.6-amplitude tone has 9 times the power of
+ * any quieter one (at most 0.2).
+ *
+ * Known real failures, not oracle noise (BACKLOG item 18): with the dominant tone at exactly
+ * 100 Hz, whose 10 ms period equals the whole ±5 ms search width, the stretcher itself changes the
+ * pitch. Seed 13 run 124 (rate 1.25) moves all of the 100 Hz to 75 Hz and 125 Hz; seed 9 run 80
+ * (rate 1.029) moves it to 103 Hz, confirmed by zero crossings (98.4 to 101.6 per second). About 2
+ * cases in 3000, so this property fails about 1 suite run in 10 until `timeStretch.ts` is fixed.
  */
-const PERIODS = 4;
-function dominantPeriod(x: Float32Array, toneHz: number): number | null {
-  const edge = Math.round(0.03 * SR);
-  const period = (PERIODS * SR) / toneHz;
-  const minLag = Math.floor(period / 1.15);
-  const maxLag = Math.ceil(period * 1.15);
-  const from = edge;
-  const to = x.length - edge - maxLag - 2;
-  if (to - from < 2 * maxLag) return null;
-  const r = new Float64Array(maxLag + 2);
-  let best = -Infinity;
-  let pick = -1;
-  for (let lag = minLag - 1; lag <= maxLag + 1; lag++) {
-    let num = 0;
-    let e0 = 0;
-    let e1 = 0;
-    for (let i = from; i < to; i++) {
-      num += x[i] * x[i + lag];
-      e0 += x[i] * x[i];
-      e1 += x[i + lag] * x[i + lag];
-    }
-    r[lag] = e0 > 0 && e1 > 0 ? num / Math.sqrt(e0 * e1) : 0;
-    if (lag >= minLag && lag <= maxLag && r[lag] > best) {
-      best = r[lag];
-      pick = lag;
+const SEARCH_LOW = 0.7;
+const SEARCH_HIGH = 1.4;
+/** "Within 2 %" of the input's period (design N15); the limit itself does not move. */
+const PITCH_LIMIT = 0.02;
+/**
+ * The 2 % bound is inclusive, with 1e-9 of floating-point noise on it. A note for whoever reads a
+ * failure: a shrunk counterexample of this property always sits just above 2 %, because the error
+ * is continuous in the rate and fast-check shrinks the rate towards the bound. So "0.0200000010"
+ * after shrinking is not a rounding problem; replay the seed with the reported path cut to its
+ * first number to see the error before shrinking (the 0.020000001 of seed 1460320275 was 2.32 %).
+ */
+const BOUND_TOLERANCE = 1e-9;
+
+/** Squared magnitude of the Hann-windowed DFT of `seg` at `hz`, by rotation (no cos per sample). */
+function windowedPower(seg: Float32Array, hz: number): number {
+  const n = seg.length;
+  const w = (2 * Math.PI * hz) / SR;
+  const cw = Math.cos(w);
+  const sw = Math.sin(w);
+  const ch = Math.cos((2 * Math.PI) / n);
+  const sh = Math.sin((2 * Math.PI) / n);
+  let c = 1;
+  let s = 0;
+  let hc = 1;
+  let hs = 0;
+  let re = 0;
+  let im = 0;
+  for (let k = 0; k < n; k++) {
+    const v = seg[k] * (0.5 - 0.5 * hc);
+    re += v * c;
+    im += v * s;
+    const c2 = c * cw - s * sw;
+    s = s * cw + c * sw;
+    c = c2;
+    const h2 = hc * ch - hs * sh;
+    hs = hs * ch + hc * sh;
+    hc = h2;
+  }
+  return re * re + im * im;
+}
+
+/** The strongest bin between `lowHz` and `highHz` of the Hann-windowed FFT, zero-padded to at least 4 times the length. */
+function fftPeakHz(seg: Float32Array, lowHz: number, highHz: number): number {
+  let n = 1;
+  while (n < seg.length * 4) n <<= 1;
+  const re = new Float64Array(n);
+  const im = new Float64Array(n);
+  for (let k = 0; k < seg.length; k++) re[k] = seg[k] * (0.5 - 0.5 * Math.cos((2 * Math.PI * k) / seg.length));
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) {
+      [re[i], re[j]] = [re[j], re[i]];
+      [im[i], im[j]] = [im[j], im[i]];
     }
   }
-  if (pick < 0) return null;
-  const a = r[pick - 1];
-  const b = r[pick];
-  const c = r[pick + 1];
-  const denom = a - 2 * b + c;
-  const shift = denom !== 0 ? (0.5 * (a - c)) / denom : 0;
-  return (pick + Math.max(-0.5, Math.min(0.5, shift))) / PERIODS;
+  for (let len = 2; len <= n; len <<= 1) {
+    const half = len / 2;
+    const ang = (-2 * Math.PI) / len;
+    const wr = Math.cos(ang);
+    const wi = Math.sin(ang);
+    for (let i = 0; i < n; i += len) {
+      let cr = 1;
+      let ci = 0;
+      for (let k = 0; k < half; k++) {
+        const ur = re[i + k + half] * cr - im[i + k + half] * ci;
+        const ui = re[i + k + half] * ci + im[i + k + half] * cr;
+        re[i + k + half] = re[i + k] - ur;
+        im[i + k + half] = im[i + k] - ui;
+        re[i + k] += ur;
+        im[i + k] += ui;
+        const c2 = cr * wr - ci * wi;
+        ci = cr * wi + ci * wr;
+        cr = c2;
+      }
+    }
+  }
+  let best = Math.ceil((lowHz * n) / SR);
+  let bestPower = -1;
+  for (let b = best; b <= Math.floor((highHz * n) / SR); b++) {
+    const p = re[b] * re[b] + im[b] * im[b];
+    if (p > bestPower) {
+      bestPower = p;
+      best = b;
+    }
+  }
+  return (best * SR) / n;
+}
+
+function dominantPeriod(x: Float32Array, toneHz: number): number | null {
+  const edge = Math.round(0.03 * SR);
+  if (x.length - 2 * edge < SR / 10) return null;
+  const seg = x.subarray(edge, x.length - edge);
+  const coarse = fftPeakHz(seg, toneHz * SEARCH_LOW, toneHz * SEARCH_HIGH);
+  const bin = SR / (4 * seg.length);
+  const g = (Math.sqrt(5) - 1) / 2;
+  let lo = coarse - bin;
+  let hi = coarse + bin;
+  let m1 = hi - g * (hi - lo);
+  let m2 = lo + g * (hi - lo);
+  let p1 = windowedPower(seg, m1);
+  let p2 = windowedPower(seg, m2);
+  for (let i = 0; i < 40; i++) {
+    if (p1 < p2) {
+      lo = m1;
+      m1 = m2;
+      p1 = p2;
+      m2 = lo + g * (hi - lo);
+      p2 = windowedPower(seg, m2);
+    } else {
+      hi = m2;
+      m2 = m1;
+      p2 = p1;
+      m1 = hi - g * (hi - lo);
+      p1 = windowedPower(seg, m1);
+    }
+  }
+  return SR / ((lo + hi) / 2);
 }
 
 describe("N15: time-stretching keeps the pitch and shortens by the rate", () => {
@@ -142,7 +239,7 @@ describe("N15: time-stretching keeps the pitch and shortens by the rate", () => 
         const after = dominantPeriod(stretchAll(x, rate, SR), sig.tones[0].hz);
         expect(before).not.toBeNull();
         expect(after).not.toBeNull();
-        expect(Math.abs(after! - before!) / before!).toBeLessThan(0.02);
+        expect(Math.abs(after! - before!) / before!).toBeLessThanOrEqual(PITCH_LIMIT + BOUND_TOLERANCE);
         compared++;
         tonesSeen.add(sig.tones.length);
       }),

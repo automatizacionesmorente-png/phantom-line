@@ -3,21 +3,25 @@ import fc from "fast-check";
 import { Temporal } from "temporal-polyfill";
 import { evaluateBooking, localDateOf } from "@/lib/booking";
 import { toShopRules, type ShopProfile } from "@/lib/conversation/shopProfile";
-import { lolaSeedProfile } from "@/lib/db/seed";
 import { SAMPLE_KEYS, type SampleKey } from "@/lib/owner/api";
 import { DEMO_MIN_TAPE, demoSamples, samplesToRestore } from "@/lib/owner/demo";
 import { getSectorPack } from "@/lib/sectors";
 import { arbNow, DST_DATES } from "../booking/arbitraries";
+import { lolaProfile } from "../fixtures/lola";
 import { NUM_RUNS } from "../messages/arbitraries";
 
 const pack = getSectorPack("hair-salon");
-const TZ = lolaSeedProfile.timeZone;
+const TZ = lolaProfile.timeZone;
 const PHONES = new Set(["+34000000001", "+34000000002", "+34000000003"]);
 const EXAMPLE = { es: " (ejemplo)", en: " (example)" } as const;
 
-/** The Demo_Shop's seeded profile, as seeded and with English first (a future English demo). */
-const arbShop: fc.Arbitrary<ShopProfile> = fc.constantFrom<ShopProfile>(lolaSeedProfile, {
-  ...lolaSeedProfile,
+/**
+ * The Demo_Shop's V1_Profile, as it is and with English first (a future English demo). The
+ * seed is now the Rich_Profile (front-desk-brain 16.2); its samples are checked in
+ * tests/conversation/richProfile.test.ts.
+ */
+const arbShop: fc.Arbitrary<ShopProfile> = fc.constantFrom<ShopProfile>(lolaProfile, {
+  ...lolaProfile,
   languages: ["en", "es"],
 });
 

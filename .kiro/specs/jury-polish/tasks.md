@@ -35,14 +35,14 @@ Never read, print or log `.env.local` or any secret. If a script needs it, run i
 ## Tasks
 
 - [ ] 1. Spike and docs (no app code)
-  - [ ] 1.1 `@modelcontextprotocol/sdk`: from the registry and the package's own `package.json`, the newest version whose `engines` accepts Node 20.19, the zod major its `peerDependencies` accept (the app has zod 4.6.7), and from its current docs (Context7 or the README in the package) the stdio server, the tool-registration API with an input schema, and an in-memory transport for tests. Record versions, source and what changed the design in design.md, "Where current documentation changed my first choice". If the network is not available, say so and stop: do not guess versions.
-  - [ ] 1.2 Kiro hooks: from the current Kiro docs (IDE and CLI), the hook file format and trigger names. Record whether `.kiro/hooks/booking-properties.json` and the `hooks` in `builder.json` are in a form each one reads. If not, write it in design.md and ask (open question 10); change nothing.
-  - [ ] 1.3 `@mdn/browser-compat-data` (with `npm pack` into the git-ignored `.measurements/`, as natural-voice did; nothing added to the app): `SpeechRecognition`, `webkitSpeechRecognition` and `SpeechRecognition.available` in Safari, Safari on iOS, Firefox and Firefox for Android. Record the result, and answer open question 3 with the data next to it.
-  - [ ] 1.4 `axe-core`: the newest version for Node 20.19, how to run it on a jsdom container, and which rules need layout (to be turned off in 13.1). Record.
-  - [ ] 1.5 Next.js metadata files, from `node_modules/next/dist/docs`: `icon`, `apple-icon`, `opengraph-image` with `.alt.txt`, and how they are served under `cacheComponents`. Then, in a throwaway script under `.measurements/`, check whether `ImageResponse` from `next/og` runs in a plain Node 20 script and writes a PNG. Delete the script afterwards. Record the answer; if it does not run, write the fallback in design.md and ask (open question 7).
-  - [ ] 1.6 GitHub's docs on Mermaid in Markdown. Record.
-  - [ ] 1.7 Install `@modelcontextprotocol/sdk` and `axe-core` as dev dependencies at the versions from 1.1 and 1.4. Nothing else.
-  - [ ] 1.8 Update every design decision a finding changes, and mark the remaining open questions.
+  - [x] 1.1 `@modelcontextprotocol/sdk`: from the registry and the package's own `package.json`, the newest version whose `engines` accepts Node 20.19, the zod major its `peerDependencies` accept (the app has zod 4.6.7), and from its current docs (Context7 or the README in the package) the stdio server, the tool-registration API with an input schema, and an in-memory transport for tests. Record versions, source and what changed the design in design.md, "Where current documentation changed my first choice". If the network is not available, say so and stop: do not guess versions.
+  - [x] 1.2 Kiro hooks: from the current Kiro docs (IDE and CLI), the hook file format and trigger names. Record whether `.kiro/hooks/booking-properties.json` and the `hooks` in `builder.json` are in a form each one reads. If not, write it in design.md and ask (open question 10); change nothing.
+  - [x] 1.3 `@mdn/browser-compat-data` (with `npm pack` into the git-ignored `.measurements/`, as natural-voice did; nothing added to the app): `SpeechRecognition`, `webkitSpeechRecognition` and `SpeechRecognition.available` in Safari, Safari on iOS, Firefox and Firefox for Android. Record the result, and answer open question 3 with the data next to it.
+  - [x] 1.4 `axe-core`: the newest version for Node 20.19, how to run it on a jsdom container, and which rules need layout (to be turned off in 13.1). Record.
+  - [x] 1.5 Next.js metadata files, from `node_modules/next/dist/docs`: `icon`, `apple-icon`, `opengraph-image` with `.alt.txt`, and how they are served under `cacheComponents`. Then, in a throwaway script under `.measurements/`, check whether `ImageResponse` from `next/og` runs in a plain Node 20 script and writes a PNG. Delete the script afterwards. Record the answer; if it does not run, write the fallback in design.md and ask (open question 7).
+  - [x] 1.6 GitHub's docs on Mermaid in Markdown. Record.
+  - [x] 1.7 Install `@modelcontextprotocol/sdk` and `axe-core` as dev dependencies at the versions from 1.1 and 1.4. Nothing else.
+  - [x] 1.8 Update every design decision a finding changes, and mark the remaining open questions.
   - Requirements: 1.1, 2.1, 6.1, 10.4, 13.1, 15.4, 15.8
   - Done when: `npx vitest run`, `npm run lint`, `npx tsc --noEmit` and `npm run build` all pass.
 
@@ -70,6 +70,7 @@ Never read, print or log `.env.local` or any secret. If a script needs it, run i
 - [ ] 4. Safari unlock regression test (`tests/voice/neuralVoice.unlock.test.ts`)
   - [ ] 4.1 With a counting fake `Audio` constructor: `unlock()`, then two cached lines played to `ended`. Assert one construction, both `src` values set on that instance, three `play()` calls on it.
   - [ ] 4.2 Mutation: `startElement` builds a new element per line. The test must fail; record it in the mutation table and restore.
+  - [ ] 4.3 *(Reviewer defect, 2026-11-16.)* natural-voice N15 (`tests/voice/timeStretch.property.test.ts`) fails about 1 run in 5 with a relative pitch error of 0.02000000000006 against `< 0.02`: a floating-point edge at the bound, not a regression. Fix the cause (compare with a 1e-9 tolerance on the bound, or compute the error so it is exact at the bound), explain it in the test, and keep the 2 % limit. Regression test: the exact case at the bound (an error that is 2 % up to rounding) passes and 2.1 % fails, without lowering `numRuns`.
   - Requirements: 14.1, 14.2
   - Done when: `npx vitest run`, `npm run lint`, `npx tsc --noEmit` and `npm run build` all pass.
 
@@ -89,6 +90,7 @@ Never read, print or log `.env.local` or any secret. If a script needs it, run i
   - [ ] 6.4 **[PBT] J8.** The code decides the same in both languages. Validates 7.3.
   - [ ] 6.5 `scripts/lib/replyChecks.ts` (shared structural checks) and `scripts/check-call.ts`: `--base`, `--lang=es|en|both`, `--gap`, `--allow-remote`; one line per case and a total with the model requests made. Unit tests with a fake `fetch`: a passing and a failing reply per check; a remote base is refused before any request. Kiro does not run it against a server that writes to Neon (open question 6).
   - [ ] 6.6 DOM test: the ES / EN switch is found by name on the idle Call_Page at the 375 px media stub, before any press.
+  - [ ] 6.7 *(Reviewer defect, 2026-11-16.)* On the real owner's machine, a Spanish call's suggested reply is in English ("Hi, this is Lola from Peluquería Lola..."). The suggested reply must be in the call's language. Find where the Spanish call's language is lost on the way to `buildOwnerMessage` (it already uses `state.language`) or to `currentReply`, fix it there, and pin it with a regression test that fails on the current code: a Spanish call through the real route on PGlite ends with a Spanish suggested reply on the Tape, and an English call with an English one. Record the cause in the catch log.
   - Requirements: 7.1–7.6
   - Done when: `npx vitest run`, `npm run lint`, `npx tsc --noEmit` and `npm run build` all pass.
 
@@ -163,14 +165,14 @@ Never read, print or log `.env.local` or any secret. If a script needs it, run i
   - Done when: `npx vitest run`, `npm run lint`, `npx tsc --noEmit` and `npm run build` all pass.
 
 - [ ] 15. Manual checklist. Write it to `.kiro/specs/jury-polish/manual-checklist.md`; the owner runs it and records pass or fail per line. Kiro does not run it against the real database.
-  - [ ] 15.1 Safari on macOS, Safari on iOS and Firefox: the No_Recognition_Notice before the Call, a whole typed Call, replies spoken where the browser can speak.
+  - [ ] 15.1 Safari on macOS, Safari on iOS, Firefox on the desktop and Firefox for Android. Task 1.3 (MDN data): Safari and Firefox 160+ have recognition, so they should start in voice mode (record whether recognition really works there); Firefox for Android has none, so it must show the No_Recognition_Notice before the Call. In each: a whole Call (typed where there is no recognition), replies spoken where the browser can speak.
   - [ ] 15.2 The Resting_Notice with `GEMINI_TTS_MODEL` set to a model with no free quota; the `tts_usage` line in the Vercel logs.
   - [ ] 15.3 Owner steps: the English voice cache run (after natural-voice 2.4 and the owner's Neon approval) and the Call_Check_Script against `next dev`, recording its output.
   - [ ] 15.4 An English booking call by voice in Chrome.
   - [ ] 15.5 Call_Visuals: reels and light during a call; the hiss on, off and remembered after reload; everything still under reduced motion.
   - [ ] 15.6 375 px in Chrome's device mode and on a real phone for `/`, `/call/peluqueria-lola` and `/machine/peluqueria-lola`, with screenshots saved to `docs/screenshots/`.
   - [ ] 15.7 VoiceOver on Safari: a typed Call, both notices read once.
-  - [ ] 15.8 The OG image and icon in a link preview and a browser tab; Lighthouse accessibility on `/` and `/call/peluqueria-lola`, both scores recorded.
+  - [ ] 15.8 The OG image and icon in a link preview and a browser tab; Lighthouse accessibility on `/` and `/call/peluqueria-lola`, both scores recorded; the README's Mermaid diagram rendered on GitHub (task 1.6), once the repository exists.
   - [ ] 15.9 The hooks and the Booking_MCP from a fresh Kiro session: each fires or answers once.
   - Requirements: 1.3, 3, 4.5, 6, 7.4, 7.5, 9, 10, 13.5
   - Done when: the checklist is written, every line has a "Result / date" field, and `npx vitest run`, `npm run lint`, `npx tsc --noEmit` and `npm run build` pass. Sub-tasks are ticked when the owner records a pass.
