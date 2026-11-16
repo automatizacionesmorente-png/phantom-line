@@ -20,6 +20,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint
+      # PageProps and LayoutProps are global types that Next.js generates; tsc needs them first.
+      - run: npx next typegen
       - run: npx tsc --noEmit
       # Unit, property-based and PGlite database tests. No secrets: the suite never calls Gemini or Neon.
       - run: npx vitest run
