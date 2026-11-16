@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { SectorRule } from "@/lib/booking";
+import { normalizeForMatch } from "@/lib/messages/terms";
 
 export type Lang = "es" | "en";
 export const LANGS = ["es", "en"] as const;
@@ -48,8 +49,8 @@ export interface SectorPack {
   slotStepMin: number;
   /** Sector-specific checks, all pure. */
   rules: readonly SectorRule[];
-  /** `place` is how the receptionist names the business: "la peluquería" / "the salon". */
-  vocabulary: Record<Lang, { booking: string; bookingVerb: string; service: string; place: string }>;
+  /** How the receptionist and the owner screen name things, plus the Urgency_Terms, per language. */
+  vocabulary: Record<Lang, PackVocabulary>;
   /** The default voice per language. A Shop_Profile may override voice, classicVoice and style. */
   voice: Record<Lang, VoiceProfile>;
   /** Never advise on these; take a message for the owner instead. */
@@ -58,9 +59,33 @@ export interface SectorPack {
   neverPromise: Record<Lang, readonly string[]>;
 }
 
-export type VocabularyKey = keyof SectorPack["vocabulary"][Lang];
+/** One language of a pack's vocabulary. */
+export interface PackVocabulary {
+  booking: string;
+  bookingVerb: string;
+  service: string;
+  /** How the receptionist names the business: "la peluquería" / "the salon". */
+  place: string;
+  /** Any of these, as whole words in a Caller line, makes the Message urgent (owner-machine 5.3). */
+  urgent: readonly string[];
+  /** A request for today (owner-machine 5.4, 5.5). */
+  today: readonly string[];
+}
+
+/** Only the string entries, so `term()` always returns a string. */
+export type VocabularyKey = {
+  [K in keyof PackVocabulary]: PackVocabulary[K] extends string ? K : never;
+}[keyof PackVocabulary];
 
 const text = z.string().trim().min(1).max(200);
+
+/** 1–40 Urgency_Terms of 1–40 characters, each with a letter or digit, none repeated after normalization. */
+const urgencyTerms = z
+  .array(z.string().trim().min(1).max(40))
+  .min(1)
+  .max(40)
+  .refine((ts) => ts.every((t) => normalizeForMatch(t) !== ""), "every term needs a letter or a digit")
+  .refine((ts) => new Set(ts.map(normalizeForMatch)).size === ts.length, "terms must not repeat after normalization");
 const perLang = <T extends z.ZodType>(t: T) => z.strictObject({ es: t, en: t });
 
 /** zod for the data part of a pack (everything except the rule functions). */
@@ -74,7 +99,9 @@ export const SectorPackDataSchema = z.strictObject({
     .refine((f) => new Set(f).size === f.length, "requiredFields must not repeat")
     .refine((f) => f.includes("requestedTime") && f.includes("name") && f.includes("phone"), "a booking needs a time, a name and a phone"),
   slotStepMin: z.number().int().min(5).max(60),
-  vocabulary: perLang(z.strictObject({ booking: text, bookingVerb: text, service: text, place: text })),
+  vocabulary: perLang(
+    z.strictObject({ booking: text, bookingVerb: text, service: text, place: text, urgent: urgencyTerms, today: urgencyTerms }),
+  ),
   voice: z.strictObject({
     es: VoiceProfileSchema.refine((v) => v.languageCode === LANGUAGE_CODE.es, "the es voice must use es-ES"),
     en: VoiceProfileSchema.refine((v) => v.languageCode === LANGUAGE_CODE.en, "the en voice must use en-US"),

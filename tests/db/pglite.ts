@@ -30,8 +30,10 @@ export async function createTestDb(): Promise<TestDb> {
   const handle: DbHandle = {
     db,
     async atomic(build) {
-      await db.transaction(async (tx) => {
-        for (const q of build(tx)) await q;
+      return db.transaction(async (tx) => {
+        const results: unknown[] = [];
+        for (const q of build(tx)) results.push(await q);
+        return results;
       });
     },
   };
@@ -40,7 +42,7 @@ export async function createTestDb(): Promise<TestDb> {
     handle,
     repo: createRepository(handle),
     reset: async () => {
-      await db.execute(sql`TRUNCATE voice_cache, messages, bookings, calls, rate_limits, shops CASCADE`);
+      await db.execute(sql`TRUNCATE owner_actions, voice_cache, messages, bookings, calls, rate_limits, shops CASCADE`);
     },
     close: () => pg.close(),
   };

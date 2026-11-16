@@ -22,6 +22,20 @@
       "when": 1794583340418,
       "tag": "0002_voice_cache",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794790416199,
+      "tag": "0003_owner_machine",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794790423915,
+      "tag": "0004_machine_triggers",
+      "breakpoints": true
     }
   ]
 }

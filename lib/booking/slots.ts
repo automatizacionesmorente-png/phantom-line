@@ -70,6 +70,42 @@ export function slotCandidates(
 }
 
 /**
+ * Every grid start of `date`'s sessions (`open + k · slotStepMin` real minutes, the
+ * service ending by the close) that `evaluateBooking` accepts for the request, in time
+ * order, each once. The owner's Move_Slots (owner-machine 10.3). Two sessions can map to
+ * overlapping instants on a DST day, so the starts are sorted and de-duplicated.
+ */
+export function daySlots(
+  req: { serviceId: string; ignoreBookingId?: string },
+  date: Temporal.PlainDate,
+  ctx: RuleContext,
+): Slot[] {
+  const service = ctx.shop.services.find((s) => s.id === req.serviceId);
+  const step = ctx.pack.slotStepMin;
+  if (!service || step <= 0) return [];
+  const cmp = Temporal.Instant.compare;
+  const sessionsOf = cachedSessions(ctx);
+  const starts: Temporal.Instant[] = [];
+  for (const session of sessionsOf(date)) {
+    for (let k = 0; ; k++) {
+      const start = session.open.add({ minutes: k * step });
+      if (cmp(start.add({ minutes: service.durationMin }), session.close) > 0) break;
+      starts.push(start);
+    }
+  }
+  starts.sort(cmp);
+  const slots: Slot[] = [];
+  let last: number | null = null;
+  for (const start of starts) {
+    if (start.epochMilliseconds === last) continue;
+    last = start.epochMilliseconds;
+    const e = evaluateWith({ ...req, start }, ctx, sessionsOf);
+    if (e.ok) slots.push({ start: e.start, end: e.end, resourceId: e.resourceId });
+  }
+  return slots;
+}
+
+/**
  * Up to `limit` grid slots that `evaluateBooking` accepts, nearest to the
  * requested start in real time (ties: earlier first), inside
  * [max(now, R − windowDays), R + windowDays].

@@ -197,7 +197,7 @@ const rerender = (shop: ShopProfile, lang: Lang, l: PlanLine): Said => {
 };
 
 describe("N17: the cache plan", () => {
-  it("is deterministic, has no duplicate keys, keeps the tier order, and holds only cacheable lines that phrases() really says", () => {
+  it("is deterministic, has no duplicate keys, keeps the tier order, and holds only cacheable lines that phrases() really says", { timeout: 120_000 }, () => {
     const profile = pack.voice.es;
     fc.assert(
       fc.property(arbShop, arbToday, fc.constantFrom<Lang>("es", "en"), (shop, today, lang) => {

@@ -182,9 +182,12 @@ function parseEnClock(s: string): number | null {
 }
 
 /**
- * Day words back to a date, against the same today: relative words, "este X"
- * (this week), "el X que viene" (next week), and "el X N [de M]" (the nearest
- * such date). A weekday that does not match the date gives null.
+ * Day words back to a date, against the same today: relative words (including
+ * "pasado mañana" / "the day after tomorrow", which callers say even though the
+ * receptionist does not), "este X" / "this X" (this week), "el X que viene" /
+ * "next X" (next week), a bare "el X" (the next X, 1 to 7 days ahead), and
+ * "el X N [de M]" (the nearest such date). A weekday that does not match the
+ * date gives null.
  */
 export function parseSpokenDay(
   words: string,
@@ -218,6 +221,12 @@ export function parseSpokenDay(
   if (nextWeek) {
     const wd = weekdayOf(nextWeek[1]);
     return wd > 0 ? today.add({ days: wd - today.dayOfWeek + 7 }) : null;
+  }
+  // "el martes": the next Tuesday after today (on a Tuesday, the one a week ahead).
+  const bare = lang === "es" ? /^el (\S+)$/.exec(s) : null;
+  if (bare) {
+    const wd = weekdayOf(bare[1]);
+    return wd > 0 ? today.add({ days: (wd - today.dayOfWeek + 7) % 7 || 7 }) : null;
   }
 
   const abs =

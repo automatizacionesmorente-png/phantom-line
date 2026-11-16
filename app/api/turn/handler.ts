@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
 import type { Temporal } from "temporal-polyfill";
 import type { z } from "zod";
+import { firstIp, visitorKeyOf } from "../visitorKey";
 import { CallNotFoundError, handleTurn, sweep } from "@/lib/conversation/handleTurn";
 import { consoleFallbackLogger, summarizeError, type FallbackLogEvent } from "@/lib/conversation/fallbackLog";
 import type { ShopProfile } from "@/lib/conversation/shopProfile";
@@ -112,16 +112,9 @@ const GENERIC_UNAVAILABLE = {
   en: "Sorry, the line isn't working right now. Please call again in a few minutes.",
 } as const;
 
-/** The first address of `x-forwarded-for` (Vercel overwrites the header, so it cannot be spoofed there). */
-export function firstIp(forwardedFor: string | null): string {
-  const ip = forwardedFor?.split(",")[0]?.trim();
-  return ip ? ip : "unknown";
-}
-
-/** sha256(salt + ip). The raw IP is never stored. */
-export function visitorKeyOf(forwardedFor: string | null, salt: string): string {
-  return createHash("sha256").update(salt + firstIp(forwardedFor)).digest("hex");
-}
+// Moved to app/api/visitorKey.ts (owner-machine 10.1), shared with the Machine_API. Re-exported so
+// the speech adapter and its tests keep importing them from here.
+export { firstIp, visitorKeyOf };
 
 export function toIssues(error: z.ZodError): Issue[] {
   return error.issues.map((i) => ({

@@ -104,7 +104,7 @@ const MAX_ASKED_WORDS = 4;
 /**
  * `phrases(lang, pack, shop, seed?, now?)`. With a `seed` ({ callId, turn }) each template picks
  * its Phrase_Variant from it; with none, variant 0, so deterministic tests keep their shape.
- * With `now`, days are said relative to today in the shop's zone ("mañana", "este sábado");
+ * With `now`, days are said relative to today in the shop's zone ("mañana", "el sábado");
  * without it they are said by weekday and day of the month ("el sábado veinte").
  */
 export function phrases(
@@ -140,7 +140,7 @@ function kit(lang: Lang, pack: SectorPack, shop: ShopProfile, seed: VariantSeed 
     return { clock: { hour: z.hour, minute: z.minute }, ctx: sessionsOf(z.toPlainDate()), minute: z.hour * 60 + z.minute };
   };
 
-  /** "mañana", "este sábado", "el sábado veinte"; without a clock, by weekday and day of the month. */
+  /** "mañana", "el sábado", "el sábado veinte"; without a clock, by weekday and day of the month. */
   const day = (date: Temporal.PlainDate, withWeekday = false): string => {
     if (today) return speakDay(date, today, lang, { withWeekday });
     return lang === "es"
@@ -251,8 +251,8 @@ const WEEKDAY: Record<Lang, readonly string[]> = {
   en: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
 };
 
-/** English: "on Saturday the twentieth", but "tomorrow" and "this Saturday" take no "on". */
-const enOn = (day: string) => (/^(today|tomorrow|the day after|this |next )/i.test(day) ? day : `on ${day}`);
+/** English: "on Saturday the twentieth", but "tomorrow", "this Saturday" and "next Saturday" take no "on". */
+const enOn = (day: string) => (/^(today|tomorrow|this |next )/i.test(day) ? day : `on ${day}`);
 
 /** Why a request cannot be taken, as the opening of the rejection (Spanish and English share its shape). */
 type Why =

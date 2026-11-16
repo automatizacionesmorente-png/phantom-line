@@ -116,17 +116,18 @@ Terms already defined in `.kiro/specs/core-call-loop/requirements.md` (Call_Page
 
 ### Requirement 7: Days spoken relative to today
 
-**User Story:** As a Caller, I want to hear "mañana" or "este sábado", so that I do not have to work out which date "el viernes 13" is.
+**User Story:** As a Caller, I want to hear "mañana" or "el sábado", so that I do not have to work out which date "el viernes 13" is.
 
 #### Acceptance Criteria
 
 1. THE Receptionist SHALL turn every day it speaks into a Spoken_Form with a pure function, `speakDay`, that takes the date, today's date and the language, with both dates in the Shop's Time_Zone.
-2. IN Spanish, `speakDay` SHALL say "hoy" for today, "mañana" for tomorrow, "pasado mañana" for the day after, "este sábado" for a day 3 to 6 days ahead in the same Monday-to-Sunday week, "el sábado que viene" for a day 3 to 6 days ahead in the next week, and "el sábado veinte" for any other day, adding "de diciembre" when its month differs from today's month.
-3. IN English, `speakDay` SHALL say "today", "tomorrow", "the day after tomorrow", "this Saturday", "next Saturday", and "Saturday the twentieth" under the same rules, adding "of December" when the month differs.
-4. WHEN the read-back or the confirmation names a day that is today, tomorrow or the day after, THE Receptionist SHALL also say the weekday ("mañana viernes", "tomorrow, Friday"), so the caller can catch a mistake.
+2. IN Spanish, `speakDay` SHALL say "ayer" for yesterday, "hoy" for today, "mañana" for tomorrow, "el sábado" for a day 2 to 6 days ahead (never "pasado mañana", "este sábado" or "el sábado que viene"; owner's call, 2026-11-15), and "el sábado veinte" for any other day, adding "de diciembre" when its month differs from today's month.
+3. IN English, `speakDay` SHALL say "yesterday", "today", "tomorrow", "this Saturday" for a day 2 to 6 days ahead in the same Monday-to-Sunday week, "next Saturday" for a day 2 to 6 days ahead in the next week, and "Saturday the twentieth" for any other day, adding "of December" when the month differs. It SHALL never say "the day after tomorrow".
+4. WHEN the read-back or the confirmation names a day that is today or tomorrow, THE Receptionist SHALL also say the weekday ("mañana viernes", "tomorrow, Friday"), so the caller can catch a mistake. From 2 days ahead the day is already said by its weekday.
 5. THE Spoken_Form of a day SHALL never contain a digit.
 6. `speakDay` SHALL compute "today" from the current instant in the Shop's Time_Zone, never the server's, and SHALL give the right word on both sides of a daylight-saving change and around midnight.
 7. FOR ALL pairs of dates within 60 days of each other, parsing the Spoken_Form of a day back with the same today's date SHALL give the same date.
+8. THE parser SHALL still understand the forms a caller may say that the Receptionist no longer does: "pasado mañana", "the day after tomorrow", "este sábado" and "el sábado que viene".
 
 ### Requirement 8: Prices, numbers and phone numbers spoken
 

@@ -3,6 +3,7 @@ import { Temporal } from "temporal-polyfill";
 import type { ShopProfile } from "@/lib/conversation/shopProfile";
 import { initialCallState, type NewBooking, type Write } from "@/lib/conversation/types";
 import { shops } from "@/lib/db/schema";
+import type { FinalUrgency } from "@/lib/messages/urgency";
 import type { TestDb } from "./pglite";
 
 export async function insertShop(t: TestDb, profile: ShopProfile): Promise<void> {
@@ -64,7 +65,10 @@ export function messageWrite(shopId: string, callId: string, bookingId?: string)
       callerName: "Ana",
       callerPhone: "+34612345678",
       reason: "Quiere una cita de corte",
-      urgency: "normal",
+      // A fixture written straight to the repository, outside messageWrite: the cast is explicit.
+      urgency: "normal" as FinalUrgency,
+      urgencySuggested: null,
+      urgencyBasis: null,
       agreed: "Cita de corte",
       suggestedReply: "Hola Ana",
       outcome: bookingId ? "booked" : "message",

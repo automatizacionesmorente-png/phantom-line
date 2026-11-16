@@ -10,6 +10,7 @@ import { checkLimits, type LimitDecision } from "./limits";
 import { consoleFallbackLogger, type FallbackLogEvent } from "./fallbackLog";
 import { mergeFields } from "./fields";
 import { buildOwnerMessage } from "./ownerMessage";
+import { messageWrite } from "./messageWrite";
 import type { ShopProfile } from "./shopProfile";
 import {
   initialCallState,
@@ -189,13 +190,14 @@ async function endWithFallback(
     turnCount: state.turnCount + 1,
   };
   const message = buildOwnerMessage(final, "fallback", shop, pack);
+  const transcript = [...call.transcript, { caller: input.utterance, receptionist: reply.text }];
   await deps.repo.commit([
-    { type: "insertMessage", message: { ...message, shopId: shop.id, callId: call.id, channel: call.channel } },
+    messageWrite(message, { call, shop, pack, transcript, now: deps.clock() }),
     {
       type: "updateCall",
       callId: call.id,
       state: final,
-      transcript: [...call.transcript, { caller: input.utterance, receptionist: reply.text }],
+      transcript,
       turnCount: final.turnCount,
       status: "failed",
     },
@@ -238,7 +240,9 @@ function writesFor(
   decision: Decision,
   call: StoredCall,
   shop: ShopProfile,
+  pack: SectorPack,
   transcript: Line[],
+  now: Temporal.Instant,
   deps: CoreDeps,
 ): Write[] {
   const writes: Write[] = [];
@@ -275,10 +279,7 @@ function writesFor(
   }
   for (const e of decision.effects) {
     if (e.type === "saveMessage") {
-      writes.push({
-        type: "insertMessage",
-        message: { ...e.message, shopId: shop.id, callId: call.id, channel: call.channel, ...(bookingId ? { bookingId } : {}) },
-      });
+      writes.push(messageWrite(e.message, { call, shop, pack, transcript, now, ...(bookingId ? { bookingId } : {}) }));
     }
   }
   writes.push({
@@ -384,7 +385,7 @@ async function say(
     const spoken = dontKnow ? spokenTemplate(dontKnow.text, lang) : text;
     const cacheable = dontKnow ? dontKnow.cacheable : decision.cacheable;
     const transcript = [...call.transcript, { caller: input.utterance, receptionist: spoken }];
-    const committed = await deps.repo.commit(writesFor(decision, call, shop, transcript, deps));
+    const committed = await deps.repo.commit(writesFor(decision, call, shop, pack, transcript, now, deps));
     if (committed.ok) {
       return output(call.id, decision.state, shop, { text: spoken, cacheable }, decision.complete, decision.outcome);
     }
@@ -411,13 +412,14 @@ async function giveUpAfterConflicts(
   );
   const final: CallState = { ...state, stage: "done", pending: undefined, turnCount: state.turnCount + 1 };
   const message = buildOwnerMessage(final, "message", shop, pack);
+  const transcript = [...call.transcript, { caller: input.utterance, receptionist: reply.text }];
   await deps.repo.commit([
-    { type: "insertMessage", message: { ...message, shopId: shop.id, callId: call.id, channel: call.channel } },
+    messageWrite(message, { call, shop, pack, transcript, now: deps.clock() }),
     {
       type: "updateCall",
       callId: call.id,
       state: final,
-      transcript: [...call.transcript, { caller: input.utterance, receptionist: reply.text }],
+      transcript,
       turnCount: final.turnCount,
       status: "completed",
     },
@@ -440,7 +442,7 @@ async function hangup(
   const final: CallState = { ...call.state, stage: "done", pending: undefined };
   const message = buildOwnerMessage(final, "abandoned", shop, pack);
   await deps.repo.commit([
-    { type: "insertMessage", message: { ...message, shopId: shop.id, callId: call.id, channel: call.channel } },
+    messageWrite(message, { call, shop, pack, transcript: call.transcript, now: deps.clock() }),
     {
       type: "updateCall",
       callId: call.id,
@@ -461,7 +463,7 @@ async function hangup(
 export async function sweep(shopId: string, deps: Pick<CoreDeps, "repo" | "clock">): Promise<void> {
   const now = deps.clock();
   try {
-    await deps.repo.closeStaleCalls(shopId, now.subtract({ minutes: STALE_CALL_MINUTES }));
+    await deps.repo.closeStaleCalls(shopId, now.subtract({ minutes: STALE_CALL_MINUTES }), now);
     await deps.repo.pruneRateLimits(now.subtract({ hours: RATE_LIMIT_RETENTION_HOURS }));
   } catch (err) {
     console.error("sweep failed:", (err as Error)?.name ?? "error");

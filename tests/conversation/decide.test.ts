@@ -80,10 +80,10 @@ describe("decideTurn: booking", () => {
   it("an offered slot on another day takes that day's date", () => {
     // Sunday 15 is closed; the nearest slots are on Saturday 14.
     const d1 = decide(state(), { service: "corte", date: "2026-11-15", time: "12:00" });
-    expect(d1.reply).toContain("Este domingo cerramos.");
+    expect(d1.reply).toContain("El domingo cerramos.");
     const d2 = decide(d1.state, { time: "19:30" });
     expect(d2.state.fields.requested).toEqual({ date: "2026-11-14", time: "19:30" });
-    expect(d2.reply).toBe("Genial, este sábado a las siete y media tengo hueco. ¿Me dices tu nombre?");
+    expect(d2.reply).toBe("Genial, el sábado a las siete y media tengo hueco. ¿Me dices tu nombre?");
   });
 
   it("with every field present, the read-back sets awaiting_confirmation and is never cacheable", () => {
@@ -232,12 +232,12 @@ describe("decideTurn: reschedule and cancel", () => {
   it("reschedule with a match: read back, ask for the new time, read back the move, confirm", () => {
     const extra = { callerBookings: [anaBooking], existing: [anaBooking, chair2Busy] };
     const d1 = decide(withCaller("reschedule"), { intent: "reschedule", phone: "612345678", name: "ana" }, extra);
-    expect(d1.reply).toBe("Vale, tienes un corte el martes que viene a las diez. ¿A qué día y hora te la cambio?");
+    expect(d1.reply).toBe("Vale, tienes un corte el martes a las diez. ¿A qué día y hora te la cambio?");
     expect(d1.state.existingBookingId).toBe("b-ana");
 
     // 15 minutes later on the same chair: allowed because the booking itself is ignored.
     const d2 = decide(d1.state, { intent: "reschedule", date: "2026-11-17", time: "10:15" }, extra);
-    expect(d2.reply).toBe("Te cambio la cita para el martes que viene a las diez y cuarto, ¿vale?");
+    expect(d2.reply).toBe("Te cambio la cita para el martes a las diez y cuarto, ¿vale?");
     expect(d2.state.pending).toEqual({ kind: "reschedule", serviceId: "haircut", start: "2026-11-17T09:15:00Z", oldBookingId: "b-ana" });
 
     const d3 = decide(d2.state, { intent: "reschedule", callerConfirmed: true }, extra);
@@ -259,7 +259,7 @@ describe("decideTurn: reschedule and cancel", () => {
   it("cancel with a match: read back, then the confirmation cancels", () => {
     const extra = { callerBookings: [anaBooking] };
     const d1 = decide(withCaller("cancel"), { intent: "cancel", ...ANA }, extra);
-    expect(d1.reply).toBe("Tienes un corte el martes que viene a las diez. ¿Seguro que la anulo?");
+    expect(d1.reply).toBe("Tienes un corte el martes a las diez. ¿Seguro que la anulo?");
     expect(d1.state.stage).toBe("awaiting_confirmation");
     const d2 = decide(d1.state, { intent: "cancel", callerConfirmed: true }, extra);
     expect(d2.effects.map((e) => e.type)).toEqual(["cancelBooking", "saveMessage"]);

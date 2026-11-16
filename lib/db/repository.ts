@@ -4,6 +4,7 @@ import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import { Temporal } from "temporal-polyfill";
 import type { ExistingBooking } from "@/lib/booking";
 import { buildOwnerMessage } from "@/lib/conversation/ownerMessage";
+import { messageWrite } from "@/lib/conversation/messageWrite";
 import { ShopProfileSchema, type ShopProfile } from "@/lib/conversation/shopProfile";
 import type { CallerBooking, Channel, Lang, Repository, StoredCall, Write } from "@/lib/conversation/types";
 import { getSectorPack } from "@/lib/sectors";
@@ -17,10 +18,11 @@ export type Query = BatchItem<"pg">;
  * A database plus the way it runs several writes atomically: `db.batch` on
  * neon-http (non-interactive transaction), `db.transaction` on PGlite. The
  * queries are built on the handle `atomic` passes in, so they run inside it.
+ * It resolves to each query's result, in order (a `.returning()` query gives its rows).
  */
 export interface DbHandle {
   db: Db;
-  atomic(build: (q: Db) => Query[]): Promise<void>;
+  atomic(build: (q: Db) => Query[]): Promise<unknown[]>;
 }
 
 const toDate = (i: Temporal.Instant) => new Date(i.epochMilliseconds);
@@ -77,11 +79,12 @@ function buildWrites(q: Db, writes: readonly Write[]): Query[] {
           rescheduledFrom: w.booking.rescheduledFrom ?? null,
         });
       case "cancelBooking":
+        // A cancel from a Call is the caller's (11.5); the Owner's goes through ownerRepository.
         return q
           .update(bookings)
-          .set({ status: "cancelled", cancelledAt: sql`now()` })
+          .set({ status: "cancelled", cancelledAt: sql`now()`, cancelledBy: "caller" })
           .where(and(eq(bookings.id, w.bookingId), eq(bookings.status, "confirmed")));
-      case "insertMessage":
+      case "insertMessage": {
         // One Message per Call: a repeated hang-up or a late sweep inserts nothing.
         return q
           .insert(messages)
@@ -93,6 +96,9 @@ function buildWrites(q: Db, writes: readonly Write[]): Query[] {
             callerPhone: w.message.callerPhone,
             reason: w.message.reason,
             urgency: w.message.urgency,
+            // The Suggested_Urgency and the Urgency_Rules' basis, next to the Final_Urgency (4.3).
+            urgencySuggested: w.message.urgencySuggested,
+            urgencyBasis: w.message.urgencyBasis,
             agreed: w.message.agreed,
             suggestedReply: w.message.suggestedReply,
             outcome: w.message.outcome,
@@ -100,6 +106,7 @@ function buildWrites(q: Db, writes: readonly Write[]): Query[] {
             bookingId: w.message.bookingId ?? null,
           })
           .onConflictDoNothing({ target: messages.callId });
+      }
     }
   });
 }
@@ -237,7 +244,7 @@ export function createRepository(handle: DbHandle): Repository {
       return rows.length;
     },
 
-    async closeStaleCalls(shopId, idleBefore) {
+    async closeStaleCalls(shopId, idleBefore, now = Temporal.Now.instant()) {
       const stale = await db
         .select()
         .from(calls)
@@ -257,9 +264,7 @@ export function createRepository(handle: DbHandle): Repository {
             .update(calls)
             .set({ status: "abandoned", state, updatedAt: sql`now()`, endedAt: sql`now()` })
             .where(and(eq(calls.id, call.id), eq(calls.status, "open"))),
-          ...buildWrites(q, [
-            { type: "insertMessage", message: { ...message, shopId, callId: call.id, channel: call.channel } },
-          ]),
+          ...buildWrites(q, [messageWrite(message, { call, shop, pack, transcript: call.transcript, now })]),
         ]);
         closed++;
       }

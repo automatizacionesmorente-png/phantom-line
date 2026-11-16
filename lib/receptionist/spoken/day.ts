@@ -18,14 +18,18 @@ export const MONTH_WORDS: Record<Lang, readonly string[]> = {
   en: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
 };
 
-/** Yesterday, today, tomorrow and the day after, keyed by days from today. */
+/**
+ * Yesterday, today, tomorrow and the day after, keyed by days from today. `speakDay` says only
+ * −1 to 1; the day after (2) is here so `parseSpokenDay` still understands a caller who says
+ * "pasado mañana" / "the day after tomorrow".
+ */
 export const RELATIVE_DAY_WORDS: Record<Lang, Readonly<Record<-1 | 0 | 1 | 2, string>>> = {
   es: { [-1]: "ayer", 0: "hoy", 1: "mañana", 2: "pasado mañana" },
   en: { [-1]: "yesterday", 0: "today", 1: "tomorrow", 2: "the day after tomorrow" },
 };
 
 export interface SpeakDayOptions {
-  /** For today, tomorrow and the day after, also say the weekday: "mañana viernes" / "tomorrow, Friday". */
+  /** For today and tomorrow, also say the weekday: "mañana viernes" / "tomorrow, Friday". */
   withWeekday?: boolean;
 }
 
@@ -40,11 +44,12 @@ export function daysBetween(today: Temporal.PlainDate, date: Temporal.PlainDate)
 }
 
 /**
- * A day as the receptionist says it: "hoy", "mañana", "pasado mañana",
- * "este sábado", "el sábado que viene", "el sábado veinte", "el sábado veinte
- * de diciembre"; "today", "tomorrow", "the day after tomorrow", "this
- * Saturday", "next Saturday", "Saturday the twentieth", "Saturday the
- * twentieth of December". Both dates are in the shop's time zone.
+ * A day as the receptionist says it: "ayer", "hoy", "mañana", "el sábado" (2 to
+ * 6 days ahead, never "pasado mañana", "este" or "que viene"), "el sábado
+ * veinte", "el sábado veinte de diciembre"; "yesterday", "today", "tomorrow",
+ * "this Saturday" (2 to 6 days ahead, same Monday-to-Sunday week), "next
+ * Saturday" (2 to 6 days ahead, next week), "Saturday the twentieth",
+ * "Saturday the twentieth of December". Both dates are in the shop's time zone.
  */
 export function speakDay(
   date: Temporal.PlainDate,
@@ -54,14 +59,15 @@ export function speakDay(
 ): string {
   const d = daysBetween(today, date);
   const weekday = WEEKDAY_WORDS[lang][date.dayOfWeek - 1];
-  if (d >= -1 && d <= 2) {
-    const rel = RELATIVE_DAY_WORDS[lang][d as -1 | 0 | 1 | 2];
+  // Owner's call, 2026-11-15: two days ahead is "el martes", never "pasado mañana".
+  if (d >= -1 && d <= 1) {
+    const rel = RELATIVE_DAY_WORDS[lang][d as -1 | 0 | 1];
     if (!opts.withWeekday || d < 0) return rel;
     return lang === "es" ? `${rel} ${weekday}` : `${rel}, ${weekday}`;
   }
-  if (d >= 3 && d <= 6) {
+  if (d >= 2 && d <= 6) {
     const sameWeek = today.dayOfWeek + d <= 7;
-    if (lang === "es") return sameWeek ? `este ${weekday}` : `el ${weekday} que viene`;
+    if (lang === "es") return `el ${weekday}`;
     return sameWeek ? `this ${weekday}` : `next ${weekday}`;
   }
   const sameMonth = date.month === today.month && date.year === today.year;

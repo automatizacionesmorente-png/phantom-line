@@ -5,6 +5,7 @@ import type {
   Evaluation,
   RuleContext,
   SessionInstants,
+  ShopRules,
   SlotSearchOptions,
   Verdict,
 } from "./types";
@@ -58,6 +59,18 @@ export function evaluateWith(
     if (!busy) return { ok: true, resourceId: resource.id, start: req.start, end, session };
   }
   return { ok: false, reason: "all_resources_busy" };
+}
+
+/**
+ * The same shop with `resourceId` first in allocation order; the other resources keep
+ * their order. Only the preference changes: `evaluateBooking` accepts the same requests
+ * either way, it just tries this resource first (owner-machine 10.6). An unknown id
+ * leaves the order as it is.
+ */
+export function preferResource(shop: ShopRules, resourceId: string): ShopRules {
+  const first = shop.resources.filter((r) => r.id === resourceId);
+  if (first.length === 0) return shop;
+  return { ...shop, resources: [...first, ...shop.resources.filter((r) => r.id !== resourceId)] };
 }
 
 /** Accept or reject one request, without alternatives. Pure. */

@@ -9,8 +9,10 @@ import {
   type ShopRules,
   type Weekday,
 } from "@/lib/booking";
-import { allSectorPacks } from "@/lib/sectors";
-import { lolaPack, lolaRules } from "../fixtures/lola";
+import { allSectorPacks, getSectorPack, type SectorPack } from "@/lib/sectors";
+import type { ShopProfile } from "@/lib/conversation/shopProfile";
+import type { AgendaBooking } from "@/lib/owner/agenda";
+import { lolaPack, lolaProfile, lolaRules } from "../fixtures/lola";
 
 /** Runs per property (design: 200; Requirement 9.8: at least 100). */
 export const NUM_RUNS = 200;
@@ -313,3 +315,313 @@ export function gridOracle(req: BookingRequest, ctx: RuleContext, windowDays = 1
   }
   return { grid, nearest: null };
 }
+
+// ---------------------------------------------------------------------------
+// Owner machine: agendas and moves (owner-machine M7–M10)
+
+/** Move starts are drawn from −2 to +16 days around `now` (design, M7). */
+export const MOVE_START_DAYS = { min: -2, max: 16 } as const;
+
+/** The Shop_Profile and Sector_Pack behind a generated shop, so owner code that takes them can run on it. */
+export function profileOf(sc: ShopCase): { profile: ShopProfile; sectorPack: SectorPack } {
+  const sectorPack = getSectorPack(sc.packId);
+  if (sc.label === "lola") return { profile: lolaProfile, sectorPack };
+  const hours: Record<number, { open: string; close: string }[]> = {};
+  for (const d of [1, 2, 3, 4, 5, 6, 7] as Weekday[]) {
+    const day = sc.shop.hours[d];
+    if (day && day.length > 0) hours[d] = day.map((s) => ({ open: s.open, close: s.close }));
+  }
+  const profile: ShopProfile = {
+    id: "random-shop",
+    name: "Random shop",
+    ownerName: "Owner",
+    address: "Test street 1",
+    timeZone: sc.shop.timeZone,
+    sectorPackId: sc.packId,
+    languages: ["es", "en"],
+    hours: hours as ShopProfile["hours"],
+    services: sc.shop.services.map((s) => ({ id: s.id, name: { es: s.id, en: s.id }, durationMin: s.durationMin, priceCents: 0 })),
+    resources: sc.shop.resources.map((r) => ({ id: r.id, name: { es: r.id, en: r.id } })),
+    speechRate: 1,
+  };
+  return { profile, sectorPack };
+}
+
+export const activeOf = (agenda: readonly AgendaBooking[]): ExistingBooking[] =>
+  agenda
+    .filter((b) => b.status === "confirmed")
+    .map((b) => ({ id: b.id, resourceId: b.resourceId, start: b.start, end: b.end }));
+
+/**
+ * An Agenda built only from accepted requests, so its active bookings never overlap on a
+ * resource. The requests are accepted at an earlier moment (0 to 3 days before `now`), so
+ * some bookings have already started by `now`. Some are cancelled, some confirmed by the
+ * Owner. Never empty: if no request was accepted, one booking is made from a raw request.
+ */
+export function arbAgendaBookings(sc: ShopCase, now: Temporal.Instant): fc.Arbitrary<AgendaBooking[]> {
+  return fc
+    .oneof(fc.constant(0), fc.integer({ min: 1, max: 3 * DAY_MIN }))
+    .chain((lag) => {
+      const bookedAt = now.subtract({ minutes: lag });
+      return fc.record({
+        bookedAt: fc.constant(bookedAt),
+        reqs: fc.array(fc.oneof(arbValidRequest(sc, bookedAt), arbValidRequest(sc, bookedAt), arbRequest(sc, bookedAt)), {
+          minLength: 1,
+          maxLength: 10,
+        }),
+        flags: fc.array(
+          fc.record({
+            cancelled: fc.integer({ min: 0, max: 4 }).map((n) => n === 0),
+            confirmed: fc.boolean(),
+            revision: fc.integer({ min: 1, max: 9 }),
+            cancelledBy: fc.constantFrom<"caller" | "owner">("caller", "owner"),
+          }),
+          { minLength: 10, maxLength: 10 },
+        ),
+      });
+    })
+    .map(({ bookedAt, reqs, flags }) => {
+      let { existing } = acceptInOrder(sc, bookedAt, reqs);
+      if (existing.length === 0) {
+        const req = reqs[0];
+        const service = sc.shop.services.find((s) => s.id === req.serviceId) ?? sc.shop.services[0];
+        existing = [
+          { id: "b0", resourceId: sc.shop.resources[0].id, start: req.start, end: req.start.add({ minutes: service.durationMin }) },
+        ];
+      }
+      return existing.map((e, k): AgendaBooking => {
+        const f = flags[k % flags.length];
+        const serviceId = reqs[Number(e.id.slice(1))]?.serviceId ?? sc.shop.services[0].id;
+        return {
+          id: e.id,
+          revision: f.revision,
+          resourceId: e.resourceId,
+          serviceId,
+          start: e.start,
+          end: e.end,
+          status: f.cancelled ? "cancelled" : "confirmed",
+          ownerConfirmedAt: f.confirmed ? bookedAt : null,
+          cancelledBy: f.cancelled ? f.cancelledBy : null,
+          customerName: `Customer ${k}`,
+          channel: "voice",
+          lastOwnerAction: null,
+        };
+      });
+    });
+}
+
+/** An Agenda and one booking from it (the one the Owner moves). */
+export function arbAgendaBooking(
+  sc: ShopCase,
+  now: Temporal.Instant,
+): fc.Arbitrary<{ agenda: AgendaBooking[]; booking: AgendaBooking }> {
+  return fc
+    .record({ agenda: arbAgendaBookings(sc, now), pick: fc.nat() })
+    .map(({ agenda, pick }) => ({ agenda, booking: agenda[pick % agenda.length] }));
+}
+
+/**
+ * A move start at minute granularity, −2 … +16 days from `now`: uniform minutes, grid
+ * starts of a session, session boundaries ±1 minute, small shifts of the booking's own
+ * start (so it overlaps itself), and plain times on the 2026 DST weekends when in range.
+ */
+export function arbMoveStart(
+  sc: ShopCase,
+  now: Temporal.Instant,
+  around?: { start: Temporal.Instant; serviceId: string },
+): fc.Arbitrary<Temporal.Instant> {
+  const { shop } = sc;
+  const today = localDate(now, shop.timeZone);
+  const step = sc.pack.slotStepMin;
+  const durationOf = (id: string | undefined, k: number) =>
+    (shop.services.find((s) => s.id === id) ?? shop.services[k % shop.services.length]).durationMin;
+  return fc
+    .record({
+      mode: fc.constantFrom("uniform", "grid", "grid", "boundary", "near", "dst"),
+      offset: fc.integer({ min: MOVE_START_DAYS.min * DAY_MIN, max: MOVE_START_DAYS.max * DAY_MIN }),
+      dayOffset: fc.integer({ min: MOVE_START_DAYS.min, max: MOVE_START_DAYS.max }),
+      sessionIdx: fc.nat(),
+      k: fc.nat({ max: 200 }),
+      point: fc.constantFrom(...POINTS),
+      jitter: fc.integer({ min: -1, max: 1 }),
+      shift: fc.integer({ min: -8, max: 8 }),
+      minuteOfDay: fc.integer({ min: 0, max: DAY_MIN - 1 }),
+      dstIdx: fc.nat(),
+      serviceIdx: fc.nat(),
+    })
+    .map((g) => {
+      const uniform = now.add({ minutes: g.offset });
+      if (g.mode === "uniform") return uniform;
+      if (g.mode === "near") {
+        if (!around) return uniform;
+        return around.start.add({ minutes: g.shift === 0 ? g.jitter : g.shift * (step || 15) });
+      }
+      let date = today.add({ days: g.dayOffset });
+      if (g.mode === "dst") {
+        const inRange = DST_DATES.map((d) => Temporal.PlainDate.from(d)).filter((d) => {
+          const diff = today.until(d, { largestUnit: "days" }).days;
+          return diff >= MOVE_START_DAYS.min && diff <= MOVE_START_DAYS.max;
+        });
+        if (inRange.length === 0) return uniform;
+        date = inRange[g.dstIdx % inRange.length];
+        if (g.point !== "open") return wallInstant(date, g.minuteOfDay, shop.timeZone);
+      }
+      const sessions = oracleSessions(date, shop);
+      if (sessions.length === 0) return wallInstant(date, g.minuteOfDay, shop.timeZone);
+      const s = sessions[g.sessionIdx % sessions.length];
+      const duration = durationOf(around?.serviceId, g.serviceIdx);
+      if (g.mode === "grid" || g.mode === "dst") {
+        const room = Math.max(0, Math.floor((s.close - s.open) / MINUTE) - duration);
+        const kMax = step > 0 ? Math.floor(room / step) : 0;
+        return Temporal.Instant.fromEpochMilliseconds(s.open + (g.k % (kMax + 1)) * step * MINUTE);
+      }
+      const base = g.point === "open" ? s.open : g.point === "close" ? s.close : s.close - duration * MINUTE;
+      return Temporal.Instant.fromEpochMilliseconds(base + g.jitter * MINUTE);
+    });
+}
+
+export interface MoveCase extends ShopCase {
+  profile: ShopProfile;
+  sectorPack: SectorPack;
+  now: Temporal.Instant;
+  agenda: AgendaBooking[];
+  booking: AgendaBooking;
+  start: Temporal.Instant;
+}
+
+/**
+ * M7: a shop, `now`, an Agenda, a booking among it and a requested start. A third of the
+ * starts land on another booking of the Agenda (±1 minute), so the move often finds its
+ * own resource busy and must take another one, or none.
+ */
+export const arbMoveCase: fc.Arbitrary<MoveCase> = arbShop.chain((sc) =>
+  arbNow.chain((now) =>
+    arbAgendaBooking(sc, now).chain(({ agenda, booking }) => {
+      const others = agenda.filter((b) => b.id !== booking.id);
+      const onOther =
+        others.length === 0
+          ? arbMoveStart(sc, now, booking)
+          : fc
+              .record({ k: fc.nat(), j: fc.integer({ min: -1, max: 1 }) })
+              .map(({ k, j }) => others[k % others.length].start.add({ minutes: j }));
+      return fc
+        .oneof({ weight: 2, arbitrary: arbMoveStart(sc, now, booking) }, { weight: 1, arbitrary: onOther })
+        .map((start) => ({ ...sc, ...profileOf(sc), now, agenda, booking, start }));
+    }),
+  ),
+);
+
+export interface DaySlotsCase extends ShopCase {
+  profile: ShopProfile;
+  sectorPack: SectorPack;
+  now: Temporal.Instant;
+  agenda: AgendaBooking[];
+  booking: AgendaBooking;
+  day: Temporal.PlainDate;
+}
+
+/** M8: a shop, `now`, an Agenda, a booking among it and one of the 14 move days (DST days preferred when in range). */
+export const arbDaySlotsCase: fc.Arbitrary<DaySlotsCase> = arbShop.chain((sc) =>
+  arbNow.chain((now) =>
+    fc
+      .record({ ab: arbAgendaBooking(sc, now), dayIdx: fc.integer({ min: 0, max: 13 }), dst: fc.boolean(), dstIdx: fc.nat() })
+      .map(({ ab, dayIdx, dst, dstIdx }) => {
+        const today = localDate(now, sc.shop.timeZone);
+        const inRange = DST_DATES.map((d) => Temporal.PlainDate.from(d)).filter((d) => {
+          const diff = today.until(d, { largestUnit: "days" }).days;
+          return diff >= 0 && diff <= 13;
+        });
+        const day = dst && inRange.length > 0 ? inRange[dstIdx % inRange.length] : today.add({ days: dayIdx });
+        return { ...sc, ...profileOf(sc), now, agenda: ab.agenda, booking: ab.booking, day };
+      }),
+  ),
+);
+
+export type AgendaOp =
+  | { kind: "call"; k: number; service: number; shift: number }
+  | { kind: "move"; target: number; k: number; shift: number }
+  | { kind: "cancel"; target: number };
+
+export interface MoveSequenceCase extends ShopCase {
+  profile: ShopProfile;
+  sectorPack: SectorPack;
+  now: Temporal.Instant;
+  /** Start times the operations compete for. */
+  pool: Temporal.Instant[];
+  ops: AgendaOp[];
+}
+
+/** M9: 1–40 caller requests, owner moves and cancels, drawn from a small pool of starts so they collide. */
+export const arbMoveSequence: fc.Arbitrary<MoveSequenceCase> = arbShop.chain((sc) =>
+  arbNow.chain((now) =>
+    fc
+      .record({
+        pool: fc.array(fc.oneof(arbMoveStart(sc, now), arbValidRequest(sc, now).map((r) => r.start)), { minLength: 1, maxLength: 6 }),
+        ops: fc.array(
+          fc.oneof(
+            { weight: 4, arbitrary: fc.record({ kind: fc.constant("call" as const), k: fc.nat(), service: fc.nat(), shift: fc.integer({ min: -20, max: 20 }) }) },
+            { weight: 4, arbitrary: fc.record({ kind: fc.constant("move" as const), target: fc.nat(), k: fc.nat(), shift: fc.integer({ min: -20, max: 20 }) }) },
+            { weight: 1, arbitrary: fc.record({ kind: fc.constant("cancel" as const), target: fc.nat() }) },
+          ),
+          { minLength: 1, maxLength: 40 },
+        ),
+      })
+      .map(({ pool, ops }) => ({ ...sc, ...profileOf(sc), now, pool, ops })),
+  ),
+);
+
+export interface AgendaCase {
+  timeZone: string;
+  now: Temporal.Instant;
+  rows: AgendaBooking[];
+}
+
+/**
+ * M10: bookings anywhere from 3 days before to 10 days after `now`, not only accepted
+ * ones, with extra weight on local midnights ±1 minute and on the DST weekends, in every
+ * zone of `arbShop`.
+ */
+export const arbAgendaCase: fc.Arbitrary<AgendaCase> = fc
+  .record({ tz: fc.constantFrom(...TIME_ZONES), now: arbNow })
+  .chain(({ tz, now }) => {
+    const today = localDate(now, tz);
+    const arbStart = fc.oneof(
+      fc.integer({ min: -3 * DAY_MIN, max: 10 * DAY_MIN }).map((m) => now.add({ minutes: m })),
+      fc
+        .record({ d: fc.integer({ min: -1, max: 9 }), j: fc.integer({ min: -1, max: 1 }) })
+        .map(({ d, j }) => wallInstant(today.add({ days: d }), 0, tz).add({ minutes: j })),
+      fc
+        .record({ d: fc.constantFrom(...DST_DATES), m: fc.integer({ min: 0, max: DAY_MIN - 1 }) })
+        .map(({ d, m }) => wallInstant(Temporal.PlainDate.from(d), m, tz)),
+    );
+    return fc
+      .array(
+        fc.record({
+          start: arbStart,
+          cancelled: fc.boolean(),
+          confirmed: fc.boolean(),
+          resource: fc.constantFrom("r0", "r1"),
+        }),
+        { maxLength: 20 },
+      )
+      .map((gs) => ({
+        timeZone: tz,
+        now,
+        rows: gs.map(
+          (g, k): AgendaBooking => ({
+            id: `a${k}`,
+            revision: 1,
+            resourceId: g.resource,
+            serviceId: "s0",
+            start: g.start,
+            end: g.start.add({ minutes: 30 }),
+            status: g.cancelled ? "cancelled" : "confirmed",
+            ownerConfirmedAt: g.confirmed ? now : null,
+            cancelledBy: g.cancelled ? "caller" : null,
+            customerName: `Customer ${k}`,
+            channel: "voice",
+            lastOwnerAction: null,
+          }),
+        ),
+      }));
+  });

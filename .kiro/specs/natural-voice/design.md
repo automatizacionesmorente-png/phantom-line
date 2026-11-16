@@ -399,7 +399,7 @@ Every slot offer is far too many. Lola has 28 start times a day on the 15-minute
 | 1 | Every Fixed_Phrase, all variants: greetings, asks without caller data, closings, fallbacks | ≈ 18 | Heard in every call; the greeting is the first impression. Pinned |
 | 2 | The demo conversation (`check-turn --conversation`: a haircut at 21:00 → 19:30), rendered with each of the next 7 days as "today": the rejection, "time accepted + ask name", `booked` | ≈ 13 | The recorded demo and the judges who repeat it. Pinned |
 | 3 | Rejections for a request outside hours on an open day: 09:00, 09:30, 14:00–16:30 every half hour, 20:00–21:30 every half hour, for each service | ≤ 36 | No day words, because the alternatives are on the same day, so every line is reused every day; the most common mistake callers make is asking for a closed time |
-| 4 | "Time accepted + ask name" for today, tomorrow and the day after, at the round and half-past start times inside the sessions (10:00–13:30, 17:00–19:30) | 84 | Relative days repeat every day; people ask for round times |
+| 4 | "Time accepted + ask name" for today and tomorrow, at the round and half-past start times inside the sessions (10:00–13:30, 17:00–19:30) | 56 | "hoy" and "mañana" repeat every day; people ask for round times. Until 2026-11-15 this tier also held the day after ("pasado mañana", 84 lines); since the owner's call that day is said "el martes", so its lines differ per weekday and left the tier |
 | 5 | `booked` for tomorrow (each weekday) at the same times | 140 | Lowest value per line: the weekday multiplies it |
 
 - **Order:** tiers 1 and 2 in Spanish and English, then tiers 3–5 in Spanish, then in English. Lola is a Madrid salon, but the judges may well call in English. English waits until task 2.3 has chosen its voice, so no quota is spent on a draft voice.
@@ -443,11 +443,11 @@ Every slot offer is far too many. Lola has 28 start times a day on the 15-minute
 | 1 | 20 | ≈ 18 | 15 templates, 5 of them with 2 variants |
 | 2 | 23 | ≈ 13 | When tomorrow is closed (today Saturday or Sunday), the rejection offers the next open day, and its accepted and `booked` lines differ; `booked` names the weekday, so it differs for each open tomorrow |
 | 3 | 18 | ≤ 36 | The haircut and the beard trim get the same rejections at every time; the colour differs at 6 times |
-| 4 | 78 | 84 | 6 lines are already in tier 2: the accepted demo times (today and tomorrow at half past seven, the day after at ten), 2 variants each |
+| 4 | 52 | 56 | 4 lines are already in tier 2: the accepted demo times (today and tomorrow at half past seven), 2 variants each. Before the owner's call of 2026-11-15 this row was 78 of 84, with the day after ("pasado mañana") in the tier; with that day said by its weekday the tier would have held 190 lines |
 | 5 | 130 | 140 | 10 lines are already in tier 2 (`booked` at half past seven for each open tomorrow) |
-| **Total** | **269** | ≈ 290 | |
+| **Total** | **243** | ≈ 263 | Recomputed on 2026-11-15 with the new day rule, same inputs (today 2026-11-13, Spanish); the first run gave 269 |
 
-The two 3.8 models give 16 lines a day at the default reserve (8 each), so tiers 1–2 (43 lines) need 3 days, tiers 1–3 (61 lines) 4 days, and the whole Spanish plan 17 days. The plan takes 228 ms to build. At the spike's ~65 kB per MP3 line, the whole Spanish plan is about 17 MB.
+The two 3.8 models give 16 lines a day at the default reserve (8 each), so tiers 1–2 (43 lines) need 3 days, tiers 1–3 (61 lines) 4 days, and the whole Spanish plan 16 days (17 before the change). The plan takes 228 ms to build. At the spike's ~65 kB per MP3 line, the whole Spanish plan is about 16 MB. In tier 2, the demo seen from a Sunday now says "el martes a las diez" where it said "pasado mañana a las diez", the exact line of the owner's call.
 
 ### Browser: the VoicePort
 
@@ -551,16 +551,17 @@ Both dates are `PlainDate`s in the Shop's Time_Zone. `today = now.toZonedDateTim
 | −1 | ayer | yesterday |
 | 0 | hoy | today |
 | 1 | mañana | tomorrow |
-| 2 | pasado mañana | the day after tomorrow |
-| 3–6, same Monday–Sunday week | este sábado | this Saturday |
-| 3–6, next week | el sábado que viene | next Saturday |
+| 2–6, same Monday–Sunday week | el sábado | this Saturday |
+| 2–6, next week | el sábado | next Saturday |
 | otherwise, same month as today | el sábado veinte | Saturday the twentieth |
 | otherwise, another month | el sábado veinte de diciembre | Saturday the twentieth of December |
 
-- `withWeekday` adds the weekday for d = 0–2: "mañana viernes", "hoy martes" / "tomorrow, Friday". The read-back and the confirmation use it (7.4).
+**Owner's call (2026-11-15).** After a real call the owner heard "pasado mañana a las diez" and said a salon owner in Spain says "el martes a las diez". So from 2 to 6 days ahead Spanish says "el <weekday>" alone, and never "pasado mañana", "este" or "que viene". English says "this <weekday>" in the same week and "next <weekday>" otherwise, now from 2 days ahead instead of 3 ("the day after tomorrow" is no longer said). The parser still understands "pasado mañana", "the day after tomorrow", "este X" and "el X que viene" from a caller.
+
+- `withWeekday` adds the weekday for d = 0–1: "mañana viernes", "hoy martes" / "tomorrow, Friday". From 2 days ahead the weekday is already the day's name. The read-back and the confirmation use it (7.4).
 - Days of the month are always words ("veinte", "primero" is not used: "el lunes uno"), and English uses ordinals in words ("the twentieth", "the first").
-- Because only `PlainDate` arithmetic is used, daylight-saving changes cannot shift the day. The DST risk is only in computing `today`, which uses the shop's zone. Property N4 covers instants on both 2026 Madrid transition days and around local midnight.
-- Parse back: relative words resolve against `today`. "este X" is the X of the current week, and "el X que viene" is the X of the next week. "el X N [de M]" is the date with that day (and month) nearest to `today`, which is unique within ±60 days.
+- Because only `PlainDate` arithmetic is used, daylight-saving changes cannot shift the day. The DST risk is only in computing `today`, which uses the shop's zone. Property N4 covers instants on both 2026 Madrid transition days and around local midnight; since 2 days ahead now names its weekday, a wrong `today` would also name the wrong weekday, and the DST unit tests check that weekday.
+- Parse back: relative words resolve against `today`, including "pasado mañana" / "the day after tomorrow". A bare "el X" is the next X after today, 1 to 7 days ahead (so "el jueves" said on a Thursday is a week ahead, which `speakDay` would say as "el jueves diecinueve"). "este X" / "this X" is the X of the current week, and "el X que viene" / "next X" is the X of the next week. "el X N [de M]" is the date with that day (and month) nearest to `today`, which is unique within ±60 days.
 
 ### Numbers, prices, phones
 
@@ -624,7 +625,7 @@ Spanish (variants separated by "‖"; `{t}` = speakTime, `{d}` = speakDay, `{D}`
 
 - **`phrases(lang, pack, shop, seed?, now?)`** returns `Said` objects, `{ text, cacheable }`. `cacheable` is false for `readBack` (name and phone) and for `serviceNotOffered` when it repeats the caller's own word (only if short and plain, else the generic line); true for every other spoken line. `now` is a fifth parameter because days are relative to today in the shop's zone; without it days are said by weekday and day of the month. The `owner.*` texts stay plain strings with digits.
 - **The rejection echoes the hour the caller said, without its period.** The owner's real call (2026-11-13) expects "Mañana a las cuatro estamos cerrados, abrimos a las cinco", and Requirement 9.3 says "A las nueve ya hemos cerrado". `speakTime` keeps its rule (N3: a closed time always carries its period, so "a las cuatro de la tarde"), and the rejection reason uses it with a one-minute session around the requested minute, which drops the period except at noon and midnight. The caller has just said the hour, and the reason words ("ya hemos cerrado", "todavía no hemos abierto", "estamos cerrados, abrimos a las cinco") tell which one it was. This settles review point 2 for the echo only: every time the receptionist offers or confirms still follows the omission rule.
-- **The reason depends on where the time falls:** after the last close "ya hemos cerrado"; before the first opening "todavía no hemos abierto, abrimos a las diez"; between sessions "estamos cerrados, abrimos a las cinco"; on a closed day "Este domingo cerramos". The day is spoken first when it is not today ("Mañana a las cuatro…").
+- **The reason depends on where the time falls:** after the last close "ya hemos cerrado"; before the first opening "todavía no hemos abierto, abrimos a las diez"; between sessions "estamos cerrados, abrimos a las cinco"; on a closed day "El domingo cerramos" (for tomorrow, "Mañana domingo cerramos"). The day is spoken first when it is not today ("Mañana a las cuatro…").
 - **Alternatives name their day only when it differs from the previous one** (the first against the requested day), and when naming them all would make a sentence longer than 25 words the farthest are left out.
 - **A service switch says what the new service takes and costs.** When the caller changes service mid-booking, the next line starts with "Claro, un tinte dura una hora y media y cuesta cuarenta y cinco euros." (`speakDuration`, `speakPrice`), after the Booking_Rules have re-checked the time for the longer service; if it no longer fits, the rejection comes instead.
 - **A name that is clearly not a name is asked for once more.** `looksLikeName` (pure) refuses a text with a digit, more than 5 words, a single letter, or made only of endearments, insults, greetings or filler words. The name is not stored, `CallState.nameReasked` is set and `askNameAgain` is spoken ("¿Y tu nombre, para la cita?") once the time is accepted; after that one re-ask whatever the caller says is taken.

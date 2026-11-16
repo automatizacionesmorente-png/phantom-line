@@ -2,7 +2,8 @@ import { Temporal } from "temporal-polyfill";
 import { phrases } from "@/lib/receptionist/phrases";
 import type { SectorPack } from "@/lib/sectors";
 import type { ShopProfile } from "./shopProfile";
-import type { CallState, Outcome, OwnerMessage } from "./types";
+import { suggestedFrom } from "@/lib/messages/urgency";
+import type { CallState, Outcome, OwnerMessageDraft } from "./types";
 
 /** The booking a Message is about, when the outcome touched one. */
 export interface MessageBooking {
@@ -15,6 +16,10 @@ export interface MessageBooking {
  * The Message for the tape, built by code from server state. Owner-facing
  * texts are in the shop's first language; the suggested reply is in the
  * caller's language.
+ *
+ * It is a draft: it carries the model's Suggested_Urgency and the facts the
+ * Urgency_Rules need, never a final urgency. Only `messageWrite` turns it into
+ * a write (owner-machine 4.1).
  */
 export function buildOwnerMessage(
   state: CallState,
@@ -22,7 +27,7 @@ export function buildOwnerMessage(
   shop: ShopProfile,
   pack: SectorPack,
   booking?: MessageBooking,
-): OwnerMessage {
+): OwnerMessageDraft {
   const ownerLang = shop.languages[0];
   const o = phrases(ownerLang, pack, shop).owner;
   const r = phrases(state.language, pack, shop).owner;
@@ -51,10 +56,23 @@ export function buildOwnerMessage(
     callerName: name,
     callerPhone: state.fields.phone ?? null,
     reason,
-    urgency: state.note.urgency,
+    suggested: suggestedFrom(state.note),
+    requestedDate: requestedDateOf(state),
+    bookingStart: booking?.start ?? null,
     agreed,
     suggestedReply,
     outcome,
     modelFailed: outcome === "fallback" || state.modelFailed,
   };
+}
+
+/** The shop-local day the caller asked for, if any (5.4). `mergeFields` only stores valid dates. */
+function requestedDateOf(state: CallState): Temporal.PlainDate | null {
+  const date = state.fields.requested?.date;
+  if (!date) return null;
+  try {
+    return Temporal.PlainDate.from(date);
+  } catch {
+    return null;
+  }
 }

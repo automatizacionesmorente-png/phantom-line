@@ -1,6 +1,7 @@
 import type { Temporal } from "temporal-polyfill";
 import type { AcceptedVerdict, ExistingBooking } from "@/lib/booking";
 import type { Lang } from "@/lib/sectors";
+import type { FinalUrgency, UrgencyBasis } from "@/lib/messages/urgency";
 import type { ShopProfile } from "./shopProfile";
 import type { FallbackLogger } from "./fallbackLog";
 
@@ -96,15 +97,36 @@ export interface CallState {
 // ---------------------------------------------------------------------------
 // Owner message and effects
 
-export interface OwnerMessage {
+/** The texts of a Message every end-of-Call path shares. */
+interface OwnerMessageTexts {
   callerName: string | null;
   callerPhone: string | null;
   reason: string;
-  urgency: Urgency;
   agreed: string;
   suggestedReply: string;
   outcome: Outcome;
   modelFailed: boolean;
+}
+
+/**
+ * What `buildOwnerMessage` returns: the texts plus what the Urgency_Rules need.
+ * It has no final urgency, so it cannot be written as it is (owner-machine 4.1).
+ */
+export interface OwnerMessageDraft extends OwnerMessageTexts {
+  /** The model's Suggested_Urgency; null when the model never gave a valid Turn (5.8). */
+  suggested: Urgency | null;
+  /** Shop-local, from `CallState.fields.requested`. */
+  requestedDate: Temporal.PlainDate | null;
+  /** The Booking the Call created, moved or cancelled. */
+  bookingStart: Temporal.Instant | null;
+}
+
+/** A Message ready to store. Only `decideUrgency` makes a `FinalUrgency`, so only `messageWrite` makes one of these. */
+export interface OwnerMessage extends OwnerMessageTexts {
+  urgency: FinalUrgency;
+  urgencySuggested: Urgency | null;
+  /** Null only in rows written before owner-machine (and in database test fixtures). */
+  urgencyBasis: UrgencyBasis | null;
 }
 
 export type Effect =
@@ -118,7 +140,7 @@ export type Effect =
       phone: string;
     }
   | { type: "cancelBooking"; bookingId: string }
-  | { type: "saveMessage"; message: OwnerMessage };
+  | { type: "saveMessage"; message: OwnerMessageDraft };
 
 /** An upcoming, confirmed booking for the caller's phone, as read from the database. */
 export interface CallerBooking extends ExistingBooking {
@@ -185,8 +207,11 @@ export interface Repository {
   hitRateLimits(visitorKey: string, now: Temporal.Instant): Promise<{ visitor: number; global: number }>;
   /** Deletes rate-limit windows that started before `before`; returns how many. */
   pruneRateLimits(before: Temporal.Instant): Promise<number>;
-  /** Open Calls idle since before `idleBefore` become `abandoned` with their Message; returns how many. */
-  closeStaleCalls(shopId: string, idleBefore: Temporal.Instant): Promise<number>;
+  /**
+   * Open Calls idle since before `idleBefore` become `abandoned` with their Message; returns how many.
+   * `now` decides the Message's "today" (owner-machine 5.4); it defaults to the current instant.
+   */
+  closeStaleCalls(shopId: string, idleBefore: Temporal.Instant, now?: Temporal.Instant): Promise<number>;
 }
 
 export interface RateLimiter {

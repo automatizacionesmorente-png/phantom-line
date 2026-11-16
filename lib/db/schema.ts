@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   boolean,
   check,
   customType,
@@ -15,6 +16,8 @@ import {
 } from "drizzle-orm/pg-core";
 import type { ShopProfile } from "@/lib/conversation/shopProfile";
 import type { CallState, Line } from "@/lib/conversation/types";
+import type { UrgencyBasis } from "@/lib/messages/urgency";
+import type { AuditValues } from "@/lib/owner/types";
 
 /**
  * Text enums are plain `text` with CHECK constraints rather than Postgres
@@ -35,6 +38,14 @@ export const shops = pgTable(
     timeZone: text("time_zone").notNull(),
     profile: jsonb().$type<ShopProfile>().notNull(),
     createdAt: tstz("created_at").notNull().defaultNow(),
+    /** Salted scrypt hash of the Owner_PIN, never inside `profile` (owner-machine 2.1). */
+    ownerPinHash: text("owner_pin_hash"),
+    /** When the PIN last changed: sessions issued before it are invalid (1.8). */
+    ownerPinSetAt: tstz("owner_pin_set_at"),
+    /** Bumped at commit by the deferred triggers of drizzle/0004_machine_triggers.sql (12.4). */
+    machineVersion: bigint("machine_version", { mode: "number" }).notNull().default(0),
+    /** Demo_Retention throttle; only ever set for the Demo_Shop (16.6). */
+    demoSweptAt: tstz("demo_swept_at"),
   },
   (t) => [uniqueIndex("shops_name_uq").on(t.name)],
 );
@@ -88,10 +99,17 @@ export const bookings = pgTable(
     rescheduledFrom: uuid("rescheduled_from"),
     createdAt: tstz("created_at").notNull().defaultNow(),
     cancelledAt: tstz("cancelled_at"),
+    /** The Owner's confirmation (10.2); an active Booking stays `status = 'confirmed'` for the constraint. */
+    ownerConfirmedAt: tstz("owner_confirmed_at"),
+    /** Who cancelled: 'caller' (11.5) or 'owner' (10.8). */
+    cancelledBy: text("cancelled_by"),
+    /** Bumped by trigger on every UPDATE, whoever writes: the optimistic check of 10.7. */
+    revision: integer().notNull().default(0),
   },
   (t) => [
     check("bookings_time_order", sql`${t.endsAt} > ${t.startsAt}`),
     check("bookings_status_ck", sql`${t.status} IN ('confirmed', 'cancelled')`),
+    check("bookings_cancelled_by_ck", sql`${t.cancelledBy} IS NULL OR ${t.cancelledBy} IN ('caller', 'owner')`),
     check("bookings_channel_ck", sql`${t.channel} IN ('voice', 'whatsapp', 'webchat')`),
     /** A Call creates at most one Booking (retry-safe). */
     uniqueIndex("bookings_call_uq").on(t.callId),
@@ -124,18 +142,68 @@ export const messages = pgTable(
     bookingId: uuid("booking_id").references(() => bookings.id),
     readAt: tstz("read_at"),
     createdAt: tstz("created_at").notNull().defaultNow(),
+    /** Erased (8.1): permanent, a trigger refuses to clear it (8.3). */
+    erasedAt: tstz("erased_at"),
+    /** The model's Suggested_Urgency, next to the Final_Urgency in `urgency` (4.3). */
+    urgencySuggested: text("urgency_suggested"),
+    /** Which Urgency_Rule fired and which term matched (4.3). Null on rows written before it existed. */
+    urgencyBasis: jsonb("urgency_basis").$type<UrgencyBasis>(),
+    /** Set on the Demo_Shop's Sample_Messages (16.4). */
+    sampleKey: text("sample_key"),
   },
   (t) => [
     /** One Message per Call: hang-up and retries are idempotent. */
     uniqueIndex("messages_call_uq").on(t.callId),
     index("messages_shop_created_idx").on(t.shopId, t.createdAt.desc()),
-    index("messages_unread_idx").on(t.shopId).where(sql`read_at IS NULL`),
+    index("messages_new_idx").on(t.shopId).where(sql`erased_at IS NULL`),
+    index("messages_unheard_idx").on(t.shopId).where(sql`erased_at IS NULL AND read_at IS NULL`),
+    /** A Sample_Message is on the Tape at most once (16.4): the backstop for insertDemoSamples. */
+    uniqueIndex("messages_sample_uq")
+      .on(t.shopId, t.sampleKey)
+      .where(sql`sample_key IS NOT NULL AND erased_at IS NULL`),
     check("messages_urgency_ck", sql`${t.urgency} IN ('low', 'normal', 'urgent')`),
+    check(
+      "messages_urgency_suggested_ck",
+      sql`${t.urgencySuggested} IS NULL OR ${t.urgencySuggested} IN ('low', 'normal', 'urgent')`,
+    ),
+    check(
+      "messages_sample_key_ck",
+      sql`${t.sampleKey} IS NULL OR ${t.sampleKey} IN ('urgent', 'booking', 'question')`,
+    ),
     check(
       "messages_outcome_ck",
       sql`${t.outcome} IN ('booked', 'rescheduled', 'cancelled', 'answered', 'message', 'fallback', 'abandoned')`,
     ),
     check("messages_channel_ck", sql`${t.channel} IN ('voice', 'whatsapp', 'webchat')`),
+  ],
+);
+
+/**
+ * The Audit_Record of every Owner_Action that changed something (owner-machine 11), written in
+ * the same statement as the change (lib/db/ownerRepository.ts). Exactly one target: a Booking
+ * or a Message.
+ */
+export const ownerActions = pgTable(
+  "owner_actions",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    shopId: text("shop_id")
+      .notNull()
+      .references(() => shops.id),
+    action: text().notNull(),
+    bookingId: uuid("booking_id").references(() => bookings.id),
+    messageId: uuid("message_id").references(() => messages.id),
+    actorSession: text("actor_session").notNull(),
+    actorLabel: text("actor_label").notNull(),
+    before: jsonb().$type<AuditValues>().notNull(),
+    after: jsonb().$type<AuditValues>().notNull(),
+    createdAt: tstz("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    check("owner_actions_action_ck", sql`${t.action} IN ('play', 'erase', 'confirm', 'move', 'cancel')`),
+    check("owner_actions_target_ck", sql`(${t.bookingId} IS NULL) <> (${t.messageId} IS NULL)`),
+    index("owner_actions_booking_idx").on(t.bookingId, t.createdAt.desc()),
+    index("owner_actions_shop_idx").on(t.shopId, t.createdAt.desc()),
   ],
 );
 

@@ -27,7 +27,8 @@ describe("buildOwnerMessage", () => {
       }
       expect(m.callerName).toBe("Ana");
       expect(m.callerPhone).toBe("+34612345678");
-      expect(m.urgency).toBe("low");
+      // The draft carries the model's suggestion; messageWrite decides the final urgency (owner-machine 4.1).
+      expect(m.suggested).toBe("low");
     }
   });
 
@@ -53,7 +54,8 @@ describe("buildOwnerMessage", () => {
     expect(m.callerName).toBeNull();
     expect(m.callerPhone).toBeNull();
     expect(m.reason).toBe("Llamada sin terminar");
-    expect(m.urgency).toBe("normal");
+    // The initial "normal" of a Call with no valid Turn is not a suggestion (owner-machine 5.8).
+    expect(m.suggested).toBeNull();
     expect(m.agreed).toBe("Nada acordado; el contestador falló a mitad de la llamada");
     // The suggested reply is in the caller's language.
     expect(m.suggestedReply).toBe("Hi, this is Lola from Peluquería Lola. I got your message, how can I help?");

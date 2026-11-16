@@ -1,7 +1,11 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
+import { Temporal } from "temporal-polyfill";
 import { ShopProfileSchema } from "@/lib/conversation/shopProfile";
 import { shops } from "@/lib/db/schema";
-import { lolaSeedProfile, seedShop } from "@/lib/db/seed";
+import { lolaSeedProfile, seedOwnerPin, seedShop } from "@/lib/db/seed";
+import { DEMO_SHOP_ID } from "@/lib/owner/demo";
+import { verifyPin } from "@/lib/owner/pin";
 import { lolaProfile } from "../fixtures/lola";
 import { createTestDb, type TestDb } from "./pglite";
 import { insertShop } from "./helpers";
@@ -73,5 +77,73 @@ describe("seedShop (Peluquería Lola)", () => {
 
   it("is the same profile as the Lola test fixture, so tests and demo never drift apart", () => {
     expect(lolaSeedProfile).toEqual(lolaProfile);
+  });
+
+  it("takes its id from DEMO_SHOP_ID", () => {
+    expect(lolaSeedProfile.id).toBe(DEMO_SHOP_ID);
+  });
+});
+
+describe("seedOwnerPin (owner-machine 2.6)", () => {
+  const pinRow = async () => {
+    const [row] = await t.handle.db
+      .select({ hash: shops.ownerPinHash, at: shops.ownerPinSetAt })
+      .from(shops)
+      .where(eq(shops.id, DEMO_SHOP_ID));
+    return row;
+  };
+  const AT = Temporal.Instant.from("2026-11-15T10:00:00Z");
+
+  it.each([
+    ["missing", undefined],
+    ["missing", ""],
+    ["malformed", "12345"],
+    ["malformed", "1234567"],
+    ["malformed", "12a456"],
+    ["malformed", " 123456"],
+  ] as const)("a %s DEMO_OWNER_PIN (%j) leaves the Shop without a PIN and prints that it did", async (result, pin) => {
+    await seedShop(t.handle.db);
+    const printed: string[] = [];
+    expect(await seedOwnerPin(t.handle.db, DEMO_SHOP_ID, pin, (l) => printed.push(l), AT)).toBe(result);
+    expect(await pinRow()).toEqual({ hash: null, at: null });
+    expect(printed).toHaveLength(1);
+    expect(printed[0]).toMatch(/PIN was not set/);
+    if (pin) expect(printed[0]).not.toContain(pin.trim());
+  });
+
+  it("hashes a valid PIN, and re-seeding with the same PIN keeps the hash and owner_pin_set_at", async () => {
+    await seedShop(t.handle.db);
+    const printed: string[] = [];
+    expect(await seedOwnerPin(t.handle.db, DEMO_SHOP_ID, "482913", (l) => printed.push(l), AT)).toBe("set");
+    const first = await pinRow();
+    expect(first.hash).toMatch(/^scrypt\$/);
+    expect(first.hash).not.toContain("482913");
+    expect(first.at?.toISOString()).toBe("2026-11-15T10:00:00.000Z");
+    expect(await verifyPin("482913", first.hash!)).toBe(true);
+
+    await seedShop(t.handle.db); // the shop row is updated, the PIN columns are not touched
+    const later = Temporal.Instant.from("2026-11-20T10:00:00Z");
+    expect(await seedOwnerPin(t.handle.db, DEMO_SHOP_ID, "482913", (l) => printed.push(l), later)).toBe("kept");
+    expect(await pinRow()).toEqual(first);
+    expect(printed.join("\n")).not.toContain("482913");
+  });
+
+  it("a changed PIN is re-hashed with a new owner_pin_set_at, which revokes old sessions (1.8)", async () => {
+    await seedShop(t.handle.db);
+    await seedOwnerPin(t.handle.db, DEMO_SHOP_ID, "482913", () => {}, AT);
+    const later = Temporal.Instant.from("2026-11-20T10:00:00Z");
+    expect(await seedOwnerPin(t.handle.db, DEMO_SHOP_ID, "111222", () => {}, later)).toBe("set");
+    const row = await pinRow();
+    expect(row.at?.toISOString()).toBe("2026-11-20T10:00:00.000Z");
+    expect(await verifyPin("111222", row.hash!)).toBe(true);
+    expect(await verifyPin("482913", row.hash!)).toBe(false);
+  });
+
+  it("a missing PIN on a re-seed leaves a PIN set earlier as it was", async () => {
+    await seedShop(t.handle.db);
+    await seedOwnerPin(t.handle.db, DEMO_SHOP_ID, "482913", () => {}, AT);
+    const before = await pinRow();
+    expect(await seedOwnerPin(t.handle.db, DEMO_SHOP_ID, undefined, () => {}, AT)).toBe("missing");
+    expect(await pinRow()).toEqual(before);
   });
 });

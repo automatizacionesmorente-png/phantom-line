@@ -1,6 +1,10 @@
 import { eq } from "drizzle-orm";
+import { Temporal } from "temporal-polyfill";
 import { ShopProfileSchema, type ShopProfile, type ShopProfileInput } from "@/lib/conversation/shopProfile";
+import { DEMO_SHOP_ID } from "@/lib/owner/demo";
+import { hashPin, PIN_PATTERN, verifyPin } from "@/lib/owner/pin";
 import { getSectorPack } from "@/lib/sectors";
+import { setOwnerPin } from "./ownerRepository";
 import type { Db } from "./repository";
 import { shops } from "./schema";
 
@@ -15,7 +19,7 @@ const day = [
 ];
 
 export const lolaSeedProfile: ShopProfile = {
-  id: "peluqueria-lola",
+  id: DEMO_SHOP_ID,
   name: "Peluquería Lola",
   ownerName: "Lola",
   address: "Calle Mayor 12, Madrid",
@@ -113,4 +117,43 @@ export async function seedShop(db: Db, input: ShopProfileInput = lolaSeedProfile
     .returning({ id: shops.id });
 
   return { shopId: rows[0].id, created: existing.length === 0 };
+}
+
+export type SeedPinResult = "set" | "kept" | "missing" | "malformed" | "no_shop";
+
+/**
+ * The Demo_Shop's Owner_PIN from `DEMO_OWNER_PIN` (owner-machine 2.6). Hashed only when it is
+ * exactly 6 digits and the stored hash no longer verifies, so re-running the seed with the same
+ * PIN keeps the hash and `owner_pin_set_at`, and every open session stays valid (1.8). A missing
+ * or malformed value sets no PIN and changes no stored one, and `print` says so. Nothing printed
+ * ever contains the PIN or the hash.
+ */
+export async function seedOwnerPin(
+  db: Db,
+  shopId: string,
+  pin: string | undefined,
+  print: (line: string) => void,
+  now: Temporal.Instant = Temporal.Now.instant(),
+): Promise<SeedPinResult> {
+  if (pin === undefined || pin === "") {
+    print("DEMO_OWNER_PIN is not set: the shop's machine PIN was not set");
+    return "missing";
+  }
+  if (!PIN_PATTERN.test(pin)) {
+    print("DEMO_OWNER_PIN is not exactly 6 digits: the shop's machine PIN was not set");
+    return "malformed";
+  }
+  const rows = await db.select({ hash: shops.ownerPinHash }).from(shops).where(eq(shops.id, shopId)).limit(1);
+  if (rows.length === 0) {
+    print(`shop "${shopId}" not found: the machine PIN was not set`);
+    return "no_shop";
+  }
+  const stored = rows[0].hash;
+  if (stored !== null && (await verifyPin(pin, stored))) {
+    print("machine PIN unchanged");
+    return "kept";
+  }
+  await setOwnerPin(db, shopId, await hashPin(pin), now);
+  print("machine PIN set from DEMO_OWNER_PIN");
+  return "set";
 }

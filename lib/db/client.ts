@@ -19,8 +19,8 @@ export function neonHandle(url: string): DbHandle {
     db,
     async atomic(build) {
       const queries = build(db);
-      if (queries.length === 0) return;
-      await db.batch(queries as [Query, ...Query[]]);
+      if (queries.length === 0) return [];
+      return (await db.batch(queries as [Query, ...Query[]])) as unknown[];
     },
   };
 }

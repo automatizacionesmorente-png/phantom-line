@@ -86,7 +86,10 @@ describe("cachePlan for Lola, Spanish, from Friday 13 November 2026", () => {
       expect(minute % 30).toBe(0);
       expect((minute >= 600 && minute < 840) || (minute >= 1020 && minute < 1200)).toBe(true);
     }
-    expect(tier(4).map((l) => l.text)).toContain("Genial, pasado mañana a las doce del mediodía tengo hueco. ¿Me dices tu nombre?");
+    expect(tier(4).map((l) => l.text)).toContain("Genial, mañana a las doce del mediodía tengo hueco. ¿Me dices tu nombre?");
+    // Only today and tomorrow have a relative word, so tier 4 never names a weekday (owner's call, 2026-11-15).
+    for (const l of tier(4)) expect(l.text).toMatch(/^(Genial|Vale), (hoy|mañana) a /);
+    for (const l of plan) expect(l.text).not.toMatch(/pasado mañana|\beste (lunes|martes|miércoles|jueves|viernes|sábado|domingo)\b|que viene/);
     expect(tier(5).map((l) => l.text)).toContain("¡Hecho! Te esperamos mañana martes a las diez. Lola verá tu mensaje y te confirma.");
   });
 

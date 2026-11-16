@@ -8,7 +8,7 @@
 
 import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
-import { seedShop } from "@/lib/db/seed";
+import { seedOwnerPin, seedShop } from "@/lib/db/seed";
 import * as schema from "@/lib/db/schema";
 
 async function main(): Promise<void> {
@@ -20,8 +20,11 @@ async function main(): Promise<void> {
   }
   const redact = (text: unknown) => String(text).split(url).join("***");
   try {
-    const result = await seedShop(drizzle(neon(url), { schema }));
+    const db = drizzle(neon(url), { schema });
+    const result = await seedShop(db);
     console.log(`shop "${result.shopId}" ${result.created ? "created" : "updated (already existed)"}`);
+    // Owner-machine 2.6. Prints what it did, never the PIN or its hash.
+    await seedOwnerPin(db, result.shopId, process.env.DEMO_OWNER_PIN, console.log);
   } catch (err) {
     const e = err as { constructor?: { name?: string }; code?: string; message?: string } | undefined;
     console.log(`seed failed: ${e?.constructor?.name ?? "Error"} ${e?.code ?? ""} ${redact(e?.message ?? "")}`.trim());

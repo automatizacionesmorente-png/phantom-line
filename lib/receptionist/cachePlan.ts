@@ -15,7 +15,7 @@ import { fixedPhrases, renderAllVariants, renderer, VariantSeeds, type RenderedL
  * | 1 | the Fixed_Phrases, every variant (pinned) |
  * | 2 | the demo conversation: the first service tomorrow at 21:00, rejected; the first alternative offered, accepted with the name ask; and `booked` (pinned) |
  * | 3 | rejections of a request for today outside hours on an open day, every half hour from an hour before opening to 90 minutes after closing, for each service |
- * | 4 | "time accepted + ask name" for today, tomorrow and the day after, at the round and half-past start times inside the sessions |
+ * | 4 | "time accepted + ask name" for today and tomorrow, at the round and half-past start times inside the sessions |
  * | 5 | `booked` for tomorrow at the same times |
  */
 
@@ -23,6 +23,11 @@ export type Tier = 1 | 2 | 3 | 4 | 5;
 export const PINNED_TIERS: ReadonlySet<Tier> = new Set<Tier>([1, 2]);
 /** How many days ahead are rendered as "today". */
 export const PLAN_DAYS = 7;
+/**
+ * Tier 4 covers today and tomorrow. Owner's call, 2026-11-15: two days ahead is "el martes",
+ * not "pasado mañana", so those lines differ per weekday and no longer repeat every day.
+ */
+export const TIER4_DAYS = 2;
 /** The demo request of `check-turn --conversation`: "mañana a las nueve de la noche". */
 export const DEMO_REQUEST_TIME = "21:00";
 
@@ -124,10 +129,11 @@ export function cachePlan(shop: ShopProfile, pack: SectorPack, lang: Lang, today
     }
   }
 
-  // Tier 4: the time is accepted, for today, tomorrow and the day after.
+  // Tier 4: the time is accepted, for today and tomorrow (the only days still said with a
+  // relative word, so their lines repeat every day; from two days ahead the line names the weekday).
   for (const date of days) {
     const now = nowOf(date);
-    for (let ahead = 0; ahead < 3; ahead++) {
+    for (let ahead = 0; ahead < TIER4_DAYS; ahead++) {
       const day = date.add({ days: ahead });
       for (const minute of halfHoursInside(sessionsOn(shop, day))) {
         const ok = accepted(now, at(day, minute));

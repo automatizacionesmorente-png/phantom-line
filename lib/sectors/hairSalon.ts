@@ -13,8 +13,38 @@ export const hairSalon: SectorPack = {
   // "The service must fit before the session closes" is a general rule in lib/booking.
   rules: [],
   vocabulary: {
-    es: { booking: "cita", bookingVerb: "reservar", service: "servicio", place: "la peluquería" },
-    en: { booking: "appointment", bookingVerb: "book", service: "service", place: "the salon" },
+    // Urgency_Terms (owner-machine design, "Pack data"). A reaction to a dye is the salon's real
+    // emergency, hence the allergy and burn terms. Bare "ahora" / "now" are left out on purpose:
+    // "ahora mismo no puedo" and "I now want…" would mark half the calls as same-day.
+    es: {
+      booking: "cita",
+      bookingVerb: "reservar",
+      service: "servicio",
+      place: "la peluquería",
+      urgent: [
+        "urgente",
+        "urgentemente",
+        "urgencia",
+        "emergencia",
+        "alergia",
+        "alérgica",
+        "alérgico",
+        "reacción",
+        "me pica",
+        "quemadura",
+        "me quema",
+        "dolor",
+      ],
+      today: ["hoy", "esta mañana", "esta tarde", "esta noche", "ahora mismo", "cuanto antes", "lo antes posible"],
+    },
+    en: {
+      booking: "appointment",
+      bookingVerb: "book",
+      service: "service",
+      place: "the salon",
+      urgent: ["urgent", "urgently", "emergency", "allergy", "allergic", "reaction", "itching", "burn", "burning", "pain"],
+      today: ["today", "this morning", "this afternoon", "tonight", "right now", "asap", "as soon as possible"],
+    },
   },
   voice: {
     // Chosen by the owner after the spike (natural-voice task 2.1): Castilian, "warm and
