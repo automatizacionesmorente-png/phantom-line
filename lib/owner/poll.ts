@@ -3,7 +3,7 @@
  * query), and only when the Machine_Version moved does it pay for the snapshot. The handler,
  * not this module, sets `Cache-Control: no-store` (12.8).
  */
-import type { Temporal } from "temporal-polyfill";
+import { Temporal } from "temporal-polyfill";
 import { agendaStatus, allowedActions, type AgendaBooking, type AgendaDay } from "./agenda";
 import type { AgendaDayDto, AgendaItem, PollCounts, PollResponse, TapeItem } from "./api";
 
@@ -71,6 +71,30 @@ export function toAgendaItem(b: AgendaBooking, now: Temporal.Instant): AgendaIte
 
 export function toAgendaDays(days: readonly AgendaDay[], now: Temporal.Instant): AgendaDayDto[] {
   return days.map((d) => ({ date: d.date, items: d.items.map((b) => toAgendaItem(b, now)) }));
+}
+
+/**
+ * The page's Agenda with one row replaced by the answer of an Owner_Action (a confirm, a
+ * move, a cancel, or the current row of a `stale` answer). The row leaves whatever day it
+ * was on and joins the day of its (new) local start, if that day is shown; each day stays
+ * active-by-start, then cancelled-by-start, as `groupAgenda` orders it (9.1, 9.4).
+ */
+export function withAgendaItem(days: readonly AgendaDayDto[], item: AgendaItem, timeZone: string): AgendaDayDto[] {
+  const date = Temporal.Instant.from(item.start).toZonedDateTimeISO(timeZone).toPlainDate().toString();
+  return days.map((d) => {
+    const others = d.items.filter((i) => i.id !== item.id);
+    const items = d.date === date ? [...others, item] : others;
+    return { date: d.date, items: d.date === date ? sortDay(items) : items };
+  });
+}
+
+function sortDay(items: AgendaItem[]): AgendaItem[] {
+  const byStart = (a: AgendaItem, b: AgendaItem) =>
+    Temporal.Instant.compare(Temporal.Instant.from(a.start), Temporal.Instant.from(b.start)) ||
+    (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  const active = items.filter((i) => i.status !== "cancelled").sort(byStart);
+  const cancelled = items.filter((i) => i.status === "cancelled").sort(byStart);
+  return [...active, ...cancelled];
 }
 
 const countsOf = (c: PollCounts): PollCounts => ({ new: c.new, unheard: c.unheard });

@@ -28,7 +28,7 @@ export function LanguageSwitch({ lang, options, label, onChange }: LanguageSwitc
             aria-pressed={active}
             aria-label={NAMES[l].long}
             onClick={() => onChange(l)}
-            className={`min-h-11 min-w-14 rounded-full px-4 font-inter text-sm font-semibold tracking-wide ${
+            className={`focus-ring min-h-11 min-w-14 rounded-full px-4 font-inter text-sm font-semibold tracking-wide ${
               active ? "bg-espresso text-card" : "text-text hover:bg-section"
             }`}
           >

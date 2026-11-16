@@ -1,5 +1,6 @@
 "use client";
 
+import { DemoNotice } from "@/components/machine/DemoNotice";
 import type { PublicShop } from "@/lib/voice/publicShop";
 import { canType, canTypeInstead, type NoticeKey } from "@/lib/voice/callLoop";
 import { CALL_COPY } from "./callCopy";
@@ -12,10 +13,12 @@ import { useCallLoop } from "./useCallLoop";
 
 export interface CallScreenProps {
   shop: PublicShop;
+  /** The public demo: show the Demo_Notice above the Call button, before the Call starts (owner-machine 3.3). */
+  demo?: boolean;
 }
 
 /** The caller's "phone": one gold Call button, the ES / EN switch, the transcript and typing. */
-export function CallScreen({ shop }: CallScreenProps) {
+export function CallScreen({ shop, demo = false }: CallScreenProps) {
   const call = useCallLoop({ shopId: shop.id, languages: shop.languages, speechPhrases: shop.speechPhrases });
   const { state } = call;
   const copy = CALL_COPY[state.lang];
@@ -38,6 +41,8 @@ export function CallScreen({ shop }: CallScreenProps) {
       <h1 className="font-newsreader text-4xl font-medium tracking-tight text-ink break-words sm:text-5xl">
         {copy.headingBefore} <span className="text-gold">{shop.name}</span>
       </h1>
+
+      {demo && <DemoNotice lang={state.lang} />}
 
       <LanguageSwitch lang={state.lang} options={shop.languages} label={copy.languageLabel} onChange={call.switchLang} />
 

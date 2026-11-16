@@ -1,5 +1,7 @@
 import { Suspense } from "react";
 import { CallScreen } from "@/components/call/CallScreen";
+import { ShopNotFound } from "@/components/call/ShopNotFound";
+import { isDemoShop } from "@/lib/owner/demo";
 import { loadPublicShop } from "./loadPublicShop";
 
 /**
@@ -23,7 +25,8 @@ async function ShopGate({ params }: { params: PageProps<"/call/[shopId]">["param
   const id = safeDecode(shopId);
   const shop = id === null ? null : await loadPublicShop(id);
   if (!shop) return <ShopNotFound />;
-  return <CallScreen shop={shop} />;
+  // The Demo_Notice only for the public demo (owner-machine 3.3).
+  return <CallScreen shop={shop} demo={isDemoShop(shop.id)} />;
 }
 
 /** A malformed escape in the URL is an unknown shop, not a server error. */
@@ -40,24 +43,5 @@ function ShopGateFallback() {
     <p role="status" className="py-24 font-inter text-base text-muted">
       <span lang="es">Conectando la línea…</span> / <span lang="en">Connecting the line…</span>
     </p>
-  );
-}
-
-/** Requirement 1.9: a message and no Call button. */
-function ShopNotFound() {
-  return (
-    <section className="flex flex-col items-center gap-4 py-16 text-center">
-      <h1 className="font-newsreader text-4xl font-medium tracking-tight text-ink">
-        <span lang="es">
-          Este número <span className="text-gold">no existe</span>
-        </span>
-      </h1>
-      <p lang="es" className="font-inter text-lg text-text">
-        No encontramos esta tienda. Revisa el enlace que te han dado.
-      </p>
-      <p lang="en" className="font-inter text-lg text-text">
-        Shop not found. Please check the link you were given.
-      </p>
-    </section>
   );
 }

@@ -56,7 +56,7 @@ afterAll(async () => {
   await t.close();
 });
 
-function cookieOptions(kind: CookieKind, malformed: string): ReqOptions {
+function cookieOptions(kind: CookieKind, malformed: string, shopId: string): ReqOptions {
   switch (kind) {
     case "none":
       return {};
@@ -65,7 +65,9 @@ function cookieOptions(kind: CookieKind, malformed: string): ReqOptions {
     case "expired":
       return { token: tokenFor(REAL, {}, undefined, CLOCK0.subtract({ hours: 13 })) };
     case "otherShop":
-      return { token: tokenFor(DEMO) };
+      // A valid session of a shop other than the one addressed. A DEMO token sent to the
+      // Demo_Shop would be a real session, not "other shop" (found by M17, seed 267098037).
+      return { token: tokenFor(shopId === DEMO ? REAL : DEMO) };
     case "badSignature":
       return { token: tokenFor(REAL, {}, "another-secret-of-at-least-32-characters") };
   }
@@ -94,7 +96,7 @@ describe("M17. Nothing personal without a session", () => {
         const shopId = c.shop === "real" ? REAL : c.shop === "demo" ? DEMO : "no-existe";
         const pick = (real: string) => (c.ids === "real" ? real : c.ids === "random" ? "00000000-0000-4000-8000-0000000000ff" : "x%20y");
         const opts: ReqOptions = {
-          ...cookieOptions(c.cookie, c.malformed),
+          ...cookieOptions(c.cookie, c.malformed, shopId),
           origin: c.origin === "ok" ? undefined : c.origin === "evil" ? "https://evil.example" : null,
           contentType: c.contentType === "json" ? undefined : "text/plain",
           ip: c.ip,
