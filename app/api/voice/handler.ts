@@ -8,8 +8,13 @@ import { shouldTouch, type VoiceCacheStore } from "@/lib/receptionist/voiceCache
  * PGlite.
  */
 
-/** The bytes under a key never change, so browsers and the CDN may keep them for a year. */
-export const IMMUTABLE = "public, max-age=31536000, s-maxage=31536000, immutable";
+/**
+ * The bytes under a key never change, so the browser may keep them for a year. The CDN may not:
+ * once Vercel's CDN held a full 200 it answered Safari's `Range: bytes=0-1` probe with that 200,
+ * and Safari refused to play it (2026-11-16). So only the browser caches, and every Range reaches
+ * this handler.
+ */
+export const IMMUTABLE = "private, max-age=31536000, immutable";
 /** A miss may become a hit once the line is synthesized, so it is cached briefly. */
 export const MISS_CACHE = "public, max-age=60, s-maxage=60";
 

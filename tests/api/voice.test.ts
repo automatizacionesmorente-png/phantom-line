@@ -81,8 +81,8 @@ describe("GET /api/voice/[key]", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("audio/mpeg");
     expect(res.headers.get("content-length")).toBe(String(MP3.length));
-    expect(res.headers.get("cache-control")).toBe("public, max-age=31536000, s-maxage=31536000, immutable");
-    expect(IMMUTABLE).toBe("public, max-age=31536000, s-maxage=31536000, immutable");
+    expect(res.headers.get("cache-control")).toBe("private, max-age=31536000, immutable");
+    expect(IMMUTABLE).toBe("private, max-age=31536000, immutable");
     expect([...new Uint8Array(await res.arrayBuffer())]).toEqual([...MP3]);
     await settle();
     // Used an hour ago: a hit is not a write.
