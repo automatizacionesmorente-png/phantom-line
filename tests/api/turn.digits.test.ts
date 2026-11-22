@@ -27,6 +27,21 @@ afterAll(async () => {
 const question = (reply: string, language: "es" | "en" = "es") =>
   modelTurn({ intent: "question", language, reply, reason: "Pregunta" });
 
+/**
+ * Questions with no Profile_Topic, service, day or time in them. Since front-desk-brain the
+ * Reading decides a Profile_Topic on the model path too (13.2), so "¿Cuánto cuesta un tinte?"
+ * is answered from the profile's template, and the model's own digits would never be heard.
+ * These lines leave the model's line as the reply, which is what this test is about.
+ *
+ * front-desk-brain 17.5: they must also not be Sure_Readings, or the model is not called at all.
+ * Two old lines became sure through Code_Brain misreadings found here (reported in design.md, "As
+ * built in task 17"): "Oye, una cosa que te quería preguntar" is read as an unknown service
+ * "preguntar", and "Vale, ¿y algo más que me puedas contar?" reads "contar" as a typo of "cortar".
+ * They are replaced by lines with the same role and no service, day, time or topic.
+ */
+const ES_FREE = ["Oye, otra cosa que me ronda la cabeza", "¿Y eso cómo lo veis vosotras?", "Vale, ¿y qué más me cuentas de vosotras?"];
+const EN_FREE = ["Hey, one more thing I wanted to ask", "And what do you think about that?"];
+
 async function ask(language: "es" | "en", replies: string[], utterances: string[]) {
   const model = createScriptedModel(replies.map((r) => question(r, language)));
   const { POST, settle } = makePost(makeDeps(t, model));
@@ -52,7 +67,7 @@ describe("the model's own digits reach the caller as words", () => {
         "El sábado abrimos de 10:00 a 14:00 y de 17:00 a 20:00.",
         "Estamos en la Calle Mayor 12, te esperamos.",
       ],
-      ["¿Cuánto cuesta un tinte?", "¿Qué horario tenéis el sábado?", "¿Dónde estáis?"],
+      ES_FREE,
     );
     expect(heard).toEqual([
       "Un tinte cuesta cuarenta y cinco euros y dura noventa minutos.",
@@ -68,7 +83,7 @@ describe("the model's own digits reach the caller as words", () => {
     const { heard, transcript } = await ask(
       "en",
       ["A haircut is €15.50 and takes 30 minutes.", "We open at 5 pm on Saturday the 14th."],
-      ["How much is a haircut?", "When do you open on Saturday?"],
+      EN_FREE,
     );
     expect(heard).toEqual([
       "A haircut is fifteen euros fifty and takes thirty minutes.",
@@ -82,7 +97,7 @@ describe("the model's own digits reach the caller as words", () => {
     const { heard } = await ask(
       "es",
       ["Abrimos a las 10:00. Cerramos a las 20:00. Y los lunes no abrimos."],
-      ["¿Qué horario tenéis?"],
+      [ES_FREE[0]],
     );
     expect(heard).toEqual(["Abrimos a las diez de la mañana. Cerramos a las ocho de la tarde."]);
   });

@@ -1,5 +1,7 @@
 import { Temporal } from "temporal-polyfill";
+import { comboId } from "@/lib/booking/services";
 import type { ModelTurn } from "@/lib/receptionist/schema";
+import { factsFromModel, type TurnFacts } from "./facts";
 import type { CallFields, CallState } from "./types";
 import type { ShopProfile } from "./shopProfile";
 
@@ -90,42 +92,83 @@ export interface MergeResult {
   unknownService: string | null;
   /** The model heard a phone number that is not valid; the old value (if any) is kept. */
   invalidPhone: boolean;
+  /** The Call's services would make a Service_Combo the Booking_Rules refuse (over 480 minutes); kept as they were. */
+  comboRefused: boolean;
+  /** A yes to the slot just offered became the requested time (front-desk-brain 8.4). Not a confirmation. */
+  offerAccepted: boolean;
 }
 
 /**
- * Server values are kept unless the model returns a new, valid, non-null value.
+ * Server values are kept unless the Turn's facts bring a new, valid, non-null value.
  * A time without a date that matches one of the slots just offered takes that
- * slot's date ("vale, a las siete y media").
+ * slot's date ("vale, a las siete y media"). A yes with no new day or time while a slot
+ * is offered takes that slot as the requested time (8.4); the read-back still needs its own yes.
  */
-export function mergeFields(state: CallState, turn: ModelTurn, shop: ShopProfile): MergeResult {
+export function mergeFields(state: CallState, input: TurnFacts | ModelTurn, shop: ShopProfile): MergeResult {
+  // A validated model turn is read through the same matcher as the model path (front-desk-brain 4.9).
+  const facts: TurnFacts = "source" in input ? input : factsFromModel(input, null, shop, { state });
   const fields: CallFields = { ...state.fields };
   let unknownService: string | null = null;
   let invalidPhone = false;
+  let comboRefused = false;
+  let offerAccepted = false;
 
-  const name = turn.name?.trim().replace(/\s+/g, " ");
+  const name = facts.name?.trim().replace(/\s+/g, " ");
   if (name) fields.name = name;
 
-  if (turn.phone !== null) {
-    const phone = normalizePhone(turn.phone, countryForTimeZone(shop.timeZone));
+  if (facts.phone !== null) {
+    const phone = normalizePhone(facts.phone, countryForTimeZone(shop.timeZone));
     if (phone) fields.phone = phone;
     else invalidPhone = true;
   }
 
-  if (turn.service !== null) {
-    const id = matchService(turn.service, shop);
-    if (id) fields.serviceId = id;
-    else unknownService = turn.service.trim();
+  // Services: the Call's list after this utterance, as one id or one Combo_Id (7.1, 7.3).
+  const next = facts.serviceChange.next;
+  if (facts.services.kind === "unknown") unknownService = facts.services.said.trim();
+  if (next !== null) {
+    if (next.length === 0) {
+      delete fields.serviceId;
+    } else {
+      const id = next.length === 1 ? next[0] : comboId(next, shop.services);
+      if (id) fields.serviceId = id;
+      else comboRefused = true;
+    }
+    if (!comboRefused) delete fields.serviceChoice;
+  }
+  if (facts.services.kind === "choice" && next === null) {
+    fields.serviceChoice = { candidates: [...facts.services.candidates], with: [...facts.services.with] };
+  } else if (facts.services.kind === "category" && next === null) {
+    const categoryId = facts.services.categoryId;
+    const ids = shop.services.filter((s) => s.category === categoryId).map((s) => s.id);
+    if (ids.length > 0) fields.serviceChoice = { candidates: ids, with: [...facts.services.with] };
   }
 
-  let date = turn.date ?? fields.requested?.date ?? null;
-  const time = turn.time ?? fields.requested?.time ?? null;
-  if (turn.time !== null && turn.date === null && state.lastOffer?.length) {
+  // A time with no day takes the day said earlier ("el martes" … "a las cinco", 5.6).
+  let date = facts.date ?? fields.requested?.date ?? (facts.time !== null ? (fields.day ?? null) : null);
+  let time = facts.time ?? fields.requested?.time ?? null;
+  if (facts.time !== null && facts.date === null && state.lastOffer?.length) {
     const offered = state.lastOffer
       .map((iso) => Temporal.Instant.from(iso).toZonedDateTimeISO(shop.timeZone))
-      .find((z) => z.toPlainTime().toString().slice(0, 5) === turn.time);
+      .find((z) => z.toPlainTime().toString().slice(0, 5) === facts.time);
     if (offered) date = offered.toPlainDate().toString();
   }
+  // 8.4: "sí" to the slot just offered, with no new day or time.
+  if (
+    facts.yes &&
+    facts.date === null &&
+    facts.time === null &&
+    state.stage === "collecting" &&
+    state.lastOffer?.length
+  ) {
+    const z = Temporal.Instant.from(state.lastOffer[0]).toZonedDateTimeISO(shop.timeZone);
+    date = z.toPlainDate().toString();
+    time = z.toPlainTime().toString().slice(0, 5);
+    offerAccepted = true;
+  }
   if (date && time && validDate(date)) fields.requested = { date, time };
+  // A day heard without a time narrows the First_Offer (5.6, 8.1).
+  if (facts.date !== null && validDate(facts.date)) fields.day = facts.date;
+  if (facts.partOfDay !== null) fields.partOfDay = facts.partOfDay;
 
-  return { fields, unknownService, invalidPhone };
+  return { fields, unknownService, invalidPhone, comboRefused, offerAccepted };
 }

@@ -5,28 +5,36 @@ export type { ModelClient } from "@/lib/conversation/types";
 export type ModelFailure = "timeout" | "quota" | "unavailable" | "invalid_output";
 export type ModelResult = { ok: true; turn: ModelTurn } | { ok: false; failure: ModelFailure };
 
-/** The whole budget of one Turn's model call, every attempt included (Requirement 4.7). */
-export const MODEL_TIMEOUT_MS = 8000;
+/**
+ * The Model_Wait: the whole budget of one Turn's model call, every attempt included
+ * (front-desk-brain Requirement 12.2). A Sure_Reading never calls the model; when this
+ * budget ends with no valid answer, the Code_Brain answers. Owner decision of
+ * 2026-11-16 (design.md, "Model path constants", question 17): 45 measured requests
+ * showed the free tier cannot answer inside 1.6 s often enough, so 2.4 s.
+ */
+export const MODEL_TIMEOUT_MS = 2400;
 /**
  * The deadline of one attempt. When it expires without an answer, a fresh attempt
  * starts (with the next model of the list) beside it, so one hung request can never
  * use the whole budget. The first answer from any attempt wins, and every attempt
- * still running is aborted when the Turn settles. Chosen from measurements
- * (design.md, "Model attempts").
+ * still running is aborted when the Turn settles. 1200 so the hedge still gets
+ * 2400 − 1200 = 1200 ms ≥ MIN_ATTEMPT_MS (design.md, "Model path constants").
  */
-export const ATTEMPT_TIMEOUT_MS = 2500;
+export const ATTEMPT_TIMEOUT_MS = 1200;
 /**
  * A fresh attempt gets its own deadline only if at least this much budget would be
  * left after it; otherwise it is the last attempt and keeps the rest of the budget.
+ * Also the least budget a 5xx retry needs to start at all.
  */
-export const MIN_ATTEMPT_MS = 1500;
+export const MIN_ATTEMPT_MS = 400;
 /**
- * Attempts per Turn, all inside MODEL_TIMEOUT_MS. A new attempt starts after an
- * attempt deadline or a transient server error (HTTP 5xx, e.g. Gemini's 503
- * "high demand"). A 429 is never retried: it is quota, and retrying burns more of
- * it. The cap also stops a client that fails instantly from spinning.
+ * Attempts per Turn, all inside MODEL_TIMEOUT_MS: the first, and one hedge or one
+ * 5xx retry. A new attempt starts after an attempt deadline or a transient server
+ * error (HTTP 5xx, e.g. Gemini's 503 "high demand"). A 429 is never retried: it is
+ * quota, and retrying burns more of it. The cap also stops a client that fails
+ * instantly from spinning.
  */
-export const MAX_MODEL_ATTEMPTS = 4;
+export const MAX_MODEL_ATTEMPTS = 2;
 
 /** Longest error message kept for the server log. */
 const MAX_LOGGED_MESSAGE = 300;

@@ -1,10 +1,10 @@
 import type { Temporal } from "temporal-polyfill";
 import type { z } from "zod";
 import { firstIp, visitorKeyOf } from "../visitorKey";
-import { CallNotFoundError, handleTurn, sweep } from "@/lib/conversation/handleTurn";
+import { CallNotFoundError, handleTurnTimed, sweep } from "@/lib/conversation/handleTurn";
 import { consoleFallbackLogger, summarizeError, type FallbackLogEvent } from "@/lib/conversation/fallbackLog";
 import type { ShopProfile } from "@/lib/conversation/shopProfile";
-import type { CoreDeps, TurnInput, TurnOutput } from "@/lib/conversation/types";
+import type { CoreDeps, StageTimes, TurnInput, TurnOutput } from "@/lib/conversation/types";
 import { phrases } from "@/lib/receptionist/phrases";
 import { signSpeech } from "@/lib/receptionist/speechToken";
 import { lineKeys, type VoiceFor } from "@/lib/receptionist/voiceCacheKey";
@@ -126,6 +126,18 @@ export function toIssues(error: z.ZodError): Issue[] {
 
 const json = (body: unknown, status: number) => Response.json(body, { status });
 
+/** The four stages of `Server-Timing`, in this order (front-desk-brain 19.4). */
+export const SERVER_TIMING_STAGES = ["brain", "db", "model", "total"] as const;
+
+/**
+ * The `Server-Timing` header value: `brain;dur=1.2, db;dur=40.5, model;dur=0, total;dur=43.1`.
+ * Numbers only, rounded to 0.1 ms, never negative and never a word (19.4).
+ */
+export function serverTiming(t: StageTimes): string {
+  const dur = (x: number) => (Number.isFinite(x) && x > 0 ? Math.round(x * 10) / 10 : 0);
+  return SERVER_TIMING_STAGES.map((name) => `${name};dur=${dur(t[name])}`).join(", ");
+}
+
 export function makeTurnHandler(opts: TurnHandlerOptions): (request: Request) => Promise<Response> {
   return async function POST(request: Request): Promise<Response> {
     let body: unknown;
@@ -141,9 +153,15 @@ export function makeTurnHandler(opts: TurnHandlerOptions): (request: Request) =>
 
     let deps: CoreDeps;
     let shop;
+    let clock: () => number = () => performance.now();
+    let started = 0;
+    let shopMs = 0;
     try {
       deps = opts.deps();
+      clock = deps.timer ?? clock;
+      started = clock();
       shop = await deps.repo.getShop(req.shopId);
+      shopMs = Math.max(0, clock() - started);
     } catch (err) {
       // No deps (or no logger) yet if building them failed, so this one goes straight to stderr.
       consoleFallbackLogger({
@@ -180,14 +198,23 @@ export function makeTurnHandler(opts: TurnHandlerOptions): (request: Request) =>
     opts.schedule(() => sweep(shopId, sweepDeps));
 
     try {
-      const out = await handleTurn(input, deps);
+      const { output: out, timings } = await handleTurnTimed(input, deps);
       let cache: VoiceCacheLookup | undefined;
       try {
         cache = opts.voiceCache?.();
       } catch {
         // No cache (for example no database URL for it): live lines only.
       }
-      return json(await speechFor(out, shop, opts.speechSecret?.(), deps.clock(), cache), 200);
+      const speechStarted = clock();
+      const body = await speechFor(out, shop, opts.speechSecret?.(), deps.clock(), cache);
+      // The shop load and the voice-cache lookup are database reads too; `total` is the whole
+      // request from the shop load on (19.4).
+      const timing: StageTimes = {
+        ...timings,
+        db: timings.db + shopMs + Math.max(0, clock() - speechStarted),
+        total: Math.max(timings.total, clock() - started),
+      };
+      return Response.json(body, { status: 200, headers: { "Server-Timing": serverTiming(timing) } });
     } catch (err) {
       if (err instanceof CallNotFoundError) return json({ error: "call_not_found" }, 404);
       const event: FallbackLogEvent = {

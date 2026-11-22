@@ -17,8 +17,8 @@ export const ModelTurnSchema = z.strictObject({
   name: Nullable(z.string().min(1).max(80)),
   phone: Nullable(z.string().min(6).max(32)), // digits as heard; code normalizes
   service: Nullable(z.string().min(1).max(80)).describe(
-    "The service the caller asked for, in the caller's own words, from the whole conversation. Null if not said.",
-  ), // code matches the catalog
+    "Every service the caller asked for, in the caller's own words, joined with ' y ' (Spanish) or ' and ' (English), from the whole conversation. Null if not said.",
+  ), // code matches the catalog; several services make one Service_Combo (front-desk-brain 4.9)
   date: Nullable(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).describe(
     "The day the caller asked for, shop-local YYYY-MM-DD, from the whole conversation, even if the shop is closed that day or it has passed. Null only if the caller never said a day.",
   ),

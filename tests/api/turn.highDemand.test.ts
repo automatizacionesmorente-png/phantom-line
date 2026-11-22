@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { Temporal } from "temporal-polyfill";
 import { insertShop } from "../db/helpers";
 import { lolaProfile } from "../fixtures/lola";
@@ -6,10 +6,16 @@ import type { TestDb } from "../db/pglite";
 import type { FallbackLogEvent } from "@/lib/conversation/fallbackLog";
 import { messages } from "@/lib/db/schema";
 import { createScriptedModel, failsWith503, MAX_MODEL_ATTEMPTS } from "@/lib/receptionist/callModel";
+import type { InteractionsApi } from "@/lib/receptionist/geminiClient";
 import { phrases, type Said } from "@/lib/receptionist/phrases";
 import { toSpokenReply } from "@/lib/receptionist/speech";
 import { getSectorPack } from "@/lib/sectors";
 import { Caller, makeDeps, makePost, modelTurn, NOW, setupDb } from "./harness";
+import { notSure } from "../conversation/notSure";
+
+// `server-only` throws outside a React Server environment; the Gemini client itself is used here (task 9.3).
+vi.mock("server-only", () => ({}));
+const { createGeminiClient } = await import("@/lib/receptionist/geminiClient");
 
 /**
  * Regression for the first end-to-end test (2026-11-12). The caller said
@@ -27,6 +33,9 @@ const at = (iso: string) => Temporal.Instant.from(iso);
 const WED_2100 = at("2026-11-11T20:00:00Z");
 const OFFERED = [at("2026-11-11T18:30:00Z"), at("2026-11-11T18:15:00Z"), at("2026-11-11T18:00:00Z")];
 const LINE = "Quiero cortarme el pelo mañana a las nueve de la noche";
+/** A name, a phone and a question no Profile_Topic answers (so not a Sure_Reading: the model is still called after task 17). */
+const PERSONAL_QUESTION = "Soy Ana Secreta, mi teléfono es 612345678, ¿y qué tal es Lola cortando?";
+const PERSONAL = /Ana|Secreta|612345678|612 345 678|\+34612345678/;
 
 /** What gemini-3.5-flash-lite returned for LINE in scripts/check-turn.ts (the harness's "mañana" is Wednesday 11). */
 const REAL_TURN = modelTurn({
@@ -62,7 +71,9 @@ describe("Gemini's 503 'high demand' on the first say", () => {
     const { deps, events } = withLog(model);
     const c = new Caller(makePost(deps).POST);
     await c.start();
-    const r = await c.say(LINE);
+    // front-desk-brain 17.5: LINE alone is now a Sure_Reading and never reaches the model, so the
+    // 503 retry is tested on the same line with the not-sure tail (same facts, the model is asked).
+    const r = await c.say(notSure(LINE, "es"));
     expect(r.status).toBe(200);
     expect(r.body.reply).toBe(spoken(ES.rejected("outside_hours", WED_2100, OFFERED)));
     expect(r.body.reply).toContain("las siete y media");
@@ -72,41 +83,71 @@ describe("Gemini's 503 'high demand' on the first say", () => {
     expect(await t.handle.db.select().from(messages)).toHaveLength(0);
   });
 
-  it("503 on every attempt: the end fallback, and the cause is logged without personal data", async () => {
+  it("503 on every attempt: the brain answers, the Call goes on, and one `brain` line logs the cause without personal data", async () => {
     const model = failsWith503(99, createScriptedModel([]));
     const { deps, events } = withLog(model);
     const c = new Caller(makePost(deps).POST);
     await c.start();
-    const r = await c.say("Soy Ana Secreta, mi teléfono es 612345678, quiero cortarme el pelo");
-    expect(r.body).toMatchObject({ reply: spoken(ES.fallbackEnd()), complete: true, outcome: "fallback" });
+    const r = await c.say(PERSONAL_QUESTION);
+    expect(r.body.complete).toBe(false);
+    expect(r.body.outcome).toBeUndefined();
+    expect(r.body.reply).not.toBe(spoken(ES.fallbackEnd()));
     expect(model.calls).toBe(MAX_MODEL_ATTEMPTS);
 
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
       event: "turn_fallback",
-      path: "end",
+      path: "brain",
       reason: "unavailable",
       shopId: lolaProfile.id,
       callId: c.callId,
       turn: 1,
       model: { failure: "unavailable", status: 503, errorClass: "InternalServerError", attempts: MAX_MODEL_ATTEMPTS },
     });
+    expect(JSON.stringify(events)).not.toMatch(PERSONAL);
+    expect(await t.handle.db.select().from(messages)).toHaveLength(0);
+  });
+
+  it("task 9.3: the real Gemini client's 503 quoting the key, on a line with a name, a phone and an unanswered question: the brain line holds none of them", async () => {
+    const apiKey = "AIzaSyFAKE_test_key_000000000000000000";
+    const sdk: InteractionsApi = {
+      interactions: {
+        create: () =>
+          Promise.reject(
+            Object.assign(new Error(`503 high demand on https://generativelanguage.googleapis.com/v1beta/interactions?key=${apiKey}`), {
+              status: 503,
+            }),
+          ),
+      },
+    };
+    const { deps, events } = withLog(createGeminiClient({ apiKey, model: "gemini-flash-lite-latest", sdk }));
+    const c = new Caller(makePost(deps).POST);
+    await c.start();
+    const r = await c.say(PERSONAL_QUESTION);
+    expect(r.body.complete).toBe(false);
+    expect(events).toHaveLength(1);
+    // The client keeps the SDK error's own class name (a plain Error in this fake).
+    expect(events[0]).toMatchObject({ path: "brain", reason: "unavailable", model: { status: 503, errorClass: "Error" } });
     const logged = JSON.stringify(events);
-    expect(logged).not.toMatch(/Ana|Secreta|612345678|cortarme/);
+    expect(logged).toContain("***");
+    expect(logged).not.toContain(apiKey);
+    expect(logged).not.toMatch(PERSONAL);
+    // Nor the Owner_Note's question, which goes into the Message, never into the log.
+    expect(logged).not.toMatch(/qu[eé] tal|cortando/);
   });
 });
 
 describe("every fallback logs its cause (design.md, 'Logging a fallback')", () => {
-  it("invalid output: the retry path logs the zod issues; the second time logs the end path", async () => {
+  it("invalid output: each brain Turn logs the zod issues, and the Call goes on", async () => {
     const bad = JSON.stringify({ ...REAL_TURN, intent: "maybe", name: "Ana Secreta" });
     const { deps, events } = withLog(createScriptedModel([bad, bad]));
     const c = new Caller(makePost(deps).POST);
     await c.start();
-    await c.say("Hola");
-    await c.say("Hola otra vez");
+    expect((await c.say("¿Y qué tal es Lola cortando?")).body.complete).toBe(false);
+    expect((await c.say("Oye, ¿y Lola es simpática?")).body.complete).toBe(false);
     expect(events.map((e) => [e.path, e.reason])).toEqual([
-      ["retry", "invalid_output"],
-      ["end", "invalid_output"],
+      ["brain", "invalid_output"],
+      ["brain", "invalid_output"],
     ]);
     expect(events[0].model?.invalid).toMatchObject({ kind: "schema", issues: [{ path: "intent", code: "invalid_value" }] });
     expect(JSON.stringify(events)).not.toContain("Ana Secreta");

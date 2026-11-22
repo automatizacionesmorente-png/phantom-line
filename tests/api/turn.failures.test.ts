@@ -6,12 +6,25 @@ import { bookingWrite, callWrite, insertShop } from "../db/helpers";
 import { lolaProfile } from "../fixtures/lola";
 import type { TestDb } from "../db/pglite";
 import type { ModelClient, TurnOutput } from "@/lib/conversation/types";
+import { readUtterance } from "@/lib/conversation/brain/read";
+import { decideTurn } from "@/lib/conversation/decide";
+import { factsFromReading } from "@/lib/conversation/facts";
+import type { FallbackLogEvent } from "@/lib/conversation/fallbackLog";
 import { bookings, calls, messages } from "@/lib/db/schema";
-import { createScriptedModel, neverResolves, returnsGarbage, throws429 } from "@/lib/receptionist/callModel";
+import {
+  createScriptedModel,
+  failsWith503,
+  MODEL_TIMEOUT_MS,
+  neverResolves,
+  returnsGarbage,
+  throws429,
+  throwsNetwork,
+} from "@/lib/receptionist/callModel";
 import { phrases, type Said } from "@/lib/receptionist/phrases";
-import { toSpokenReply } from "@/lib/receptionist/speech";
+import { spokenTemplate, toSpokenReply } from "@/lib/receptionist/speech";
 import { getSectorPack } from "@/lib/sectors";
 import { Caller, makeDeps, makePost, modelTurn, NOW, request, setupDb, SHOP } from "./harness";
+import { NOT_SURE_TAIL, notSure } from "../conversation/notSure";
 
 /** Task 8.5: the scripted failure Calls through POST /api/turn, on PGlite. */
 const pack = getSectorPack("hair-salon");
@@ -59,63 +72,115 @@ async function expectFallbackMessage(callId: string) {
   expect((await callRow(callId)).status).toBe("failed");
 }
 
-describe("model failures take the end path: Fallback_Message, Call ends, Message with model_failed", () => {
-  it("a model timeout", async () => {
-    const model = thenFails(neverResolves);
-    const { POST } = makePost(makeDeps(t, model, { modelTimeoutMs: 50 }));
-    const c = new Caller(POST);
-    await c.start();
-    expect((await c.say("Quiero un corte, soy Ana")).body.complete).toBe(false);
-    const started = Date.now();
-    const r = await c.say("El viernes");
-    expect(Date.now() - started).toBeLessThan(2000);
-    expect(r.status).toBe(200);
-    expect(r.body).toMatchObject({ reply: spoken(ES.fallbackEnd()), complete: true, outcome: "fallback" });
-    await expectFallbackMessage(c.callId);
-  });
+/**
+ * Not Sure_Readings (front-desk-brain design.md, "What makes a Reading sure"): a question no
+ * Profile_Topic answers. So these Turns still call the model after task 17, and keep testing
+ * the model path's failures.
+ */
+const OFF_PROFILE = ["¿Y qué tal es Lola cortando?", "Oye, ¿y Lola es simpática?"] as const;
 
-  it("a 429 from the model (quota)", async () => {
-    const model = thenFails(throws429);
-    const { POST } = makePost(makeDeps(t, model));
+/**
+ * The first line of a failure Call, answered by the scripted model with the name and the reason.
+ * front-desk-brain 17.5: "Quiero un corte, soy Ana" alone is a Sure_Reading (a Service_Request),
+ * which no longer calls the model, so the script's first answer was never read and the Call had
+ * no name. With the not-sure words the model is asked, as before. They go before "soy Ana": after
+ * it, the name reader takes "Ana porque me lo recomendó" as the name (a Code_Brain finding, in
+ * design.md "As built in task 17").
+ */
+const SETUP = `Quiero un corte${NOT_SURE_TAIL.es}, soy Ana`;
+
+/** The oracle for "the brain's reply": the Reading of the utterance decided on the stored state, as the brain path does. */
+async function brainReply(callId: string, utterance: string): Promise<string> {
+  const call = (await t.repo.getCall(callId, SHOP))!;
+  const state = { ...call.state, language: "es" as const };
+  const reading = readUtterance({ utterance, state, shop: lolaProfile, pack, now: NOW, lang: "es" });
+  const decision = decideTurn({
+    state,
+    facts: factsFromReading(reading, utterance),
+    reading,
+    utterance,
+    shop: lolaProfile,
+    pack,
+    now: NOW,
+    existing: [],
+    callerBookings: [],
+    maxTurns: 20,
+    callId,
+  });
+  expect(decision.fromModel).toBe(false);
+  return spokenTemplate(decision.reply, "es");
+}
+
+/** The Call went on after the failure, then ended by goodbye: one Message, model_failed, the caller's name, no fallback. */
+async function expectGoodbyeMessage(c: Caller) {
+  const bye = await c.say("Adiós, gracias");
+  expect(bye.body.complete).toBe(true);
+  expect(bye.body.outcome).not.toBe("fallback");
+  const ms = await allMessages();
+  expect(ms).toHaveLength(1);
+  expect(ms[0]).toMatchObject({ callId: c.callId, modelFailed: true, callerName: "Ana" });
+  expect(ms[0].outcome).not.toBe("fallback");
+  expect((await callRow(c.callId)).status).toBe("completed");
+}
+
+describe("a model failure never ends the Call: the brain answers (front-desk-brain 1.1–1.3, 15.4)", () => {
+  const failures: [string, () => ModelClient][] = [
+    ["a hang", () => neverResolves],
+    ["a 503 on every attempt", () => failsWith503(99, createScriptedModel([]))],
+    ["a 429 (quota)", () => throws429],
+    ["a network error", () => throwsNetwork],
+  ];
+  for (const [name, failing] of failures) {
+    it(`${name}: the brain's reply, complete: false, and the Call ends later by goodbye with a model_failed Message`, async () => {
+      const model = thenFails(failing());
+      const { POST } = makePost(makeDeps(t, model, { modelTimeoutMs: 50 }));
+      const c = new Caller(POST);
+      await c.start();
+      expect((await c.say(SETUP)).body.complete).toBe(false);
+      const expected = await brainReply(c.callId, OFF_PROFILE[0]);
+      const r = await c.say(OFF_PROFILE[0]);
+      expect(r.status).toBe(200);
+      expect(r.body).toMatchObject({ reply: expected, complete: false });
+      expect(r.body.outcome).toBeUndefined();
+      expect(r.body.reply).not.toBe(spoken(ES.fallbackEnd()));
+      expect(r.body.reply).not.toBe(spoken(ES.fallbackRetry()));
+      expect((await callRow(c.callId)).status).toBe("open");
+      expect(await allMessages()).toHaveLength(0);
+      await expectGoodbyeMessage(c);
+    });
+  }
+
+  it("a hang: the brain answers once the Model_Wait (MODEL_TIMEOUT_MS) is over, and not much later", async () => {
+    const model = thenFails(neverResolves);
+    const { POST } = makePost(makeDeps(t, model, { modelTimeoutMs: MODEL_TIMEOUT_MS }));
     const c = new Caller(POST);
     await c.start();
-    await c.say("Quiero un corte, soy Ana");
-    const r = await c.say("El viernes");
-    expect(r.status).toBe(200);
-    expect(r.body).toMatchObject({ reply: spoken(ES.fallbackEnd()), complete: true, outcome: "fallback" });
-    await expectFallbackMessage(c.callId);
+    await c.say(SETUP);
+    const started = Date.now();
+    const r = await c.say(OFF_PROFILE[0]);
+    const elapsed = Date.now() - started;
+    expect(elapsed).toBeGreaterThanOrEqual(MODEL_TIMEOUT_MS - 50);
+    expect(elapsed).toBeLessThan(MODEL_TIMEOUT_MS + 1500);
+    expect(r.body.complete).toBe(false);
   });
 });
 
-describe("invalid model output takes the retry path", () => {
-  it("once: the retry Fallback_Message, and the Call continues", async () => {
-    const script = createScriptedModel([
-      '{"reply": "hola", "intent": "maybe"',
-      modelTurn({ reply: "¿Qué servicio quieres?", reason: "Quiere una cita" }),
-    ]);
-    const { POST } = makePost(makeDeps(t, script));
+describe("invalid model output: the brain answers, every time (front-desk-brain 1.2)", () => {
+  it("twice in a row: two brain replies, the Call still open, and a model_failed Message after goodbye", async () => {
+    const model = thenFails(returnsGarbage);
+    const { POST } = makePost(makeDeps(t, model));
     const c = new Caller(POST);
     await c.start();
-    const r1 = await c.say("Hola, quería una cita");
-    expect(r1.status).toBe(200);
-    expect(r1.body).toMatchObject({ reply: spoken(ES.fallbackRetry()), complete: false });
-    expect(r1.body.outcome).toBeUndefined();
-    const r2 = await c.say("Una cita, por favor");
-    expect(r2.body).toMatchObject({ reply: "¿Qué servicio quieres?", complete: false });
-    expect(await allMessages()).toHaveLength(0);
+    await c.say(SETUP);
+    for (const line of OFF_PROFILE) {
+      const expected = await brainReply(c.callId, line);
+      const r = await c.say(line);
+      expect(r.body).toMatchObject({ reply: expected, complete: false });
+      expect(r.body.reply).not.toBe(spoken(ES.fallbackRetry()));
+    }
     expect((await callRow(c.callId)).status).toBe("open");
-  });
-
-  it("twice in a row: the Call ends with the end Fallback_Message and a model_failed Message", async () => {
-    const { POST } = makePost(makeDeps(t, returnsGarbage));
-    const c = new Caller(POST);
-    await c.start();
-    expect((await c.say("Hola")).body).toMatchObject({ reply: spoken(ES.fallbackRetry()), complete: false });
-    const r = await c.say("Hola, ¿me oyes?");
-    expect(r.body).toMatchObject({ reply: spoken(ES.fallbackEnd()), complete: true, outcome: "fallback" });
-    const ms = await allMessages();
-    expect(ms).toHaveLength(1);
-    expect(ms[0]).toMatchObject({ outcome: "fallback", modelFailed: true });
+    expect(await allMessages()).toHaveLength(0);
+    await expectGoodbyeMessage(c);
   });
 });
 
@@ -126,7 +191,7 @@ describe("rate limits", () => {
     const { POST } = makePost(makeDeps(t, model, { perVisitorPerMinute: 2 }));
     const c = new Caller(POST);
     await c.start();
-    await c.say("Quiero un corte, soy Ana");
+    await c.say(SETUP);
     const r = await c.say("El viernes");
     expect(r.status).toBe(200);
     expect(r.body).toMatchObject({ reply: spoken(ES.fallbackEnd()), complete: true, outcome: "fallback" });
@@ -134,16 +199,23 @@ describe("rate limits", () => {
     await expectFallbackMessage(c.callId);
   });
 
-  it("the global limit reached mid-call takes the same path, for a different visitor", async () => {
+  it("the global limit reached mid-call skips the model, and the brain answers; the Call goes on (front-desk-brain 1.5)", async () => {
     const model = createScriptedModel([modelTurn({ reply: "¿Qué día?", name: "Ana", service: "corte", reason: "Quiere un corte" })]);
-    const { POST } = makePost(makeDeps(t, model, { globalPerHour: 3 }));
+    const events: FallbackLogEvent[] = [];
+    const deps = { ...makeDeps(t, model, { globalPerHour: 3 }), logFallback: (e: FallbackLogEvent) => events.push(e) };
+    const { POST } = makePost(deps);
     await new Caller(POST, "es", "198.51.100.1").start(); // global Turn 1, another visitor
     const c = new Caller(POST, "es", "198.51.100.2");
     await c.start(); // 2
-    await c.say("Quiero un corte, soy Ana"); // 3
-    const r = await c.say("El viernes"); // 4: over
-    expect(r.body).toMatchObject({ reply: spoken(ES.fallbackEnd()), complete: true, outcome: "fallback" });
-    await expectFallbackMessage(c.callId);
+    await c.say(SETUP); // 3
+    const expected = await brainReply(c.callId, OFF_PROFILE[0]);
+    const r = await c.say(OFF_PROFILE[0]); // 4: over the global limit
+    expect(r.body).toMatchObject({ reply: expected, complete: false });
+    expect(model.calls).toHaveLength(1);
+    // Not a model failure: no turn_fallback line and no model_failed flag.
+    expect(events).toEqual([]);
+    expect((await callRow(c.callId)).state.modelFailed).toBe(false);
+    expect(await allMessages()).toHaveLength(0);
   });
 
   it("the limit on start: the busy line, no Call row and no Message", async () => {
@@ -166,8 +238,8 @@ describe("hang-up", () => {
     const { POST } = makePost(makeDeps(t, model));
     const c = new Caller(POST);
     await c.start();
-    await c.say("Un corte mañana a las siete y media");
-    await c.say("Ana");
+    await c.say(notSure("Un corte mañana a las siete y media", "es"));
+    await c.say(notSure("Ana", "es"));
     const h1 = await c.hangup();
     expect(h1.status).toBe(200);
     expect(h1.body).toMatchObject({ complete: true, outcome: "abandoned" });

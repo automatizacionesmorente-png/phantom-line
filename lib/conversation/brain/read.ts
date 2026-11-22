@@ -312,7 +312,9 @@ export function readUtterance(input: ReadInput): Reading {
   else if (choice && svc.choiceAnswered) basis = "choice_answer";
   else if (
     (field === "name" && name !== null) ||
-    (field === "phone" && (phone.phone !== null || phone.rejected)) ||
+    // A phone once the name is known is sure even before a time: with no free slot the Call takes a message.
+    ((field === "phone" || (state.stage === "collecting" && state.fields.name !== undefined && !state.fields.phone)) &&
+      (phone.phone !== null || phone.rejected)) ||
     (field === "requestedTime" && hasWhen)
   )
     basis = "next_field";

@@ -98,7 +98,7 @@ export class Caller {
     return { status: res.status, body };
   }
 
-  async say(utterance: string): Promise<{ status: number; body: TurnOutput }> {
+  async say(utterance: string): Promise<{ status: number; body: TurnOutput; headers: Headers }> {
     const res = await this.POST(
       request(
         { kind: "say", shopId: SHOP, language: this.language, callId: this.callId, utterance, conversation: this.conversation.slice(-20) },
@@ -107,7 +107,7 @@ export class Caller {
     );
     const body = (await res.json()) as TurnOutput;
     if (res.status === 200) this.conversation.push({ caller: utterance, receptionist: body.reply });
-    return { status: res.status, body };
+    return { status: res.status, body, headers: res.headers };
   }
 
   async hangup(): Promise<{ status: number; body: unknown }> {

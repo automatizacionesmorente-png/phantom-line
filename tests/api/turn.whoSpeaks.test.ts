@@ -10,6 +10,7 @@ import { phrases, type Said } from "@/lib/receptionist/phrases";
 import { toSpokenReply } from "@/lib/receptionist/speech";
 import { getSectorPack } from "@/lib/sectors";
 import { Caller, makeDeps, makePost, modelTurn, NOW, setupDb } from "./harness";
+import { notSure } from "../conversation/notSure";
 
 /**
  * Regressions for the second round of real calls (2026-11-12, `next dev`, real Gemini, real Neon).
@@ -28,10 +29,14 @@ const ES = phrases("es", pack, lolaProfile, undefined, NOW);
 const turnPhrases = (callId: string, n: number) => phrases("es", pack, lolaProfile, { callId, turn: n }, NOW);
 const spoken = (line: Said) => toSpokenReply(line.text, "es", { maxSentences: 3 });
 const at = (iso: string) => Temporal.Instant.from(iso);
-const WED = Temporal.PlainDate.from("2026-11-11");
 const WED_2100 = at("2026-11-11T20:00:00Z");
 const OFFERED = [at("2026-11-11T18:30:00Z"), at("2026-11-11T18:15:00Z"), at("2026-11-11T18:00:00Z")];
-const LINE = "Quiero cortarme el pelo mañana a las nueve de la noche";
+/**
+ * front-desk-brain 17.5: the real line alone is a Sure_Reading now and never reaches the model, so
+ * every Caller line here carries the not-sure tail. The facts are the same, the scripted model is
+ * still asked, and these tests keep pinning what the model path does with the model's real answers.
+ */
+const LINE = notSure("Quiero cortarme el pelo mañana a las nueve de la noche", "es");
 
 /** The real answer (check-turn, 2026-11-12 12:14 Madrid): date kept, time dropped, hours in the reply. */
 const REAL_TIME_NULL = modelTurn({
@@ -66,23 +71,29 @@ afterAll(async () => {
 });
 
 describe("who speaks: a known service with no time is answered by code, never by the model", () => {
-  it("time dropped, date kept: the code asks for the time on that day; no opening hours from the model", async () => {
+  // front-desk-brain 8.1 amends core-call-loop 5.x (requirements.md, "Amendments"): once the service
+  // is known and no time was asked for, the code offers the nearest free slot instead of asking
+  // "¿Qué día y a qué hora?". Old assertion: the reply was `askDayAndTime(WED)` / `askDayAndTime(null)`.
+  // What these tests still protect: the code speaks, and the model's words about hours never do.
+  it("time dropped, date kept: the code offers the first free slot on that day; no opening hours from the model", async () => {
     const c = new Caller(makePost(makeDeps(t, createScriptedModel([REAL_TIME_NULL]))).POST);
     await c.start();
     const r = await c.say(LINE);
     expect(r.status).toBe(200);
-    expect(r.body.reply).toBe(ES.askDayAndTime(WED).text);
-    expect(r.body.reply).toBe("¿A qué hora te viene bien mañana?");
+    const wed1000 = at("2026-11-11T09:00:00Z");
+    expect(r.body.reply).toBe(spoken(ES.firstOffer("haircut", wed1000)));
+    expect(r.body.reply).toBe("Un corte son media hora y quince euros. ¿Te viene bien mañana a las diez? Si prefieres otro día, dímelo.");
     expect(r.body.reply).not.toMatch(/cerrad|horario|abrimos/);
     expect(r.body.complete).toBe(false);
     expect(r.body.state.fields.service).toBe("corte");
   });
 
-  it("Call B's shape (no date, no time): the code asks for the day and time", async () => {
+  it("Call B's shape (no date, no time): the code offers the first free slot from now", async () => {
     const c = new Caller(makePost(makeDeps(t, createScriptedModel([CALL_B_NO_DATE]))).POST);
     await c.start();
     const r = await c.say(LINE);
-    expect(r.body.reply).toBe(turnPhrases(c.callId, 1).askDayAndTime(null).text);
+    // NOW is Tuesday 09:00 Madrid: 30 minutes later, the first slot is today at 10:00.
+    expect(r.body.reply).toBe(spoken(turnPhrases(c.callId, 1).firstOffer("haircut", at("2026-11-10T09:00:00Z"))));
     expect(r.body.reply).not.toContain("abrimos");
   });
 
@@ -95,14 +106,15 @@ describe("who speaks: a known service with no time is answered by code, never by
     const c = new Caller(makePost(makeDeps(t, model)).POST);
     await c.start();
     await c.say(LINE);
-    const r2 = await c.say("A las nueve de la noche");
+    const r2 = await c.say(notSure("A las nueve de la noche", "es"));
     expect(r2.body.reply).toBe(spoken(turnPhrases(c.callId, 2).rejected("outside_hours", WED_2100, OFFERED)));
     expect(r2.body.reply).not.toContain("cerramos a las ocho");
-    const r3 = await c.say("Vale, a las siete y media");
+    const r3 = await c.say(notSure("Vale, a las siete y media", "es"));
     // The time is accepted, so the code asks for the name; the model's "Perfecto. ¿A nombre de quién?" is not spoken.
     expect(r3.body.reply).toBe(spoken(turnPhrases(c.callId, 3).timeAcceptedAskName(OFFERED[0])));
     expect(r3.body.reply).not.toBe("Perfecto. ¿A nombre de quién?");
     expect(r3.body.state.fields.requestedTime).toBe("2026-11-11T19:30");
+    expect(model.calls).toHaveLength(3);
   });
 });
 

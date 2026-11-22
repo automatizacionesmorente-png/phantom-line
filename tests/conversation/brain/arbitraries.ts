@@ -3,6 +3,7 @@ import { lexiconWords } from "@/lib/conversation/brain/lexicon";
 import { editDistance, words } from "@/lib/conversation/brain/normalize";
 import { serviceIndex } from "@/lib/conversation/brain/services";
 import type { ShopProfile } from "@/lib/conversation/shopProfile";
+import { modelTurn, type ModelBehaviour } from "../coreCall";
 
 /**
  * Generators and pools for the Code_Brain's tests (front-desk-brain design.md, "Correctness
@@ -137,3 +138,33 @@ export const UTTERANCE_POOL: readonly string[] = [
   "Ah, y también quería preguntar si vendéis champú, que el que me recomendasteis la otra vez se me ha acabado",
   "Mejor sin el arreglo de barba, solo el corte de hombre y el degradado, que la barba me la arreglo yo",
 ];
+
+// ---------------------------------------------------------------------------
+// arbModelBehaviour (design.md, "Correctness Properties"): what the model does on one Turn.
+
+/**
+ * A valid scripted turn, Gemini's 503, a 429, a hang that ignores the signal, a network error,
+ * invalid JSON or a schema-invalid object. A valid turn never says the Caller wants to end, so a
+ * property about a Call that goes on can use it as it is.
+ */
+export const arbModelBehaviour: fc.Arbitrary<ModelBehaviour> = fc.oneof(
+  {
+    weight: 2,
+    arbitrary: fc
+      .record({
+        reply: fc.constantFrom("Vale.", "Claro, dime.", "¿Algo más?", "Perfecto."),
+        intent: fc.constantFrom("booking" as const, "question" as const, "other" as const),
+        service: fc.constantFrom(null, "corte", "un degradado", "mechas"),
+        callerConfirmed: fc.boolean(),
+        outOfProfile: fc.boolean(),
+        urgency: fc.constantFrom("low" as const, "normal" as const),
+      })
+      .map((over) => ({ kind: "valid" as const, turn: modelTurn({ ...over, reason: "Llama por una cita" }) })),
+  },
+  { weight: 1, arbitrary: fc.constant({ kind: "503" as const }) },
+  { weight: 1, arbitrary: fc.constant({ kind: "429" as const }) },
+  { weight: 1, arbitrary: fc.constant({ kind: "hang" as const }) },
+  { weight: 1, arbitrary: fc.constant({ kind: "network" as const }) },
+  { weight: 1, arbitrary: fc.constant({ kind: "invalid_json" as const }) },
+  { weight: 1, arbitrary: fc.constant({ kind: "schema_invalid" as const }) },
+);

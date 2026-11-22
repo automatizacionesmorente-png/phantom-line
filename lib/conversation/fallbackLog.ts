@@ -10,8 +10,13 @@ export type FallbackReason = "rate_limit" | "timeout" | "quota" | "unavailable" 
 
 export interface FallbackLogEvent {
   event: "turn_fallback";
-  /** end: the Call closes with a Message; retry: the Call continues; start: no Call yet; http_503: the adapter answered 503. */
-  path: "end" | "retry" | "start" | "http_503";
+  /**
+   * brain: the model failed or ran out of Model_Wait and the Code_Brain answered; the Call goes on
+   * (front-desk-brain 12.5). end: the Call closes with a Message (since front-desk-brain only the
+   * per-visitor rate limit). start: no Call yet. http_503: the adapter answered 503.
+   * (`retry`, the invalid-output retry line of core-call-loop 4.6, is no longer written.)
+   */
+  path: "brain" | "end" | "start" | "http_503";
   reason: FallbackReason;
   shopId: string;
   callId?: string;

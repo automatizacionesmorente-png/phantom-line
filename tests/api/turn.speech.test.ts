@@ -84,7 +84,7 @@ describe("/api/turn: the speech hint", () => {
       conversation.push({ caller: utterance, receptionist: r.body.reply });
       return r.body;
     };
-    const question = await say("¿Cuánto cuesta un corte?");
+    const question = await say("¿Y qué tal es Lola cortando?");
     expect(question.cacheable).toBe(false);
     expect(verify(question)).toMatchObject({ ok: true, cacheable: false });
 

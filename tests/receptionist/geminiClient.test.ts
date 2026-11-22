@@ -57,7 +57,12 @@ describe("createGeminiClient", () => {
       signal: new AbortController().signal,
     });
     expect(create.mock.calls[0][0].model).toBe(DEFAULT_GEMINI_MODEL);
-    expect(DEFAULT_GEMINI_MODEL).toBe("gemini-3.5-flash-lite");
+    expect(DEFAULT_GEMINI_MODEL).toBe("gemini-flash-lite-latest");
+  });
+
+  it("the default list is the owner's decision of 2026-11-16 (front-desk-brain question 17)", () => {
+    expect(DEFAULT_GEMINI_MODELS).toEqual(["gemini-flash-lite-latest", "gemini-3.5-flash-lite"]);
+    expect(DEFAULT_GEMINI_MODELS).not.toContain("gemini-3.5-flash");
   });
 
   it("returns an empty string when the interaction has no output_text", async () => {

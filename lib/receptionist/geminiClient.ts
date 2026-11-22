@@ -10,10 +10,12 @@ import type { ModelClient } from "@/lib/conversation/types";
 
 /**
  * The models a Turn's attempts use, in order (attempt k uses entry k mod length).
- * Chosen from measurements (design.md, "Model attempts"). Override with GEMINI_MODEL,
- * which may hold one id or a comma-separated list.
+ * Owner decision of 2026-11-16 (front-desk-brain design.md, "Model path constants",
+ * question 17): `gemini-flash-lite-latest` answered 13 of 15 measured requests and
+ * `gemini-3.5-flash-lite` 10 of 15; `gemini-3.5-flash` was dropped after hanging 13 of 15.
+ * Override with GEMINI_MODEL, which may hold one id or a comma-separated list.
  */
-export const DEFAULT_GEMINI_MODELS: readonly string[] = ["gemini-3.5-flash-lite", "gemini-flash-lite-latest"];
+export const DEFAULT_GEMINI_MODELS: readonly string[] = ["gemini-flash-lite-latest", "gemini-3.5-flash-lite"];
 /** The first model of the default list. */
 export const DEFAULT_GEMINI_MODEL = DEFAULT_GEMINI_MODELS[0];
 export const MAX_OUTPUT_TOKENS = 400;
@@ -76,7 +78,7 @@ export function createGeminiClient(cfg: GeminiConfig): ModelClient & { models: r
             generation_config: { thinking_level: "low", max_output_tokens: MAX_OUTPUT_TOKENS },
           },
           // Top-level signal (the spike showed fetch_options.signal is unreliable) and no SDK
-          // retries, whose backoff can outlast the 8-second budget.
+          // retries, whose backoff can outlast the Model_Wait.
           { signal, retries: { strategy: "none" } },
         );
       } catch (err) {

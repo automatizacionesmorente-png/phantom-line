@@ -1,6 +1,6 @@
 import { Temporal } from "temporal-polyfill";
 import { toInstant, type ExistingBooking } from "@/lib/booking";
-import { callReceptionist, type ModelFailure, type ModelFailureInfo } from "@/lib/receptionist/callModel";
+import { callReceptionist, type ModelFailure, type ModelFailureInfo, type ModelResult } from "@/lib/receptionist/callModel";
 import { phrases, type PhraseSet, type Said } from "@/lib/receptionist/phrases";
 import { buildInput, buildSystemInstruction } from "@/lib/receptionist/prompt";
 import { spokenTemplate, toSpokenReply } from "@/lib/receptionist/speech";
@@ -8,6 +8,8 @@ import { getSectorPack, type Lang, type SectorPack } from "@/lib/sectors";
 import { decideTurn, publicStateOf, type Decision } from "./decide";
 import { checkLimits, type LimitDecision } from "./limits";
 import { consoleFallbackLogger, type FallbackLogEvent } from "./fallbackLog";
+import { factsFromModel, factsFromReading, type TurnFacts } from "./facts";
+import { readUtterance } from "./brain/read";
 import { mergeFields } from "./fields";
 import { buildOwnerMessage } from "./ownerMessage";
 import { messageWrite } from "./messageWrite";
@@ -21,6 +23,8 @@ import {
   type Line,
   type Outcome,
   type StoredCall,
+  type StageTimes,
+  type TimedTurnOutput,
   type TurnInput,
   type TurnOutput,
   type Write,
@@ -51,15 +55,83 @@ const CHANGE_INTENTS = new Set(["reschedule", "cancel"]);
  * Booking_Rules, and every fact that gets persisted comes from server state.
  */
 export async function handleTurn(input: TurnInput, deps: CoreDeps): Promise<TurnOutput> {
+  return (await handleTurnTimed(input, deps)).output;
+}
+
+/**
+ * `handleTurn` with the request's stage times beside its output (front-desk-brain 19.4; design.md
+ * "handleTurn", step 7), for the voice adapter's `Server-Timing` header. The times are numbers only
+ * and never change what the Caller hears.
+ */
+export async function handleTurnTimed(input: TurnInput, deps: CoreDeps): Promise<TimedTurnOutput> {
+  const clock = deps.timer ?? (() => performance.now());
+  const started = clock();
+  const stages = newStages(clock);
+  const addDb = (ms: number) => (stages.times.db += ms);
+  const timedDeps: CoreDeps = {
+    ...deps,
+    repo: timeCalls(deps.repo, addDb, clock),
+    limiter: timeCalls(deps.limiter, addDb, clock),
+  };
   const pack = getSectorPack(input.shop.sectorPackId);
+  let output: TurnOutput;
   switch (input.kind) {
     case "start":
-      return start(input, pack, deps);
+      output = await start(input, pack, timedDeps);
+      break;
     case "say":
-      return say(input, pack, deps);
+      output = await say(input, pack, timedDeps, stages);
+      break;
     case "hangup":
-      return hangup(input, pack, deps);
+      output = await hangup(input, pack, timedDeps);
+      break;
   }
+  return { output, timings: { ...stages.times, total: Math.max(0, clock() - started) } };
+}
+
+// ---------------------------------------------------------------------------
+// Stage times (19.4)
+
+interface Stages {
+  times: Omit<StageTimes, "total">;
+  /** Runs pure Code_Brain or `decideTurn` work and counts its time as `brain`. */
+  brain<T>(f: () => T): T;
+  clock: () => number;
+}
+
+function newStages(clock: () => number): Stages {
+  const times = { brain: 0, db: 0, model: 0 };
+  return {
+    times,
+    clock,
+    brain<T>(f: () => T): T {
+      const t0 = clock();
+      try {
+        return f();
+      } finally {
+        times.brain += Math.max(0, clock() - t0);
+      }
+    },
+  };
+}
+
+/** The same port, with the time of every promise it returns added to `add` (the `db` stage). */
+function timeCalls<T extends object>(port: T, add: (ms: number) => void, clock: () => number): T {
+  return new Proxy(port, {
+    get(target, prop) {
+      const value: unknown = Reflect.get(target, prop, target);
+      if (typeof value !== "function") return value;
+      return (...args: unknown[]) => {
+        const t0 = clock();
+        const out: unknown = (value as (...a: unknown[]) => unknown).apply(target, args);
+        if (out !== null && typeof out === "object" && typeof (out as PromiseLike<unknown>).then === "function") {
+          return Promise.resolve(out as PromiseLike<unknown>).finally(() => add(Math.max(0, clock() - t0)));
+        }
+        add(Math.max(0, clock() - t0));
+        return out;
+      };
+    },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -168,7 +240,11 @@ async function loadOpenCall(callId: string, shopId: string, deps: CoreDeps): Pro
   return call;
 }
 
-/** The end path: the Fallback_Message, the Call closes, a Message with `model_failed` (4.7, 6.4, 3.10). */
+/**
+ * The end path: the Fallback_Message, the Call closes, a Message with `model_failed` (core-call-loop
+ * 3.10). Since front-desk-brain it is reached only by the per-visitor rate limit (1.4); a model
+ * failure never ends a Call (1.2).
+ */
 async function endWithFallback(
   call: StoredCall,
   state: CallState,
@@ -205,8 +281,12 @@ async function endWithFallback(
   return output(call.id, final, shop, reply, true, "fallback");
 }
 
-/** The instants a Turn may book or move to, so the bookings read cover the slot search around them. */
-function timesInvolved(state: CallState, decisionState: CallState, shop: ShopProfile): Temporal.Instant[] {
+/**
+ * The instants a Turn may book or move to, so the bookings read cover the slot search around them.
+ * A Call with services and no requested time may get a First_Offer, which searches 14 days from
+ * `now` or from the day asked for (front-desk-brain 8.1, 8.2), so those instants count too.
+ */
+function timesInvolved(state: CallState, decisionState: CallState, shop: ShopProfile, now: Temporal.Instant): Temporal.Instant[] {
   const out: Temporal.Instant[] = [];
   for (const s of [state, decisionState]) {
     const r = s.fields.requested;
@@ -218,6 +298,17 @@ function timesInvolved(state: CallState, decisionState: CallState, shop: ShopPro
       }
     }
     if (s.pending && s.pending.kind !== "cancel") out.push(Temporal.Instant.from(s.pending.start));
+    if (s.fields.serviceId !== undefined || s.lastOffer?.length) {
+      out.push(now);
+      if (s.fields.day) {
+        try {
+          out.push(toInstant(Temporal.PlainDate.from(s.fields.day), Temporal.PlainTime.from("00:00"), shop.timeZone));
+        } catch {
+          // Not a date: the offer starts from now.
+        }
+      }
+    }
+    for (const iso of s.lastOffer ?? []) out.push(Temporal.Instant.from(iso));
   }
   return out;
 }
@@ -233,6 +324,20 @@ async function readBookings(
   const from = all[0].subtract({ hours: 24 * BOOKING_WINDOW_DAYS });
   const to = all[all.length - 1].add({ hours: 24 * BOOKING_WINDOW_DAYS });
   return deps.repo.listBookings(shopId, from, to);
+}
+
+/** A promise that never rejects: the value, or the error to throw where the value is used. */
+function settled<T>(p: Promise<T>): Promise<{ ok: true; value: T } | { ok: false; err: unknown }> {
+  return p.then(
+    (value) => ({ ok: true as const, value }),
+    (err: unknown) => ({ ok: false as const, err }),
+  );
+}
+
+/** The same instants, in any order: the bookings read for one set covers the other. */
+function sameTimes(a: readonly Temporal.Instant[], b: readonly Temporal.Instant[]): boolean {
+  const key = (xs: readonly Temporal.Instant[]) => [...new Set(xs.map((x) => x.epochMilliseconds))].sort((x, y) => x - y).join(",");
+  return key(a) === key(b);
 }
 
 /** Turns the decision's effects into one atomic batch. The Message links to the booking it is about. */
@@ -297,6 +402,7 @@ async function say(
   input: Extract<TurnInput, { kind: "say" }>,
   pack: SectorPack,
   deps: CoreDeps,
+  stages: Stages,
 ): Promise<TurnOutput> {
   const { shop } = input;
   const limited = await overLimit(input.visitorKey, deps);
@@ -310,74 +416,104 @@ async function say(
 
   // The page's ES / EN switch decides the language of this Turn (2.7, 4.9).
   const state: CallState = { ...call.state, language: input.language };
-  if (limited.blocked) {
+  // Step 1: the per-visitor limit protects the service from abuse and still ends the Call (1.4);
+  // the global hourly limit only skips the model, and the brain answers (1.5).
+  if (limited.blocked && limited.limit === "visitor") {
     return endWithFallback(call, state, input, pack, deps, { reason: "rate_limit", limit: limited.limit });
   }
+  const skipModel = limited.blocked;
 
   const now = deps.clock();
-  let failureInfo: ModelFailureInfo | undefined;
-  const result = await callReceptionist(
-    deps.model,
-    {
-      systemInstruction: buildSystemInstruction(shop, pack, state.language, now),
-      input: buildInput(state, input.conversation, input.utterance, shop),
-    },
-    { timeoutMs: deps.config.modelTimeoutMs, onFailure: (info) => (failureInfo = info) },
-  );
+  // Step 2: the Code_Brain's Reading, before any model call (2.1). Synchronous and pure.
+  const reading = stages.brain(() => readUtterance({ utterance: input.utterance, state, shop, pack, now, lang: state.language }));
+  const brainFacts = stages.brain(() => factsFromReading(reading, input.utterance));
+  const timesFor = (f: TurnFacts) =>
+    timesInvolved(state, { ...state, fields: mergeFields(state, f, shop).fields }, shop, now);
 
-  if (!result.ok) {
-    const cause = causeOfModelFailure(result.failure, failureInfo);
-    if (result.failure !== "invalid_output") return endWithFallback(call, state, input, pack, deps, cause);
-    // The retry path (4.6): the Call continues; the second invalid output in a row ends it.
-    const invalid = state.consecutiveInvalid + 1;
-    if (invalid >= deps.config.maxConsecutiveInvalid) {
-      return endWithFallback(call, { ...state, consecutiveInvalid: invalid }, input, pack, deps, cause);
+  // Step 3: when the times are already known from the state or the Reading, the bookings read
+  // runs beside the model call (2.7). Its result is captured, so a database error while the
+  // model is still running is never an unhandled rejection; it is thrown below if it is used.
+  const earlyTimes = timesFor(brainFacts);
+  const early =
+    earlyTimes.length > 0
+      ? { times: earlyTimes, result: settled(readBookings(shop.id, earlyTimes, now, deps)) }
+      : null;
+
+  // Step 4: the model, for at most the Model_Wait. `callReceptionist` races its own deadline and
+  // aborts every attempt when it settles, so a late answer is dropped by construction (2.3–2.5).
+  // A Sure_Reading never calls the model (2.2, 19.2): the brain answers, and since this is not a
+  // model failure, no `turn_fallback` line is written and `modelFailed` is left as it was.
+  // `decideTurn` still counts the Turn in `brainTurns`, because the brain answered it.
+  let failureInfo: ModelFailureInfo | undefined;
+  let result: ModelResult | null = null;
+  if (!skipModel && !reading.sure) {
+    const t0 = stages.clock();
+    try {
+      result = await callReceptionist(
+        deps.model,
+        {
+          systemInstruction: buildSystemInstruction(shop, pack, state.language, now),
+          input: buildInput(state, input.conversation, input.utterance, shop),
+        },
+        { timeoutMs: deps.config.modelTimeoutMs, onFailure: (info) => (failureInfo = info) },
+      );
+    } finally {
+      stages.times.model += Math.max(0, stages.clock() - t0);
     }
-    logFallback(deps, "retry", { shopId: shop.id, callId: call.id, turn: state.turnCount + 1 }, cause);
-    const reply = templateLine(
-      phraseSet(state.language, pack, shop, call.id, state.turnCount + 1, deps.clock()).fallbackRetry(),
-      state.language,
-    );
-    const next: CallState = { ...state, consecutiveInvalid: invalid, turnCount: state.turnCount + 1 };
-    await deps.repo.commit([
-      {
-        type: "updateCall",
-        callId: call.id,
-        state: next,
-        transcript: [...call.transcript, { caller: input.utterance, receptionist: reply.text }],
-        turnCount: next.turnCount,
-      },
-    ]);
-    return output(call.id, next, shop, reply, false);
+  }
+  // Step 5: the model's facts with the Reading's, or the Reading's alone (13.2, 1.1).
+  let facts: TurnFacts;
+  let decideState = state;
+  if (result?.ok) {
+    const turn = result.turn;
+    facts = stages.brain(() => factsFromModel(turn, reading, shop, { state, utterance: input.utterance }));
+  } else {
+    facts = brainFacts;
+    if (result) {
+      // A model failure or the Model_Wait: the brain answers and the Call goes on (1.1–1.3, 1.6).
+      // `decideTurn` counts the brain Turn; this Turn only records that the model failed.
+      logFallback(deps, "brain", { shopId: shop.id, callId: call.id, turn: state.turnCount + 1 }, causeOfModelFailure(result.failure, failureInfo));
+      decideState = { ...state, modelFailed: true };
+    }
   }
 
-  const turn = result.turn;
   // Which facts this Turn needs from the database, read fresh in this request (5.9).
-  const merged = mergeFields(state, turn, shop);
-  const preview: CallState = { ...state, fields: merged.fields };
-  const times = timesInvolved(state, preview, shop);
+  const times = timesFor(facts);
   const wantsChange =
-    CHANGE_INTENTS.has(turn.intent) ||
+    CHANGE_INTENTS.has(facts.intent) ||
     CHANGE_INTENTS.has(state.intent) ||
     state.existingBookingId !== undefined ||
     (state.pending !== undefined && state.pending.kind !== "book");
-  const phone = merged.fields.phone;
+  const phone = mergeFields(state, facts, shop).fields.phone;
   const callerBookings: CallerBooking[] =
     wantsChange && phone ? await deps.repo.findCallerBookings(shop.id, phone, now) : [];
 
-  let existing = await readBookings(shop.id, times, now, deps);
+  // The early read is used only if it covers exactly the times the chosen facts involve.
+  let existing: ExistingBooking[];
+  if (early && sameTimes(early.times, times)) {
+    const r = await early.result;
+    if (!r.ok) throw r.err;
+    existing = r.value;
+  } else {
+    if (early) await early.result; // settled either way, so nothing is left unhandled
+    existing = await readBookings(shop.id, times, now, deps);
+  }
   for (let attempt = 1; ; attempt++) {
-    const decision = decideTurn({
-      state,
-      turn,
-      shop,
-      pack,
-      now,
-      existing,
-      callerBookings,
-      maxTurns: deps.config.maxTurns,
-      callId: call.id,
-    });
+    const decision = stages.brain(() =>
+      decideTurn({
+        state: decideState,
+        facts,
+        reading,
+        utterance: input.utterance,
+        shop,
+        pack,
+        now,
+        existing,
+        callerBookings,
+        maxTurns: deps.config.maxTurns,
+        callId: call.id,
+      }),
+    );
     const lang = decision.state.language;
     // A template may have 3 sentences, the model's own words keep 2 (Requirements 9.7, 11.3).
     const text = decision.fromModel ? toSpokenReply(decision.reply, lang) : spokenTemplate(decision.reply, lang);
@@ -392,7 +528,7 @@ async function say(
 
     // Someone took the resource between our read and our commit (23P01). The whole batch rolled
     // back; read again and decide again (another chair, or alternatives). At most 2 retries.
-    if (attempt >= MAX_COMMIT_ATTEMPTS) return giveUpAfterConflicts(call, state, input, pack, deps);
+    if (attempt >= MAX_COMMIT_ATTEMPTS) return giveUpAfterConflicts(call, decideState, input, pack, deps);
     existing = await readBookings(shop.id, times, now, deps);
   }
 }

@@ -9,6 +9,7 @@ import { phrases, type Said } from "@/lib/receptionist/phrases";
 import { toSpokenReply } from "@/lib/receptionist/speech";
 import { getSectorPack } from "@/lib/sectors";
 import { Caller, makeDeps, makePost, modelTurn, setupDb } from "./harness";
+import { notSure } from "../conversation/notSure";
 
 /**
  * The owner's real voice call of 2026-11-13 (Chrome, before natural-voice landed), replayed through
@@ -22,6 +23,10 @@ import { Caller, makeDeps, makePost, modelTurn, setupDb } from "./harness";
  *   "Mi amor" as the name               one friendly re-ask, then accepted
  *
  * and no digit anywhere in what is spoken or shown.
+ *
+ * front-desk-brain 17.5: the replays below script the model for every line, so each line carries the
+ * not-sure tail (tests/conversation/notSure.ts): a Sure_Reading would skip the model and the script.
+ * The brain-only twin of a booking Call is the Real_Call_2026_11_16 regression (task 10).
  */
 const pack = getSectorPack("hair-salon");
 const at = (iso: string) => Temporal.Instant.from(iso);
@@ -88,7 +93,7 @@ describe("the owner's real call of 2026-11-13, replayed", () => {
     expect(hello.body.reply).not.toMatch(/contestador|no pueden atenderte/i);
 
     // "las 4:00": no digits, when they open, the nearest times first.
-    const r1 = await caller.say("Quiero ir mañana sábado a las 4:00 de la tarde");
+    const r1 = await caller.say(notSure("Quiero ir mañana sábado a las 4:00 de la tarde", "es"));
     said.push(r1.body.reply);
     expect(r1.body.reply).toBe(
       "Mañana a las cuatro estamos cerrados, abrimos a las cinco. ¿Te viene bien a las cinco? También tengo a las cinco y cuarto o a las cinco y media.",
@@ -96,7 +101,7 @@ describe("the owner's real call of 2026-11-13, replayed", () => {
     expect(r1.body.complete).toBe(false);
 
     // "a las cinco no a las 17 Pánfilo": a spoken time, no "te anoto" yet, the insult never repeated.
-    const r2 = await caller.say("Vale quiero ir a las cinco no a las 17 Pánfilo");
+    const r2 = await caller.say(notSure("Vale quiero ir a las cinco no a las 17 Pánfilo", "es"));
     said.push(r2.body.reply);
     expect(r2.body.reply).toBe(spoken(P(caller.callId, 2).timeAcceptedAskName(SAT_1700)));
     expect(r2.body.reply).toMatch(/mañana a las cinco/);
@@ -104,7 +109,7 @@ describe("the owner's real call of 2026-11-13, replayed", () => {
     expect(r2.body.state.fields.requestedTime).toBe(`${SAT}T17:00`);
 
     // The colour: yes, with length and price, and the longer service re-checked (17:00 + 90 min fits before 20:00).
-    const r3 = await caller.say("Vale pero antes me puedo pintar el pelo de rosa");
+    const r3 = await caller.say(notSure("Vale pero antes me puedo pintar el pelo de rosa", "es"));
     said.push(r3.body.reply);
     expect(r3.body.reply).toBe(
       `Claro, un tinte dura una hora y media y cuesta cuarenta y cinco euros. ${spoken(P(caller.callId, 3).timeAcceptedAskName(SAT_1700))}`,
@@ -114,25 +119,25 @@ describe("the owner's real call of 2026-11-13, replayed", () => {
     expect(r3.body.complete).toBe(false);
 
     // "Mi amor": one friendly re-ask, and the endearment is not repeated back.
-    const r4 = await caller.say("Mi amor");
+    const r4 = await caller.say(notSure("Mi amor", "es"));
     said.push(r4.body.reply);
     expect(r4.body.reply).toBe(spoken(P(caller.callId, 4).askNameAgain()));
     expect(r4.body.reply).not.toMatch(/amor/i);
     expect(r4.body.state.fields.name).toBeNull();
 
     // They insist: accepted, and the phone is next.
-    const r5 = await caller.say("Que sí, que es Mi amor");
+    const r5 = await caller.say(notSure("Que sí, que es Mi amor", "es"));
     said.push(r5.body.reply);
     expect(r5.body.reply).toBe(spoken(P(caller.callId, 5).askPhone()));
     expect(r5.body.state.fields.name).toBe("Mi amor");
 
-    const r6 = await caller.say("seis uno dos, tres cuatro, cinco seis, siete ocho");
+    const r6 = await caller.say(notSure("seis uno dos, tres cuatro, cinco seis, siete ocho", "es"));
     said.push(r6.body.reply);
     expect(r6.body.reply).toBe(spoken(P(caller.callId, 6).readBack("colour", SAT_1700, "Mi amor", "+34612345678")));
     expect(r6.body.reply).toMatch(/^Te apunto un tinte mañana sábado a las cinco/);
     expect(r6.body.cacheable).toBe(false);
 
-    const r7 = await caller.say("Sí");
+    const r7 = await caller.say(notSure("Sí", "es"));
     said.push(r7.body.reply);
     expect(r7.body.reply).toBe(spoken(P(caller.callId, 7).booked("colour", SAT_1700)));
     expect(r7.body.outcome).toBe("booked");
@@ -191,11 +196,11 @@ describe("the same call in English", () => {
     expect(hello.body.reply).toMatch(/virtual assistant/);
     expect(hello.body.reply).not.toMatch(/answering machine/i);
 
-    const r1 = await caller.say("A pink colour tomorrow at four in the afternoon");
+    const r1 = await caller.say(notSure("A pink colour tomorrow at four in the afternoon", "en"));
     expect(r1.body.reply).toBe(
       "Tomorrow at four we're closed, we open at five. Does five work for you? I also have quarter past five or half past five.",
     );
-    const r2 = await caller.say("Five, then. Darling.");
+    const r2 = await caller.say(notSure("Five, then. Darling.", "en"));
     const askAgain = phrases("en", pack, lolaProfile, { callId: caller.callId, turn: 2 }, FRIDAY).askNameAgain();
     expect(r2.body.reply).toBe(toSpokenReply(askAgain.text, "en", { maxSentences: 3 }));
     expect(r2.body.reply).not.toMatch(/\d|darling/i);

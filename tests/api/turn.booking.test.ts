@@ -10,12 +10,17 @@ import { phrases, type Said } from "@/lib/receptionist/phrases";
 import { toSpokenReply } from "@/lib/receptionist/speech";
 import { getSectorPack, type Lang } from "@/lib/sectors";
 import { Caller, makeDeps, makePost, modelTurn, NOW, setupDb } from "./harness";
+import { notSure } from "../conversation/notSure";
 
 /**
  * Task 8.4: a full booking Call through POST /api/turn with a real Request,
  * PGlite and a scripted model, in Spanish and in English (Requirements 8.1,
  * 4.8, 4.13, 4.15, 6.1, 6.2). Every line about times and bookings must be the
  * code's template, never the model's words.
+ *
+ * front-desk-brain 17.5: every Caller line carries the not-sure tail, so each Turn still goes
+ * through the scripted model (a Sure_Reading would skip it); the brain-only booking is
+ * tests/conversation/b12-offer.property.test.ts and the Real_Call regression.
  */
 const pack = getSectorPack("hair-salon");
 const at = (iso: string) => Temporal.Instant.from(iso);
@@ -34,11 +39,11 @@ const scripts: Script[] = [
   {
     lang: "es",
     lines: {
-      ask: "Quiero cortarme el pelo mañana a las nueve de la noche",
-      vale: "Vale, a las siete y media",
-      name: "Ana García",
-      phone: "seis uno dos, tres cuatro cinco, seis siete ocho",
-      yes: "Sí",
+      ask: notSure("Quiero cortarme el pelo mañana a las nueve de la noche", "es"),
+      vale: notSure("Vale, a las siete y media", "es"),
+      name: notSure("Ana García", "es"),
+      phone: notSure("seis uno dos, tres cuatro cinco, seis siete ocho", "es"),
+      yes: notSure("Sí", "es"),
     },
     model: { reason: "Quiere una cita de corte", askName: "Perfecto. ¿A nombre de quién?", askPhone: "Gracias, Ana. ¿Y tu teléfono?" },
     name: "Ana García",
@@ -46,11 +51,11 @@ const scripts: Script[] = [
   {
     lang: "en",
     lines: {
-      ask: "I'd like a haircut tomorrow at nine in the evening",
-      vale: "OK, half past seven then",
-      name: "John Smith",
-      phone: "six one two, three four five, six seven eight",
-      yes: "Yes please",
+      ask: notSure("I'd like a haircut tomorrow at nine in the evening", "en"),
+      vale: notSure("OK, half past seven then", "en"),
+      name: notSure("John Smith", "en"),
+      phone: notSure("six one two, three four five, six seven eight", "en"),
+      yes: notSure("Yes please", "en"),
     },
     model: { reason: "Wants a haircut appointment", askName: "Great. What name is it under?", askPhone: "Thanks, John. And your phone number?" },
     name: "John Smith",

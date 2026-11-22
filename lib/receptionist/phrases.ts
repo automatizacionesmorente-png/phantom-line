@@ -1,9 +1,13 @@
 import type { Temporal } from "temporal-polyfill";
-import type { RejectionReason } from "@/lib/booking";
-import { catalogItems, serviceView } from "@/lib/conversation/catalog";
+import type { RejectionReason, Weekday } from "@/lib/booking";
+import { MAX_COMBO_PARTS } from "@/lib/booking/services";
+import type { TopicHit } from "@/lib/conversation/brain/topics";
+import { catalogItems, catalogLine, serviceView } from "@/lib/conversation/catalog";
 import type { ShopProfile } from "@/lib/conversation/shopProfile";
+import type { AnsweredTopic, OwnerNote } from "@/lib/conversation/types";
 import type { Lang, SectorPack } from "@/lib/sectors";
-import { formatSlot, joinOr } from "./format";
+import { formatSlot, joinAnd, joinOr } from "./format";
+import { daySessionsInWords, hoursGroups } from "./prompt";
 import {
   clockWords,
   minuteSessions,
@@ -77,6 +81,37 @@ export interface PhraseSet {
   rateLimitedStart(): Said;
   lineCut(): Said;
   typeInstead(): Said;
+
+  // front-desk-brain (design.md, "New templates"). Every line is Spoken_Form and cacheable:
+  // none holds a name, a phone or the Caller's own words (natural-voice 6.5).
+  /** The nearest free slot, with what the services take and cost (8.1, 7.5). */
+  firstOffer(serviceId: string, slot: Temporal.Instant): Said;
+  /** The offer's question alone, after another answer in the same reply (9.6). */
+  offerAgain(slot: Temporal.Instant): Said;
+  /** No slot within the search's 14 days (8.3); the Call goes on. */
+  noSlotNearby(): Said;
+  /** The catalog by Category, then the question; `brief` is the question alone. */
+  askService(brief?: boolean): Said;
+  askServiceChoice(candidates: readonly string[]): Said;
+  /** A Profile_Topic's answer from the Shop_Profile (9.1). */
+  topicAnswer(topic: TopicHit): Said;
+  /** Keep_Alive_Lines (10.1, 10.2, 10.4). `continuing`: only the note, a flow question follows. */
+  ownerNoted(continuing?: boolean): Said;
+  sensitiveNoted(continuing?: boolean): Said;
+  unknownKeepAlive(continuing?: boolean): Said;
+  notUnderstood(): Said;
+  /** The third miss in a row (10.3). */
+  notUnderstoodAgain(): Said;
+  /** In the new language. */
+  languageSwitched(): Said;
+  phoneAgain(): Said;
+  tooManyServices(): Said;
+  /** "sin el corte": the base and the Add_Ons that went with it (4.10, 7.8). */
+  addOnRemoved(addOns: readonly string[], bases: readonly string[], continuing?: boolean): Said;
+  /** A read-back interrupted by a question: ask for the yes again. */
+  confirmAgain(): Said;
+  /** A thanks, a greeting or a bare "no" with nothing open. */
+  smallTalk(kind: "thanks" | "greeting" | "no"): Said;
   /** For the Owner, who reads them: digits are fine here (12.3). Never spoken. */
   owner: {
     defaultReason(): string;
@@ -90,6 +125,10 @@ export interface PhraseSet {
     replyRescheduled(name: string | null, serviceId: string, start: Temporal.Instant): string;
     replyCancelled(name: string | null): string;
     replyCallBack(name: string | null): string;
+    /** The code-built reason's parts (front-desk-brain 10.7). */
+    reasonWants(names: readonly string[]): string;
+    reasonAsked(topics: readonly AnsweredTopic[]): string;
+    note(note: OwnerNote): string;
   };
 }
 
@@ -214,6 +253,9 @@ function kit(lang: Lang, pack: SectorPack, shop: ShopProfile, seed: VariantSeed 
     shop,
     pack,
     tz,
+    now,
+    today,
+    hours,
     owner: shop.ownerName,
     booking,
     place: pack.vocabulary[lang].place,
@@ -240,6 +282,80 @@ function kit(lang: Lang, pack: SectorPack, shop: ShopProfile, seed: VariantSeed 
 }
 
 type Kit = ReturnType<typeof kit>;
+
+// ---------------------------------------------------------------------------
+// Shared by the front-desk-brain templates
+
+/** "un corte de hombre" → "el corte de hombre"; "a fade" → "the fade". */
+function definite(spoken: string, lang: Lang): string {
+  if (lang === "en") return spoken.replace(/^(a|an) /i, "the ");
+  return spoken.replace(/^unos /i, "los ").replace(/^unas /i, "las ").replace(/^una /i, "la ").replace(/^un /i, "el ");
+}
+
+/** A part's price as said: "desde" / "from" when it is a starting price. */
+function priceWords(cents: number, from: boolean, lang: Lang): string {
+  return `${from ? (lang === "es" ? "desde " : "from ") : ""}${speakPrice(cents, lang)}`;
+}
+
+/**
+ * Up to 3 items in one sentence of at most 25 words, then "the rest" when some are left out
+ * (9.1): fewer items are named when the sentence would be longer.
+ */
+function listSentence(items: readonly string[], lang: Lang, rest: string): string {
+  for (let count = Math.min(3, items.length); count >= 1; count--) {
+    const sentence = `${cap(joinAnd(items.slice(0, count), lang))}.`;
+    if (wordsIn(sentence) <= MAX_WORDS || count === 1) return count < items.length ? `${sentence} ${rest}` : sentence;
+  }
+  return rest;
+}
+
+/** The address as said: digit runs as words, no markup ("Calle Mayor doce, Madrid"). */
+function spokenAddress(address: string, lang: Lang): string {
+  return address
+    .replace(/\d+/g, (d) => speakNumber(Number(d), lang))
+    .replace(/[*_#`~<>[\]{}|\\^=/]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** The services a topic is about: one id (a Combo_Id too), a Service_Choice's candidates, or a Category's services. */
+function targetIds(k: Kit, topic: Extract<TopicHit, { kind: "price" | "duration" }>): string[] {
+  const t = topic.target;
+  if (t.kind === "service") return [t.id];
+  if (t.kind === "choice") return t.candidates;
+  return k.shop.services.filter((s) => s.category === t.categoryId).map((s) => s.id);
+}
+
+/** When the shop is open now, its closing instant; else the next opening within 8 days. Null without a clock. */
+function openNow(k: Kit): { open: true; until: Temporal.Instant } | { open: false; next: Temporal.Instant | null } | null {
+  if (!k.now) return null;
+  const z = k.now.toZonedDateTimeISO(k.tz);
+  const at = (date: Temporal.PlainDate, minute: number) =>
+    date.toZonedDateTime({ timeZone: k.tz, plainTime: { hour: Math.floor(minute / 60), minute: minute % 60 } }).toInstant();
+  const nowMin = z.hour * 60 + z.minute;
+  const today = z.toPlainDate();
+  for (const s of k.sessionsOf(today).sessions) {
+    if (nowMin >= s.open && nowMin < s.close) return { open: true, until: at(today, s.close) };
+  }
+  for (let d = 0; d <= 8; d++) {
+    const date = today.add({ days: d });
+    const next = k.sessionsOf(date).sessions.find((s) => d > 0 || s.open > nowMin);
+    if (next) return { open: false, next: at(date, next.open) };
+  }
+  return { open: false, next: null };
+}
+
+const TOPIC_LABELS: Record<Lang, Record<"hours" | "address" | "services" | "price" | "duration", string>> = {
+  es: { hours: "el horario", address: "la dirección", services: "los servicios", price: "precios", duration: "duraciones" },
+  en: { hours: "the opening hours", address: "the address", services: "the services", price: "prices", duration: "how long things take" },
+};
+
+/** How the Owner reads an answered topic: a built-in label, or the FAQ_Entry's first alias. */
+function topicLabel(shop: ShopProfile, topic: AnsweredTopic, lang: Lang): string {
+  if (!topic.startsWith("faq:")) return TOPIC_LABELS[lang][topic as keyof (typeof TOPIC_LABELS)["es"]];
+  const id = topic.slice(4);
+  return shop.faq?.find((f) => f.id === id)?.aliases[lang][0] ?? id;
+}
 
 const WEEKDAY: Record<Lang, readonly string[]> = {
   es: ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"],
@@ -430,6 +546,133 @@ function spanish(k: Kit): PhraseSet {
     rateLimitedStart: () => said("Uy, ahora mismo hay muchas llamadas. Prueba otra vez en unos minutos, ¿vale?"),
     lineCut: () => said(`Se ha cortado la línea. ${owner} tiene tu mensaje y te llamará.`),
     typeInstead: () => said("No te oigo bien, pero puedes escribirme aquí abajo."),
+    firstOffer: (id, slot) => {
+      const v = k.view(id);
+      const question = offerLine([slot], null);
+      const invite = "Si prefieres otro día, dímelo.";
+      if (!v.known) return said(`${question} ${invite}`);
+      const what = `${speakDuration(v.durationMin, "es")} y ${priceWords(v.priceCents, v.priceFrom, "es")}`;
+      // "son" for one service and for a Service_Combo alike, so no verb agrees with a plural name (design.md).
+      const together = `${cap(v.spoken.es)} son ${what}.`;
+      const lead = wordsIn(together) <= MAX_WORDS ? [together] : [`${cap(v.spoken.es)}.`, `Son ${what}.`];
+      return said([...lead, question, ...(lead.length === 1 ? [invite] : [])].join(" "));
+    },
+    offerAgain: (slot) => said(offerLine([slot], null)),
+    noSlotNearby: () => said(noneNearby),
+    askService: (brief = false) =>
+      said(
+        brief
+          ? "¿Qué te quieres hacer?"
+          : k.pick("askService", [
+              `Claro. ${catalogLine(shop, "es")} ¿Qué te quieres hacer?`,
+              `Vale. ${catalogLine(shop, "es")} ¿Qué te apetece hacerte?`,
+            ]),
+      ),
+    askServiceChoice: (candidates) => {
+      const spoken = candidates.map((c) => k.spokenService(c));
+      if (spoken.length > 3) return said(`Tenemos ${joinAnd([...spoken.slice(0, 3), "más cosas"], "es")}. ¿Cuál quieres?`);
+      // "un corte de mujer", "un corte de hombre", "un corte infantil" → "¿El corte es de mujer, de hombre o infantil?"
+      const split = spoken.map((s) => s.split(" "));
+      let shared = 0;
+      while (split.every((w) => w.length > shared + 1 && w[shared] === split[0][shared])) shared++;
+      if (shared >= 2 && /^(un|una)$/.test(split[0][0])) {
+        const head = definite(split[0].slice(0, shared).join(" "), "es");
+        return said(`¿${cap(head)} es ${joinOr(split.map((w) => w.slice(shared).join(" ")), "es")}?`);
+      }
+      return said(`¿Cuál quieres: ${joinOr(spoken, "es")}?`);
+    },
+    topicAnswer: (topic) => {
+      switch (topic.kind) {
+        case "hours": {
+          const now = topic.now ? openNow(k) : null;
+          if (now?.open) return said(`Sí, ahora mismo estamos abiertos, hasta ${k.time(now.until).replace(/^a /, "")}.`);
+          if (now && !now.open)
+            return said(now.next ? `Ahora mismo estamos cerrados. Abrimos ${k.when(now.next)}.` : "Ahora mismo estamos cerrados.");
+          if (topic.day) {
+            const d = topic.day;
+            const text = daySessionsInWords(shop, d.dayOfWeek as Weekday, "es");
+            return said(text ? `${cap(k.day(d))} abrimos ${text}.` : `${cap(k.day(d))} cerramos.`);
+          }
+          const { open, closed } = hoursGroups(shop, "es");
+          if (open.length === 0) return said("Ahora mismo no tenemos horario de apertura.");
+          const lines = [`Abrimos ${open[0]}.`, ...open.slice(1).map((g) => `Y ${g}.`)];
+          if (closed.length > 0) lines.push(`${cap(joinAnd(closed, "es"))} cerramos.`);
+          return said(lines.join(" "));
+        }
+        case "address":
+          return said(`Estamos en ${spokenAddress(shop.address, "es")}.`);
+        case "services":
+          return said(catalogLine(shop, "es"));
+        case "price":
+        case "duration": {
+          const ids = targetIds(k, topic);
+          const rest = "Te cuento el resto si quieres.";
+          const items = ids.map((id, n) => {
+            const v = k.view(id);
+            if (!v.known) return v.spoken.es;
+            const price = priceWords(v.priceCents, v.priceFrom, "es");
+            const dur = speakDuration(v.durationMin, "es");
+            if (ids.length === 1)
+              return topic.kind === "price" ? `por ${v.spoken.es} son ${price}, y se tarda ${dur}` : `para ${v.spoken.es} se tarda ${dur}, y son ${price}`;
+            if (topic.kind === "price") return n === 0 ? `por ${v.spoken.es} son ${price}` : `por ${v.spoken.es} ${price}`;
+            return `para ${v.spoken.es} ${n === 0 ? "se tarda " : ""}${dur}`;
+          });
+          return said(items.length === 0 ? catalogLine(shop, "es") : listSentence(items, "es", rest));
+        }
+        case "faq": {
+          const entry = shop.faq?.find((f) => f.id === topic.id);
+          return said(entry ? entry.answer.es : `Eso no lo sé, pero se lo apunto a ${owner}.`);
+        }
+      }
+    },
+    ownerNoted: (continuing = false) =>
+      said(
+        continuing
+          ? `Se lo apunto a ${owner} para que te llame.`
+          : `Se lo apunto a ${owner} para que te llame. Mientras, ¿te doy cita o te cuento horarios y precios?`,
+      ),
+    sensitiveNoted: (continuing = false) =>
+      said(
+        continuing
+          ? `De eso no te puedo aconsejar, pero se lo apunto a ${owner} y te llama hoy mismo.`
+          : `De eso no te puedo aconsejar, pero se lo apunto a ${owner} y te llama hoy mismo. ¿Te ayudo con algo más?`,
+      ),
+    unknownKeepAlive: (continuing = false) =>
+      said(
+        continuing
+          ? `Eso no lo sé, pero se lo apunto a ${owner}.`
+          : `Eso no lo sé, pero se lo apunto a ${owner}. ¿Te ayudo con una cita, horarios o precios?`,
+      ),
+    notUnderstood: () =>
+      said(
+        k.pick("notUnderstood", [
+          "Perdona, no te he entendido. Puedo darte cita o contarte horarios, precios y servicios.",
+          "Perdona, no te he pillado. Te puedo dar cita o contarte horarios, precios y servicios.",
+        ]),
+      ),
+    notUnderstoodAgain: () =>
+      said(`Se lo dejo apuntado a ${owner} por si acaso. Si te resulta más fácil, también puedes escribirme aquí abajo.`),
+    languageSwitched: () => said("Claro, seguimos en español. ¿En qué te puedo ayudar?"),
+    phoneAgain: () => said("Perdona, no me ha quedado claro el número. ¿Me lo dices otra vez, despacio?"),
+    tooManyServices: () =>
+      said(`Como mucho te puedo apuntar ${speakNumber(MAX_COMBO_PARTS, "es")} servicios seguidos. ¿Cuáles quieres?`),
+    addOnRemoved: (addOns, bases, continuing = false) => {
+      const base = joinAnd(bases.map((b) => definite(k.spokenService(b), "es")), "es");
+      const extra = addOns.map((a) => definite(k.spokenService(a), "es"));
+      const it = extra.length > 1 ? "los quito" : "lo quito";
+      const goes = extra.length > 1 ? "van" : "va";
+      const text = `Vale, sin ${base}. ${cap(joinAnd(extra, "es"))} ${goes} con ${base}, así que ${it} también.`;
+      return said(continuing ? text : `${text} ¿Qué te quieres hacer?`);
+    },
+    confirmAgain: () => said("¿Te lo dejo apuntado, entonces?"),
+    smallTalk: (kind) =>
+      said(
+        kind === "thanks"
+          ? "¡A ti! ¿Te ayudo con algo más?"
+          : kind === "greeting"
+            ? "¡Hola! ¿En qué te puedo ayudar?"
+            : "Vale. ¿Te ayudo con algo más?",
+      ),
     owner: {
       defaultReason: () => "Llamada sin terminar",
       agreedBooked: (id, start, res) => `${cap(booking)} de ${k.service(id)} ${k.slot(start)} (${k.resource(res)})`,
@@ -447,6 +690,20 @@ function spanish(k: Kit): PhraseSet {
         `${hello(name)}, te confirmo que he anulado tu ${booking}. Cuando quieras, vuelve a llamar. ${owner}`,
       replyCallBack: (name) =>
         `${hello(name)}, soy ${owner}, de ${shop.name}. He visto tu mensaje, ¿en qué te puedo ayudar?`,
+      reasonWants: (names) => `Quiere ${joinOr(names, "es")}`,
+      reasonAsked: (topics) => `Preguntó por ${joinAnd(topics.map((t) => topicLabel(shop, t, "es")), "es")}`,
+      note: (n) => {
+        switch (n.kind) {
+          case "owner_request":
+            return `Pide que ${owner} le llame`;
+          case "sensitive":
+            return `Tema delicado («${n.term}»), no se le aconsejó`;
+          case "unanswered":
+            return `Sin respuesta: «${n.question}»`;
+          case "not_understood":
+            return "No se le entendió bien";
+        }
+      },
     },
   };
 }
@@ -586,6 +843,127 @@ function english(k: Kit): PhraseSet {
     rateLimitedStart: () => said("Oh, there are a lot of calls right now. Please try again in a few minutes, okay?"),
     lineCut: () => said(`The line dropped. ${owner} has your message and will call you.`),
     typeInstead: () => said("I can't hear you well, but you can type to me below."),
+    firstOffer: (id, slot) => {
+      const v = k.view(id);
+      const question = offerLine([slot], null);
+      const invite = "If another day suits you better, just say.";
+      if (!v.known) return said(`${question} ${invite}`);
+      const plural = v.parts.length > 1;
+      const what = `${plural ? "take" : "takes"} ${speakDuration(v.durationMin, "en")} and ${plural ? "cost" : "costs"} ${priceWords(v.priceCents, v.priceFrom, "en")}`;
+      const together = `${cap(v.spoken.en)} ${what}.`;
+      const lead =
+        wordsIn(together) <= MAX_WORDS
+          ? [together]
+          : [`${cap(v.spoken.en)}.`, `${plural ? "Together they" : "It"} ${what}.`];
+      return said([...lead, question, ...(lead.length === 1 ? [invite] : [])].join(" "));
+    },
+    offerAgain: (slot) => said(offerLine([slot], null)),
+    noSlotNearby: () => said(noneNearby),
+    askService: (brief = false) =>
+      said(
+        brief
+          ? "What would you like to have done?"
+          : k.pick("askService", [
+              `Sure. ${catalogLine(shop, "en")} What would you like to have done?`,
+              `Okay. ${catalogLine(shop, "en")} What can we do for you?`,
+            ]),
+      ),
+    askServiceChoice: (candidates) => {
+      const spoken = candidates.map((c) => k.spokenService(c));
+      if (spoken.length > 3) return said(`We have ${joinAnd([...spoken.slice(0, 3), "more"], "en")}. Which one would you like?`);
+      return said(`Is it ${joinOr(spoken, "en")}?`);
+    },
+    topicAnswer: (topic) => {
+      switch (topic.kind) {
+        case "hours": {
+          const now = topic.now ? openNow(k) : null;
+          if (now?.open) return said(`Yes, we're open right now, until ${k.time(now.until).replace(/^at /, "")}.`);
+          if (now && !now.open)
+            return said(now.next ? `We're closed right now. We open ${k.whenOn(now.next)}.` : "We're closed right now.");
+          if (topic.day) {
+            const d = topic.day;
+            const text = daySessionsInWords(shop, d.dayOfWeek as Weekday, "en");
+            return said(text ? `${cap(enOn(k.day(d)))} we're open ${text}.` : `We're closed ${enOn(k.day(d))}.`);
+          }
+          const { open, closed } = hoursGroups(shop, "en");
+          if (open.length === 0) return said("We don't have any opening hours right now.");
+          const lines = [`We're open ${open[0]}.`, ...open.slice(1).map((g) => `And ${g}.`)];
+          if (closed.length > 0) lines.push(`We're closed on ${joinAnd(closed, "en")}.`);
+          return said(lines.join(" "));
+        }
+        case "address":
+          return said(`We're at ${spokenAddress(shop.address, "en")}.`);
+        case "services":
+          return said(catalogLine(shop, "en"));
+        case "price":
+        case "duration": {
+          const ids = targetIds(k, topic);
+          const rest = "I can tell you about the rest if you like.";
+          const items = ids.map((id, n) => {
+            const v = k.view(id);
+            if (!v.known) return v.spoken.en;
+            const price = priceWords(v.priceCents, v.priceFrom, "en");
+            const dur = speakDuration(v.durationMin, "en");
+            if (ids.length === 1)
+              return topic.kind === "price" ? `for ${v.spoken.en} it's ${price}, and it takes ${dur}` : `for ${v.spoken.en} it takes ${dur}, and it's ${price}`;
+            if (topic.kind === "price") return n === 0 ? `for ${v.spoken.en} it's ${price}` : `for ${v.spoken.en} ${price}`;
+            return `for ${v.spoken.en} ${n === 0 ? "it takes " : ""}${dur}`;
+          });
+          return said(items.length === 0 ? catalogLine(shop, "en") : listSentence(items, "en", rest));
+        }
+        case "faq": {
+          const entry = shop.faq?.find((f) => f.id === topic.id);
+          return said(entry ? entry.answer.en : `I don't know that, but I'll leave a note for ${owner}.`);
+        }
+      }
+    },
+    ownerNoted: (continuing = false) =>
+      said(
+        continuing
+          ? `I'll leave a note for ${owner} to call you.`
+          : `I'll leave a note for ${owner} to call you. In the meantime, shall I book you in, or tell you our hours and prices?`,
+      ),
+    sensitiveNoted: (continuing = false) =>
+      said(
+        continuing
+          ? `I can't give advice on that, but I'll leave a note for ${owner} and you'll get a call today.`
+          : `I can't give advice on that, but I'll leave a note for ${owner} and you'll get a call today. Can I help with anything else?`,
+      ),
+    unknownKeepAlive: (continuing = false) =>
+      said(
+        continuing
+          ? `I don't know that, but I'll leave a note for ${owner}.`
+          : `I don't know that, but I'll leave a note for ${owner}. Can I help with a booking, our hours or prices?`,
+      ),
+    notUnderstood: () =>
+      said(
+        k.pick("notUnderstood", [
+          "Sorry, I didn't understand. I can book you in, or tell you our hours, prices and services.",
+          "Sorry, I didn't catch that. I can make a booking, or tell you our hours, prices and services.",
+        ]),
+      ),
+    notUnderstoodAgain: () =>
+      said(`I'll leave a note for ${owner}, just in case. If it's easier, you can also type to me below.`),
+    languageSwitched: () => said("Of course, we can carry on in English. How can I help?"),
+    phoneAgain: () => said("Sorry, I didn't quite get the number. Could you say it again, slowly?"),
+    tooManyServices: () =>
+      said(`I can book at most ${speakNumber(MAX_COMBO_PARTS, "en")} services in a row. Which ones would you like?`),
+    addOnRemoved: (addOns, bases, continuing = false) => {
+      const base = joinAnd(bases.map((b) => definite(k.spokenService(b), "en")), "en");
+      const extra = addOns.map((a) => definite(k.spokenService(a), "en"));
+      const plural = extra.length > 1;
+      const text = `Okay, no ${bases.map((b) => k.spokenService(b).replace(/^(a|an) /i, "")).join(" or ")}. ${cap(joinAnd(extra, "en"))} ${plural ? "go" : "goes"} with ${base}, so I'll take ${plural ? "them" : "it"} off too.`;
+      return said(continuing ? text : `${text} What would you like to have done?`);
+    },
+    confirmAgain: () => said("Shall I put it down, then?"),
+    smallTalk: (kind) =>
+      said(
+        kind === "thanks"
+          ? "You're welcome! Is there anything else I can help with?"
+          : kind === "greeting"
+            ? "Hi! How can I help?"
+            : "Okay. Is there anything else I can help with?",
+      ),
     owner: {
       defaultReason: () => "Unfinished call",
       agreedBooked: (id, start, res) => `${cap(what(id))} on ${k.slot(start)} (${k.resource(res)})`,
@@ -600,6 +978,20 @@ function english(k: Kit): PhraseSet {
         `${hello(name)}, the change is confirmed: your ${what(id)} is now on ${k.slot(start)}. See you soon! ${owner}`,
       replyCancelled: (name) => `${hello(name)}, your ${booking} is cancelled. Call us whenever you like. ${owner}`,
       replyCallBack: (name) => `${hello(name)}, this is ${owner} from ${shop.name}. I got your message, how can I help?`,
+      reasonWants: (names) => `Wants ${joinOr(names, "en")}`,
+      reasonAsked: (topics) => `Asked about ${joinAnd(topics.map((t) => topicLabel(shop, t, "en")), "en")}`,
+      note: (n) => {
+        switch (n.kind) {
+          case "owner_request":
+            return `Asked for ${owner} to call back`;
+          case "sensitive":
+            return `Sensitive ("${n.term}"), no advice given`;
+          case "unanswered":
+            return `No answer for: "${n.question}"`;
+          case "not_understood":
+            return "Could not be understood";
+        }
+      },
     },
   };
 }

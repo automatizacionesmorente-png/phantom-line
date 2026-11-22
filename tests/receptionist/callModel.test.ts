@@ -20,7 +20,8 @@ import type { ModelClient } from "@/lib/conversation/types";
 import type { ModelTurn } from "@/lib/receptionist/schema";
 
 const PROMPT = { systemInstruction: "sys", input: "in" };
-const OPTS = { timeoutMs: 8000 };
+// The production Model_Wait (2400 ms since front-desk-brain task 7; it was 8000).
+const OPTS = { timeoutMs: MODEL_TIMEOUT_MS };
 const TURN: ModelTurn = {
   reply: "Hola",
   language: "es",
@@ -46,13 +47,13 @@ describe("callReceptionist", () => {
     await expect(callReceptionist(createScriptedModel([TURN]), PROMPT, OPTS)).resolves.toEqual({ ok: true, turn: TURN });
   });
 
-  it("times out at exactly 8 s, even when the client ignores the signal", async () => {
+  it("times out at exactly the Model_Wait, even when the client ignores the signal", async () => {
     let settled = false;
     const p = callReceptionist(neverResolves, PROMPT, OPTS).then((r) => {
       settled = true;
       return r;
     });
-    await vi.advanceTimersByTimeAsync(7999);
+    await vi.advanceTimersByTimeAsync(MODEL_TIMEOUT_MS - 1);
     expect(settled).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
     expect(settled).toBe(true);
@@ -69,7 +70,7 @@ describe("callReceptionist", () => {
     };
     const p = callReceptionist(client, PROMPT, OPTS);
     expect(seen?.aborted).toBe(false);
-    await vi.advanceTimersByTimeAsync(8000);
+    await vi.advanceTimersByTimeAsync(MODEL_TIMEOUT_MS);
     expect(seen?.aborted).toBe(true);
     // The abort error the client throws is still classified as a timeout, by our own timer.
     await expect(p).resolves.toEqual({ ok: false, failure: "timeout" });
@@ -145,7 +146,7 @@ describe("callReceptionist: Gemini's 503 'high demand' (end-to-end bug, 2026-11-
       attempts: MAX_MODEL_ATTEMPTS,
     });
     expect(seen[0].message).toContain("high demand");
-    // The two retried 503s before the last one are on record too.
+    // Every 503 before the last one is on record too.
     expect(seen[0].earlier).toHaveLength(MAX_MODEL_ATTEMPTS - 1);
     expect(seen[0].earlier?.[0]).toMatchObject({ status: 503, errorClass: "InternalServerError" });
   });
@@ -174,25 +175,45 @@ describe("callReceptionist: Gemini's 503 'high demand' (end-to-end bug, 2026-11-
     expect(calls).toBe(1);
   });
 
-  it("retries stay inside the same 8-second deadline", async () => {
-    // Each attempt answers 503 after 3 s: attempts at 0 s and 3 s fail, the third is cut at 8 s.
+  it("a retry stays inside the same Model_Wait", async () => {
+    // The first attempt answers 503 after 1 s, before its own deadline, so the retry starts
+    // at once. The retry would answer 3 s later; the Model_Wait cuts it at 2.4 s.
     let calls = 0;
+    const delays = [1000, 3000];
     const slow503: ModelClient = {
       generate: () => {
-        calls++;
-        return new Promise((_, reject) => setTimeout(() => reject(geminiHighDemandError()), 3000));
+        const delay = delays[calls++];
+        return new Promise((_, reject) => setTimeout(() => reject(geminiHighDemandError()), delay));
       },
     };
+    expect(delays[0]).toBeLessThan(ATTEMPT_TIMEOUT_MS);
+    expect(delays[0] + delays[1]).toBeGreaterThan(MODEL_TIMEOUT_MS);
     let settled = false;
     const p = callReceptionist(slow503, PROMPT, OPTS).then((r) => {
       settled = true;
       return r;
     });
-    await vi.advanceTimersByTimeAsync(7999);
+    await vi.advanceTimersByTimeAsync(MODEL_TIMEOUT_MS - 1);
     expect(settled).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
     await expect(p).resolves.toEqual({ ok: false, failure: "timeout" });
-    expect(calls).toBe(3);
+    expect(calls).toBe(2);
+  });
+
+  it("a 503 on the hedge starts no third attempt: the cap holds", async () => {
+    // Attempt 0 hangs; the hedge at ATTEMPT_TIMEOUT_MS answers 503 at once. Both attempts
+    // are used, so the Turn waits for the hung one and times out at the Model_Wait.
+    let calls = 0;
+    const client: ModelClient = {
+      generate: () => {
+        calls++;
+        return calls === 1 ? new Promise<string>(() => {}) : Promise.reject(geminiHighDemandError());
+      },
+    };
+    const p = callReceptionist(client, PROMPT, OPTS);
+    await vi.advanceTimersByTimeAsync(MODEL_TIMEOUT_MS);
+    await expect(p).resolves.toEqual({ ok: false, failure: "timeout" });
+    expect(calls).toBe(MAX_MODEL_ATTEMPTS);
   });
 });
 
@@ -224,16 +245,13 @@ describe("callReceptionist: failure details for the server log", () => {
     vi.useFakeTimers();
     const seen: ModelFailureInfo[] = [];
     const p = callReceptionist(neverResolves, PROMPT, { ...OPTS, onFailure: (i) => seen.push(i) });
-    await vi.advanceTimersByTimeAsync(8000);
+    await vi.advanceTimersByTimeAsync(MODEL_TIMEOUT_MS);
     await p;
     vi.useRealTimers();
-    // Attempts at 0 s and 2.5 s hit their own deadline; the third keeps the last 3 s of the budget.
-    expect(seen[0]).toMatchObject({ failure: "timeout", attempts: 3 });
-    expect(seen[0].earlier).toEqual([
-      { outcome: "attempt_timeout", latencyMs: ATTEMPT_TIMEOUT_MS },
-      { outcome: "attempt_timeout", latencyMs: ATTEMPT_TIMEOUT_MS },
-    ]);
-    expect(seen[0].latencyMs).toBeGreaterThanOrEqual(8000);
+    // The first attempt hits its own deadline; the hedge, the last attempt, keeps the rest of the budget.
+    expect(seen[0]).toMatchObject({ failure: "timeout", attempts: MAX_MODEL_ATTEMPTS });
+    expect(seen[0].earlier).toEqual([{ outcome: "attempt_timeout", latencyMs: ATTEMPT_TIMEOUT_MS }]);
+    expect(seen[0].latencyMs).toBeGreaterThanOrEqual(MODEL_TIMEOUT_MS);
   });
 
   it("a logger that throws does not change the outcome", async () => {
@@ -254,9 +272,12 @@ describe("callReceptionist: a hung attempt never takes the whole budget (bugfix 
   afterEach(() => vi.useRealTimers());
 
   it("the budget fits the attempts it promises", () => {
-    expect(ATTEMPT_TIMEOUT_MS).toBeLessThan(MODEL_TIMEOUT_MS / 2);
+    // Owner decision of 2026-11-16 (front-desk-brain question 17): a 2.4 s Model_Wait.
+    expect(MODEL_TIMEOUT_MS).toBeLessThanOrEqual(2400);
+    // The first attempt is not the last: a hedge started at its deadline still gets MIN_ATTEMPT_MS.
+    expect(MODEL_TIMEOUT_MS - ATTEMPT_TIMEOUT_MS).toBeGreaterThanOrEqual(MIN_ATTEMPT_MS);
     expect(MIN_ATTEMPT_MS).toBeLessThanOrEqual(ATTEMPT_TIMEOUT_MS);
-    expect(MAX_MODEL_ATTEMPTS).toBeGreaterThanOrEqual(3);
+    expect(MAX_MODEL_ATTEMPTS).toBeGreaterThanOrEqual(2);
   });
 
   it("first attempt hangs: a fresh attempt starts at its deadline and its answer is used", async () => {
@@ -278,16 +299,18 @@ describe("callReceptionist: a hung attempt never takes the whole budget (bugfix 
   });
 
   it("the first attempt keeps running beside the fresh one, and its late answer wins if it comes first", async () => {
-    // Measured 2026-11-12: answers 2.5–3.5 s after the request were common. Aborting the
+    // Measured 2026-11-12: answers just past the attempt deadline were common. Aborting the
     // first attempt at its deadline would have thrown them away.
+    const ANSWER_AFTER = ATTEMPT_TIMEOUT_MS + 300;
+    expect(ANSWER_AFTER).toBeLessThan(MODEL_TIMEOUT_MS);
     const signals: AbortSignal[] = [];
     const client = {
       generate: (req: { signal: AbortSignal }) => {
         signals.push(req.signal);
         const k = signals.length;
         return new Promise<string>((resolve) =>
-          // Each attempt answers 3 s after it starts: attempt 1 at 3.0 s, attempt 2 (started at 2.5 s) at 5.5 s.
-          setTimeout(() => resolve(JSON.stringify({ ...TURN, reply: `attempt ${k}` })), 3000),
+          // Each attempt answers ANSWER_AFTER after it starts: attempt 1 at 1.5 s, attempt 2 (started at 1.2 s) at 2.7 s.
+          setTimeout(() => resolve(JSON.stringify({ ...TURN, reply: `attempt ${k}` })), ANSWER_AFTER),
         );
       },
     };
@@ -296,30 +319,33 @@ describe("callReceptionist: a hung attempt never takes the whole budget (bugfix 
     await vi.advanceTimersByTimeAsync(ATTEMPT_TIMEOUT_MS);
     expect(signals).toHaveLength(2);
     expect(signals[0].aborted).toBe(false);
-    await vi.advanceTimersByTimeAsync(3000 - ATTEMPT_TIMEOUT_MS);
+    await vi.advanceTimersByTimeAsync(ANSWER_AFTER - ATTEMPT_TIMEOUT_MS);
     await expect(p).resolves.toEqual({ ok: true, turn: { ...TURN, reply: "attempt 1" } });
-    // The second attempt was still running (started at 2.5 s) when the first answered at 3.0 s.
-    expect(ok[0]).toMatchObject({ attempts: 2, earlier: [{ outcome: "unfinished", latencyMs: 500 }] });
+    // The second attempt was still running (started at the deadline) when the first answered.
+    expect(ok[0]).toMatchObject({ attempts: 2, earlier: [{ outcome: "unfinished", latencyMs: ANSWER_AFTER - ATTEMPT_TIMEOUT_MS }] });
     // Once the Turn has its answer, every attempt still running is told to stop.
     expect(signals.every((s) => s.aborted)).toBe(true);
   });
 
-  it("two attempts hang: the third, which keeps the rest of the budget, answers at 7.9 s", async () => {
-    const slowThird = {
+  it("the first attempt hangs: the last one keeps the rest of the budget and answers 100 ms before the end", async () => {
+    const answerAt = MODEL_TIMEOUT_MS - 100;
+    const slowLast = {
       calls: 0,
       generate() {
         this.calls++;
-        if (this.calls < 3) return new Promise<string>(() => {});
-        return new Promise<string>((resolve) => setTimeout(() => resolve(JSON.stringify(TURN)), 7900 - 2 * ATTEMPT_TIMEOUT_MS));
+        if (this.calls < MAX_MODEL_ATTEMPTS) return new Promise<string>(() => {});
+        return new Promise<string>((resolve) =>
+          setTimeout(() => resolve(JSON.stringify(TURN)), answerAt - (MAX_MODEL_ATTEMPTS - 1) * ATTEMPT_TIMEOUT_MS),
+        );
       },
     };
-    const p = callReceptionist(slowThird, PROMPT, OPTS);
-    await vi.advanceTimersByTimeAsync(7900);
+    const p = callReceptionist(slowLast, PROMPT, OPTS);
+    await vi.advanceTimersByTimeAsync(answerAt);
     await expect(p).resolves.toEqual({ ok: true, turn: TURN });
-    expect(slowThird.calls).toBe(3);
+    expect(slowLast.calls).toBe(MAX_MODEL_ATTEMPTS);
   });
 
-  it("every attempt hangs: timeout at exactly the 8-second budget", async () => {
+  it("every attempt hangs: timeout at exactly the Model_Wait", async () => {
     const model = hangsThen(99, createScriptedModel([]));
     let settled = false;
     const p = callReceptionist(model, PROMPT, OPTS).then((r) => {

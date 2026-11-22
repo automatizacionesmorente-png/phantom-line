@@ -81,6 +81,26 @@ export interface CallFields {
   partOfDay?: "morning" | "afternoon";
 }
 
+/**
+ * Something the Receptionist could not do and noted for the Owner during the Call
+ * (front-desk-brain 10.5). It goes into the Call's Message, never into the server log.
+ */
+export type OwnerNote =
+  | { kind: "owner_request" }
+  /** `term` is the pack's urgent term or sensitive word, not the Caller's sentence. */
+  | { kind: "sensitive"; term: string }
+  /** The Caller's words, at most `MAX_NOTE_QUESTION` characters. */
+  | { kind: "unanswered"; question: string }
+  | { kind: "not_understood" };
+
+/** At most this many Owner_Notes per Call (design.md, "New CallState fields"). */
+export const MAX_OWNER_NOTES = 5;
+/** An unanswered question is kept to this many characters (10.5). */
+export const MAX_NOTE_QUESTION = 160;
+
+/** A Profile_Topic the Receptionist answered, for the Owner's code-built reason (10.7): a built-in kind or an FAQ id. */
+export type AnsweredTopic = "hours" | "address" | "services" | "price" | "duration" | `faq:${string}`;
+
 export interface CallState {
   stage: "collecting" | "awaiting_confirmation" | "done";
   intent: Intent;
@@ -90,6 +110,22 @@ export interface CallState {
   pending?: PendingAction;
   /** ISO instants of the alternatives just offered, so "vale, a las siete y media" resolves. */
   lastOffer?: string[];
+  /** What `lastOffer` holds: the First_Offer, or the alternatives of a rejection (front-desk-brain 8.4, 8.5). */
+  offerKind?: "first" | "alternatives";
+  /** First_Offers declined in a row (8.5). */
+  declined?: number;
+  /** The Owner_Notes of the Call, at most `MAX_OWNER_NOTES` (10.5). */
+  notes?: OwnerNote[];
+  /** Profile_Topics answered in the Call, for the code-built reason (10.7); at most 5, first ones kept. */
+  topics?: AnsweredTopic[];
+  /** Not-understood Turns in a row (10.3). */
+  misses?: number;
+  /**
+   * Turns whose facts came from the Code_Brain (1.6). Counted by `decideTurn`. The design's
+   * `modelTurns` is not stored: only a valid model Turn writes `note.reason`, so an empty
+   * reason already means "no Suggested_Urgency" (`suggestedFrom`, owner-machine 5.8).
+   */
+  brainTurns?: number;
   /** Passed the Booking_Match (phone AND name) for reschedule / cancel. */
   existingBookingId?: string;
   note: { reason: string; urgency: Urgency };
@@ -244,10 +280,15 @@ export interface ModelClient {
 }
 
 export interface CoreConfig {
-  modelTimeoutMs: number; // 8000
+  modelTimeoutMs: number; // MODEL_TIMEOUT_MS, 2400
   maxTurns: number; // 20
   perVisitorPerMinute: number;
   globalPerHour: number;
+  /**
+   * @deprecated front-desk-brain 9.2: two invalid outputs in a row no longer end a Call (1.2), so
+   * `handleTurn` ignores this. Kept for one release because the harnesses set it; removed in the
+   * cleanup task.
+   */
   maxConsecutiveInvalid: number; // 2
 }
 
@@ -260,6 +301,31 @@ export interface CoreDeps {
   config: CoreConfig;
   /** Where a fallback's cause is logged. Defaults to one JSON line on stderr. */
   logFallback?: FallbackLogger;
+  /**
+   * A monotonic clock in milliseconds for the stage times (front-desk-brain 19.4). Defaults to
+   * `performance.now`. It never decides anything, so a test may leave it out.
+   */
+  timer?: () => number;
+}
+
+/**
+ * Where one request's server time went, in milliseconds (front-desk-brain 19.4; design.md
+ * "handleTurn", step 7). Numbers only: the adapter turns them into the `Server-Timing` header.
+ * `brain` is the Code_Brain's Reading and `decideTurn`; `db` the sum of the repository and
+ * rate-limiter calls (the early bookings read may run beside the model, so `db` and `model` may
+ * overlap); `model` the model call, 0 when it was not called; `total` the whole request.
+ */
+export interface StageTimes {
+  brain: number;
+  db: number;
+  model: number;
+  total: number;
+}
+
+/** `handleTurn`'s output with its stage times beside it. */
+export interface TimedTurnOutput {
+  output: TurnOutput;
+  timings: StageTimes;
 }
 
 export function initialCallState(language: Lang): CallState {

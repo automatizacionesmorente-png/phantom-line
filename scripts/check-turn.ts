@@ -30,7 +30,7 @@
 //   --gap=<ms>          least time between the starts of two requests (default 5000), so the
 //                       measurement does not hit the free tier's per-minute limit itself.
 //   --cap=<ms>          --repeat mode: how long one raw call may take before it counts as a
-//                       timeout (default 15000, well past the 8 s budget, to see the tail).
+//                       timeout (default 15000, well past the 2.4 s Model_Wait, to see the tail).
 //
 // `--conditions=react-server` lets `import "server-only"` in geminiClient.ts load, as it
 // does inside Next.js. Node loads .env.local itself; this script never prints process.env

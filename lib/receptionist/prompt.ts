@@ -1,6 +1,7 @@
 import { Temporal } from "temporal-polyfill";
 import type { Weekday } from "@/lib/booking";
-import type { ShopProfile } from "@/lib/conversation/shopProfile";
+import type { ShopProfile, ShopService } from "@/lib/conversation/shopProfile";
+import { serviceView } from "@/lib/conversation/catalog";
 import type { CallState, Line } from "@/lib/conversation/types";
 import type { Lang, RequiredField, SectorPack } from "@/lib/sectors";
 import { formatSlot, joinAnd } from "./format";
@@ -55,30 +56,32 @@ function hourWords(hhmm: string, lang: Lang): { words: string; period: string } 
 }
 
 /** One session in words; the period is said once when both ends share it ("de cinco a ocho de la tarde"). */
-function sessionInWords(open: string, close: string, lang: Lang): string {
+export function sessionInWords(open: string, close: string, lang: Lang): string {
   const a = hourWords(open, lang);
   const b = hourWords(close, lang);
   const from = a.period && a.period === b.period ? a.words.slice(0, -(a.period.length + 1)) : a.words;
   return lang === "es" ? `de ${from} a ${b.words}` : `${from} to ${b.words}`;
 }
 
+/** One day's sessions in words ("de diez de la mañana a dos de la tarde y de cinco a ocho de la tarde"), or null when closed. */
+export function daySessionsInWords(shop: Pick<ShopProfile, "hours">, day: Weekday, lang: Lang): string | null {
+  const sessions = shop.hours[day];
+  if (!sessions) return null;
+  return joinAnd(
+    sessions.map((s) => sessionInWords(s.open, s.close, lang)),
+    lang,
+  );
+}
+
 /**
- * The opening hours in Spoken_Form, so the model copies words (natural-voice 11.1):
- * "de martes a sábado, de diez de la mañana a dos de la tarde y de cinco a ocho de la tarde; cerrado lunes y domingo".
+ * The week in groups of consecutive days with the same sessions, and the closed days, in words:
+ * `{ open: ["de martes a sábado, de diez … de la tarde"], closed: ["lunes", "domingo"] }`.
  */
-export function hoursInWords(shop: ShopProfile, lang: Lang): string {
+export function hoursGroups(shop: Pick<ShopProfile, "hours">, lang: Lang): { open: string[]; closed: string[] } {
   const days = [1, 2, 3, 4, 5, 6, 7] as Weekday[];
-  const sessionsText = (d: Weekday) => {
-    const day = shop.hours[d];
-    if (!day) return null;
-    return joinAnd(
-      day.map((s) => sessionInWords(s.open, s.close, lang)),
-      lang,
-    );
-  };
   const groups: { days: Weekday[]; text: string }[] = [];
   for (const d of days) {
-    const text = sessionsText(d);
+    const text = daySessionsInWords(shop, d, lang);
     if (text === null) continue;
     const last = groups[groups.length - 1];
     if (last && last.text === text && last.days[last.days.length - 1] === d - 1) last.days.push(d);
@@ -91,10 +94,21 @@ export function hoursInWords(shop: ShopProfile, lang: Lang): string {
         ? `de ${name(g[0])} a ${name(g[g.length - 1])}`
         : `${name(g[0])} to ${name(g[g.length - 1])}`
       : joinAnd(g.map(name), lang);
-  const open = groups.map((g) => `${span(g.days)}, ${g.text}`);
-  const closed = days.filter((d) => !shop.hours[d]).map(name);
-  if (closed.length > 0) open.push(`${lang === "es" ? "cerrado" : "closed"} ${joinAnd(closed, lang)}`);
-  return open.join("; ");
+  return {
+    open: groups.map((g) => `${span(g.days)}, ${g.text}`),
+    closed: days.filter((d) => !shop.hours[d]).map(name),
+  };
+}
+
+/**
+ * The opening hours in Spoken_Form, so the model copies words (natural-voice 11.1):
+ * "de martes a sábado, de diez de la mañana a dos de la tarde y de cinco a ocho de la tarde; cerrado lunes y domingo".
+ */
+export function hoursInWords(shop: ShopProfile, lang: Lang): string {
+  const { open, closed } = hoursGroups(shop, lang);
+  const out = [...open];
+  if (closed.length > 0) out.push(`${lang === "es" ? "cerrado" : "closed"} ${joinAnd(closed, lang)}`);
+  return out.join("; ");
 }
 
 function longDate(date: Temporal.PlainDate, lang: Lang): string {
@@ -124,6 +138,53 @@ function fieldOrder(fields: readonly RequiredField[], lang: Lang): string {
     : [`first ${first}`, ...rest.map((l) => `then ${l}`)].join(", ");
 }
 
+/** A service's price in words, with "desde" / "from" when it is a starting price (front-desk-brain 11.1). */
+function priceWords(s: ShopService, lang: Lang): string {
+  const words = speakPrice(s.priceCents, lang);
+  if (!s.priceFrom) return words;
+  return lang === "es" ? `desde ${words}` : `from ${words}`;
+}
+
+/** " Solo se hace junto con: Corte de hombre." for an Add_On; empty otherwise. */
+function addOnNote(s: ShopService, shop: ShopProfile, lang: Lang): string {
+  if (!s.addOnTo) return "";
+  const bases = s.addOnTo.flatMap((id) => shop.services.filter((x) => x.id === id).map((x) => x.name[lang]));
+  if (bases.length === 0) return "";
+  const list = joinAnd(bases, lang);
+  return lang === "es" ? ` Solo se hace junto con: ${list}.` : ` Only booked together with: ${list}.`;
+}
+
+/** The Categories and their services, one line ("- Categorías: cortes (Corte de mujer, …); …"). */
+function categoryLines(shop: ShopProfile, lang: Lang): string[] {
+  const categories = shop.categories ?? [];
+  if (categories.length === 0) return [];
+  const groups = categories.map((c) => {
+    const members = shop.services.filter((s) => s.category === c.id).map((s) => s.name[lang]);
+    return members.length > 0 ? `${c.name[lang]} (${members.join(", ")})` : c.name[lang];
+  });
+  return [`${lang === "es" ? "- Categorías" : "- Categories"}: ${groups.join("; ")}.`];
+}
+
+/** The FAQ answers as facts the model may repeat word for word, each with the words callers use for it. */
+function faqLines(shop: ShopProfile, lang: Lang): string[] {
+  const faq = shop.faq ?? [];
+  if (faq.length === 0) return [];
+  const head =
+    lang === "es"
+      ? "- Respuestas de la tienda (puedes repetirlas tal cual):"
+      : "- The shop's own answers (you may repeat them word for word):";
+  return [
+    head,
+    ...faq.map((f) => {
+      const asked = f.aliases[lang]
+        .slice(0, 3)
+        .map((a) => `"${a}"`)
+        .join(", ");
+      return lang === "es" ? `  - Si preguntan por ${asked}: ${f.answer.es}` : `  - If asked about ${asked}: ${f.answer.en}`;
+    }),
+  ];
+}
+
 export function buildSystemInstruction(
   shop: ShopProfile,
   pack: SectorPack,
@@ -133,13 +194,17 @@ export function buildSystemInstruction(
   const v = pack.vocabulary[lang];
   const res = pack.resourceKind[lang];
   const services = shop.services.map((s) => {
-    const facts = `${s.name[lang]}: ${speakDuration(s.durationMin, lang)}, ${speakPrice(s.priceCents, lang)}`;
+    const facts = `${s.name[lang]}: ${speakDuration(s.durationMin, lang)}, ${priceWords(s, lang)}`;
+    const addOn = addOnNote(s, shop, lang);
     const aliases = (s.aliases ?? []).map((a) => `"${a}"`).join(", ");
-    if (!aliases) return `  - ${facts}.`;
+    if (!aliases) return `  - ${facts}.${addOn}`;
     return lang === "es"
-      ? `  - ${facts}. El cliente también puede decir: ${aliases}.`
-      : `  - ${facts}. Callers may also say: ${aliases}.`;
+      ? `  - ${facts}.${addOn} El cliente también puede decir: ${aliases}.`
+      : `  - ${facts}.${addOn} Callers may also say: ${aliases}.`;
   });
+  // Front-desk-brain 11.1: only a profile that has Categories or FAQ_Entries gets these lines,
+  // so the V1_Profile's system instruction stays byte for byte as it was.
+  const extraFacts = [...categoryLines(shop, lang), ...faqLines(shop, lang)];
   const sensitive = pack.sensitiveTopics[lang].join("; ");
   const never = pack.neverPromise[lang].join("; ");
   const other = lang === "es" ? "en" : "es";
@@ -149,8 +214,8 @@ export function buildSystemInstruction(
   // The style examples are built from this shop's own first service, so they never state a fact it lacks.
   const first = shop.services[0];
   const firstSpoken = first.spokenName?.[lang] ?? first.name[lang];
-  const goodPrice = `Claro, ${firstSpoken} cuesta ${speakPrice(first.priceCents, lang)} y dura ${speakDuration(first.durationMin, lang)}. ¿Qué día te viene bien?`;
-  const goodPriceEn = `Sure, ${firstSpoken} is ${speakPrice(first.priceCents, lang)} and takes ${speakDuration(first.durationMin, lang)}. What day works for you?`;
+  const goodPrice = `Claro, ${firstSpoken} cuesta ${priceWords(first, lang)} y dura ${speakDuration(first.durationMin, lang)}. ¿Qué día te viene bien?`;
+  const goodPriceEn = `Sure, ${firstSpoken} is ${priceWords(first, lang)} and takes ${speakDuration(first.durationMin, lang)}. What day works for you?`;
 
   if (lang === "es") {
     return [
@@ -173,6 +238,7 @@ export function buildSystemInstruction(
       `- Horario: ${hoursInWords(shop, lang)}`,
       "- Servicios:",
       ...services,
+      ...extraFacts,
       `- Lo que se reserva se llama "${v.booking}". Cada ${res.one} atiende una ${v.booking} a la vez.`,
       "",
       `HOY: ${todayLine(now, shop.timeZone, lang)}`,
@@ -218,6 +284,7 @@ export function buildSystemInstruction(
     `- Opening hours: ${hoursInWords(shop, lang)}`,
     "- Services:",
     ...services,
+    ...extraFacts,
     `- What callers book is called ${a(v.booking).replace(v.booking, `"${v.booking}"`)}. Each ${res.one} takes one ${v.booking} at a time.`,
     "",
     `TODAY: ${todayLine(now, shop.timeZone, lang)}`,
@@ -263,7 +330,9 @@ export function buildInput(
   const es = lang === "es";
   const none = es ? "sin dato" : "unknown";
   const f = state.fields;
-  const service = shop.services.find((s) => s.id === f.serviceId)?.name[lang];
+  // serviceView names a Service_Combo by its parts ("Corte de hombre + Degradado"), so a Combo_Id is never "sin dato".
+  const view = f.serviceId ? serviceView(f.serviceId, shop) : null;
+  const service = view?.known ? view.name[lang] : undefined;
   const offered = (state.lastOffer ?? []).map((iso) => {
     const i = Temporal.Instant.from(iso);
     const z = i.toZonedDateTimeISO(shop.timeZone);

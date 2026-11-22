@@ -19,7 +19,7 @@ Needs Node.js 20.19 or newer, a free [Neon](https://neon.tech) Postgres database
    |---|---|---|
    | `GEMINI_API_KEY` | yes | Gemini API key, used only on the server |
    | `DATABASE_URL` | yes | Neon Postgres connection string |
-   | `GEMINI_MODEL` | no | Ordered, comma-separated list of model ids to try. Default `gemini-3.5-flash-lite,gemini-flash-lite-latest` |
+   | `GEMINI_MODEL` | no | Ordered, comma-separated list of model ids to try. Default `gemini-flash-lite-latest,gemini-3.5-flash-lite` |
    | `TURN_LIMIT_PER_VISITOR_PER_MINUTE` | no | Turns per visitor per minute. Default 12 |
    | `TURN_LIMIT_GLOBAL_PER_HOUR` | no | Turns per hour for the whole app. Default 200 |
    | `RATE_LIMIT_SALT` | recommended | Any random string, used to hash visitor IPs for the rate limit. Empty works but hashes without a salt |

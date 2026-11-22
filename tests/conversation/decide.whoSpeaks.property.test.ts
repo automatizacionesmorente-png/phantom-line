@@ -87,7 +87,7 @@ describe("S8: a known service in a booking: the model never speaks, and the code
     expect(accepted).toBeGreaterThan(0);
   });
 
-  it("the generator reaches all three sides: a template ask after an accepted time, a rejection, and a question for the day and time", () => {
+  it("the generator reaches all three sides: a template ask after an accepted time, a rejection, and the code's First_Offer for a day with no time", () => {
     const base = { state: initialCallState("es"), shop: lolaProfile, pack, now: NOWS[0], existing: [], callerBookings: [] };
     const t = (date: string | null, time: string | null, service: string | null = "corte"): ModelTurn => ({
       reply: MODEL_LINE, language: "es", wantsLanguage: null, intent: "booking", name: null, phone: null,
@@ -104,7 +104,13 @@ describe("S8: a known service in a booking: the model never speaks, and the code
         Temporal.Instant.from("2026-11-11T18:00:00Z"),
       ]).text,
     );
-    expect(decideTurn({ ...base, turn: t("2026-11-11", null) }).reply).toBe(P.askDayAndTime(Temporal.PlainDate.from("2026-11-11")).text);
+    // front-desk-brain 8.1 (an amendment of core-call-loop 5.x): a day with no time gets the code's
+    // First_Offer on that day. Old assertion: `P.askDayAndTime(2026-11-11)`. Still protected: the
+    // code speaks, never the model, and the offered slot is the first the Booking_Rules accept
+    // (Wednesday 09:00 Madrid now, so 09:30 rounds to the 10:00 opening).
+    expect(decideTurn({ ...base, turn: t("2026-11-11", null) }).reply).toBe(
+      P.firstOffer("haircut", Temporal.Instant.from("2026-11-11T09:00:00Z")).text,
+    );
     // Only without a service does the model's line still speak.
     expect(decideTurn({ ...base, turn: t("2026-11-11", "19:30", null) }).reply).toBe(MODEL_LINE);
   });
