@@ -125,6 +125,49 @@ describe("claimDemoRetention (16.6)", () => {
 });
 
 describe("runDemoRetention", () => {
+  it("retention deletes visitor payments, outbox, blocks and expenses but keeps curated", async () => {
+    const old = NOW.subtract({ hours: 24 * 30 }).toString();
+    const fresh = NOW.subtract({ hours: 1 }).toString();
+    const oldBooking = await addBooking(t, D, { start: NOW.subtract({ hours: 24 * 30 }) });
+    const keptBooking = await addBooking(t, D, { start: NOW.add({ hours: 72 }) });
+    const real = await addBooking(t, R, { start: NOW.subtract({ hours: 24 * 30 }) });
+    const pay = (shop: string, booking: string | null, at: string, curated: boolean) =>
+      t.pg.query(`INSERT INTO payments (shop_id, booking_id, amount_cents, method, paid_at, curated) VALUES ($1, $2, 1000, 'cash', $3, $4)`, [shop, booking, at, curated]);
+    await pay(D, oldBooking, old, false); // old, visitor: goes
+    await pay(D, null, old, true); // old, curated: stays
+    await pay(D, keptBooking, fresh, false); // fresh: stays
+    await pay(R, real, old, false); // real shop: stays
+    const ob = (shop: string, key: string, at: string, curated: boolean) =>
+      t.pg.query(`INSERT INTO outbox (shop_id, kind, dedupe_key, phone, language, body, created_at, curated) VALUES ($1, 'review', $2, '+34612345678', 'es', 'Hola', $3, $4)`, [shop, key, at, curated]);
+    await ob(D, "old", old, false);
+    await ob(D, "old-curated", old, true);
+    await ob(D, "fresh", fresh, false);
+    await ob(R, "real", old, false);
+    const blk = (shop: string, end: string, curated: boolean) =>
+      t.pg.query(`INSERT INTO time_blocks (shop_id, starts_at, ends_at, curated) VALUES ($1, $2::timestamptz - interval '1 hour', $2, $3)`, [shop, end, curated]);
+    await blk(D, old, false);
+    await blk(D, old, true);
+    await blk(D, fresh, false);
+    await blk(R, old, false);
+    const ex = (shop: string, at: string, curated: boolean) =>
+      t.pg.query(`INSERT INTO expenses (shop_id, concept, category, amount_cents, day, created_at, curated) VALUES ($1, 'x', 'other', 500, '2026-11-01', $2, $3)`, [shop, at, curated]);
+    await ex(D, old, false);
+    await ex(D, old, true);
+    await ex(D, fresh, false);
+    await ex(R, old, false);
+
+    expect(await runDemoRetention(deps())).toBe(true);
+
+    const count = async (table: string, shop: string) =>
+      (await t.pg.query<{ n: number }>(`SELECT count(*)::int AS n FROM ${table} WHERE shop_id = $1`, [shop])).rows[0].n;
+    for (const table of ["payments", "outbox", "time_blocks", "expenses"]) {
+      expect(await count(table, D), table).toBe(2);
+      expect(await count(table, R), `${table} real`).toBe(1);
+    }
+    const curatedLeft = await t.pg.query<{ n: number }>(`SELECT count(*)::int AS n FROM payments WHERE shop_id = $1 AND curated`, [D]);
+    expect(curatedLeft.rows[0].n).toBe(1);
+  });
+
   it("erases, deletes, restores the 3 samples, and leaves the Real_Shop byte for byte (16.1–16.5)", async () => {
     const demo = await seedShopData(D);
     await seedShopData(R);

@@ -275,7 +275,7 @@ export const timeBlocks = pgTable(
     id: uuid().primaryKey().defaultRandom(),
     shopId: text("shop_id")
       .notNull()
-      .references(() => shops.id),
+      .references(() => shops.id, { onDelete: "cascade" }),
     /** An id from shop.profile.resources; null = the whole shop. */
     resourceId: text("resource_id"),
     startsAt: tstz("starts_at").notNull(),
@@ -298,9 +298,9 @@ export const payments = pgTable(
     id: uuid().primaryKey().defaultRandom(),
     shopId: text("shop_id")
       .notNull()
-      .references(() => shops.id),
+      .references(() => shops.id, { onDelete: "cascade" }),
     bookingId: uuid("booking_id")
-      .references(() => bookings.id)
+      .references(() => bookings.id, { onDelete: "set null" })
       .unique(),
     /** Total charged, in cents. */
     amountCents: integer("amount_cents").notNull(),
@@ -331,7 +331,7 @@ export const expenses = pgTable(
     id: uuid().primaryKey().defaultRandom(),
     shopId: text("shop_id")
       .notNull()
-      .references(() => shops.id),
+      .references(() => shops.id, { onDelete: "cascade" }),
     concept: text().notNull(),
     category: text().notNull(),
     amountCents: integer("amount_cents").notNull(),
@@ -362,7 +362,7 @@ export const shopSettings = pgTable(
   {
     shopId: text("shop_id")
       .primaryKey()
-      .references(() => shops.id),
+      .references(() => shops.id, { onDelete: "cascade" }),
     automations: jsonb().$type<Record<string, boolean>>().notNull().default({}),
     googleReviewUrl: text("google_review_url"),
     vatRatePct: integer("vat_rate_pct").notNull().default(21),
@@ -378,12 +378,12 @@ export const outbox = pgTable(
     id: uuid().primaryKey().defaultRandom(),
     shopId: text("shop_id")
       .notNull()
-      .references(() => shops.id),
+      .references(() => shops.id, { onDelete: "cascade" }),
     kind: text().notNull(),
     /** Makes generation idempotent: one message per shop and key. */
     dedupeKey: text("dedupe_key").notNull(),
-    clientId: uuid("client_id").references(() => clients.id),
-    bookingId: uuid("booking_id").references(() => bookings.id),
+    clientId: uuid("client_id").references(() => clients.id, { onDelete: "set null" }),
+    bookingId: uuid("booking_id").references(() => bookings.id, { onDelete: "set null" }),
     phone: text().notNull(),
     language: text().notNull(),
     body: text().notNull(),
@@ -465,7 +465,7 @@ export const voiceCache = pgTable(
     key: text().primaryKey(),
     shopId: text("shop_id")
       .notNull()
-      .references(() => shops.id),
+      .references(() => shops.id, { onDelete: "cascade" }),
     language: text().notNull(),
     model: text().notNull(),
     /** audio/mpeg (pre-generated) or audio/wav (live). */

@@ -54,6 +54,23 @@ const NONE = { shops: 0, calls: 0, bookings: 0, messages: 0, owner_actions: 0, v
 const ALL = { shops: 1, calls: 1, bookings: 1, messages: 1, owner_actions: 1, voice_cache: 1, clients: 1 };
 
 describe("deleteExpired", () => {
+  it("trial sweep deletes a trial shop that has payments, outbox, expenses, settings and blocks", async () => {
+    const id = "prueba-salon";
+    await trialShop(id, EXPIRED);
+    const [b] = (await t.pg.query<{ id: string }>("SELECT id FROM bookings WHERE shop_id = $1", [id])).rows;
+    await t.pg.query(`INSERT INTO payments (shop_id, booking_id, amount_cents, method, paid_at) VALUES ($1, $2, 2500, 'card', now())`, [id, b.id]);
+    await t.pg.query(`INSERT INTO outbox (shop_id, kind, dedupe_key, booking_id, phone, language, body) VALUES ($1, 'reminder', 'k', $2, '+34612345678', 'es', 'Hola')`, [id, b.id]);
+    await t.pg.query(`INSERT INTO expenses (shop_id, concept, category, amount_cents, day) VALUES ($1, 'Tinte', 'products', 4000, '2026-11-20')`, [id]);
+    await t.pg.query(`INSERT INTO shop_settings (shop_id) VALUES ($1)`, [id]);
+    await t.pg.query(`INSERT INTO time_blocks (shop_id, starts_at, ends_at) VALUES ($1, now(), now() + interval '1 day')`, [id]);
+    expect(await createTrialStore(t.handle).deleteExpired(NOW)).toBe(1);
+    for (const table of ["payments", "outbox", "expenses", "shop_settings", "time_blocks"]) {
+      const r = await t.pg.query<{ n: number }>(`SELECT count(*)::int AS n FROM ${table}`);
+      expect(r.rows[0].n, table).toBe(0);
+    }
+    expect(await counts(id)).toEqual(NONE);
+  });
+
   it("deletes an expired trial shop and every row that belongs to it", async () => {
     await trialShop("prueba-vieja", EXPIRED);
     expect(await counts("prueba-vieja")).toEqual(ALL);

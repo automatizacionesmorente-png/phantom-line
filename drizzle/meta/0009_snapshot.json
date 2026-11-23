@@ -1,5 +1,5 @@
 {
-  "id": "2fc7064b-7fd2-4a9f-a8bf-8888f6dfd557",
+  "id": "79fd1709-5f13-4a13-9654-acf55502e195",
   "prevId": "771d741d-9d75-4c7b-a906-76fb73c80a73",
   "version": "7",
   "dialect": "postgresql",
@@ -689,7 +689,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
@@ -1151,7 +1151,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         },
         "outbox_client_id_clients_id_fk": {
@@ -1164,7 +1164,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "set null",
           "onUpdate": "no action"
         },
         "outbox_booking_id_bookings_id_fk": {
@@ -1177,7 +1177,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },
@@ -1479,7 +1479,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         },
         "payments_booking_id_bookings_id_fk": {
@@ -1492,7 +1492,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },
@@ -1616,7 +1616,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
@@ -1847,7 +1847,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
@@ -1980,7 +1980,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },

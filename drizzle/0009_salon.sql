@@ -80,26 +80,29 @@ CREATE TABLE "time_blocks" (
 --> statement-breakpoint
 ALTER TABLE "bookings" DROP CONSTRAINT "bookings_channel_ck";--> statement-breakpoint
 ALTER TABLE "owner_actions" DROP CONSTRAINT "owner_actions_action_ck";--> statement-breakpoint
+ALTER TABLE "voice_cache" DROP CONSTRAINT "voice_cache_shop_id_shops_id_fk";
+--> statement-breakpoint
 ALTER TABLE "bookings" ADD COLUMN "client_id" uuid;--> statement-breakpoint
 ALTER TABLE "bookings" ADD COLUMN "price_cents" integer;--> statement-breakpoint
 ALTER TABLE "bookings" ADD COLUMN "visit_note" text DEFAULT '' NOT NULL;--> statement-breakpoint
 ALTER TABLE "clients" ADD COLUMN "birthday" text;--> statement-breakpoint
 ALTER TABLE "clients" ADD COLUMN "promo_consent_at" timestamp with time zone;--> statement-breakpoint
 ALTER TABLE "clients" ADD COLUMN "fields" jsonb DEFAULT '{}'::jsonb NOT NULL;--> statement-breakpoint
-ALTER TABLE "expenses" ADD CONSTRAINT "expenses_shop_id_shops_id_fk" FOREIGN KEY ("shop_id") REFERENCES "public"."shops"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "outbox" ADD CONSTRAINT "outbox_shop_id_shops_id_fk" FOREIGN KEY ("shop_id") REFERENCES "public"."shops"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "outbox" ADD CONSTRAINT "outbox_client_id_clients_id_fk" FOREIGN KEY ("client_id") REFERENCES "public"."clients"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "outbox" ADD CONSTRAINT "outbox_booking_id_bookings_id_fk" FOREIGN KEY ("booking_id") REFERENCES "public"."bookings"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "payments" ADD CONSTRAINT "payments_shop_id_shops_id_fk" FOREIGN KEY ("shop_id") REFERENCES "public"."shops"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "payments" ADD CONSTRAINT "payments_booking_id_bookings_id_fk" FOREIGN KEY ("booking_id") REFERENCES "public"."bookings"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "shop_settings" ADD CONSTRAINT "shop_settings_shop_id_shops_id_fk" FOREIGN KEY ("shop_id") REFERENCES "public"."shops"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "time_blocks" ADD CONSTRAINT "time_blocks_shop_id_shops_id_fk" FOREIGN KEY ("shop_id") REFERENCES "public"."shops"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "expenses" ADD CONSTRAINT "expenses_shop_id_shops_id_fk" FOREIGN KEY ("shop_id") REFERENCES "public"."shops"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "outbox" ADD CONSTRAINT "outbox_shop_id_shops_id_fk" FOREIGN KEY ("shop_id") REFERENCES "public"."shops"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "outbox" ADD CONSTRAINT "outbox_client_id_clients_id_fk" FOREIGN KEY ("client_id") REFERENCES "public"."clients"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "outbox" ADD CONSTRAINT "outbox_booking_id_bookings_id_fk" FOREIGN KEY ("booking_id") REFERENCES "public"."bookings"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payments" ADD CONSTRAINT "payments_shop_id_shops_id_fk" FOREIGN KEY ("shop_id") REFERENCES "public"."shops"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payments" ADD CONSTRAINT "payments_booking_id_bookings_id_fk" FOREIGN KEY ("booking_id") REFERENCES "public"."bookings"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "shop_settings" ADD CONSTRAINT "shop_settings_shop_id_shops_id_fk" FOREIGN KEY ("shop_id") REFERENCES "public"."shops"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "time_blocks" ADD CONSTRAINT "time_blocks_shop_id_shops_id_fk" FOREIGN KEY ("shop_id") REFERENCES "public"."shops"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "expenses_shop_idx" ON "expenses" USING btree ("shop_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "outbox_shop_dedupe_uq" ON "outbox" USING btree ("shop_id","dedupe_key");--> statement-breakpoint
 CREATE INDEX "outbox_shop_status_idx" ON "outbox" USING btree ("shop_id","status");--> statement-breakpoint
 CREATE INDEX "payments_shop_paid_idx" ON "payments" USING btree ("shop_id","paid_at");--> statement-breakpoint
 CREATE INDEX "time_blocks_shop_start_idx" ON "time_blocks" USING btree ("shop_id","starts_at");--> statement-breakpoint
 ALTER TABLE "bookings" ADD CONSTRAINT "bookings_client_id_clients_id_fk" FOREIGN KEY ("client_id") REFERENCES "public"."clients"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "voice_cache" ADD CONSTRAINT "voice_cache_shop_id_shops_id_fk" FOREIGN KEY ("shop_id") REFERENCES "public"."shops"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "bookings" ADD CONSTRAINT "bookings_price_ck" CHECK ("bookings"."price_cents" IS NULL OR "bookings"."price_cents" >= 0);--> statement-breakpoint
 ALTER TABLE "bookings" ADD CONSTRAINT "bookings_visit_note_ck" CHECK (char_length("bookings"."visit_note") <= 500);--> statement-breakpoint
 ALTER TABLE "bookings" ADD CONSTRAINT "bookings_channel_ck" CHECK ("bookings"."channel" IN ('voice', 'whatsapp', 'webchat', 'manual'));--> statement-breakpoint

@@ -19,7 +19,7 @@ import type { ClientBooking } from "@/lib/clients/summary";
 import type { ClientRecord, OwnerCommand, OwnerCommandResult, OwnerRepository, TapeRow } from "@/lib/owner/types";
 import { isOverlapViolation, type Db, type DbHandle } from "./repository";
 import { shopIsLive } from "./shopLive";
-import { bookings, calls, clients, messages, ownerActions, rateLimits, shops } from "./schema";
+import { bookings, calls, clients, expenses, messages, outbox, ownerActions, payments, rateLimits, shops, timeBlocks } from "./schema";
 
 const toDate = (i: Temporal.Instant) => new Date(i.epochMilliseconds);
 const toInstant = (d: Date) => Temporal.Instant.fromEpochMilliseconds(d.getTime());
@@ -264,6 +264,8 @@ export function createOwnerRepository(handle: DbHandle): OwnerRepository {
   }
 
   const D = DEMO_SHOP_ID;
+  /** Statements of applyDemoCutoffs that run before the original eight. */
+  const SALON_STATEMENTS = 4;
   const oldCalls = (deleteBefore: Date) =>
     db.select({ id: calls.id }).from(calls).where(and(eq(calls.shopId, D), eq(calls.curated, false), lt(calls.startedAt, deleteBefore)));
   const oldBookings = (deleteBefore: Date) =>
@@ -454,6 +456,30 @@ export function createOwnerRepository(handle: DbHandle): OwnerRepository {
       // One transaction, in foreign-key order (design, "Demo_Retention", step 2). Every
       // statement names the Demo_Shop, so no Real_Shop row can match (16.1).
       const results = await handle.atomic((q) => [
+        // 0. Salon rows of visitors (salon 0009), first so a payment never outlives its booking:
+        // payments by paid_at or because their booking goes, then outbox, blocks and expenses.
+        q
+          .delete(payments)
+          .where(
+            and(
+              eq(payments.shopId, D),
+              eq(payments.curated, false),
+              or(lt(payments.paidAt, deleteBefore), inArray(payments.bookingId, oldBookings(deleteBefore))),
+            ),
+          )
+          .returning({ id: payments.id }),
+        q
+          .delete(outbox)
+          .where(and(eq(outbox.shopId, D), eq(outbox.curated, false), lt(outbox.createdAt, deleteBefore)))
+          .returning({ id: outbox.id }),
+        q
+          .delete(timeBlocks)
+          .where(and(eq(timeBlocks.shopId, D), eq(timeBlocks.curated, false), lt(timeBlocks.endsAt, deleteBefore)))
+          .returning({ id: timeBlocks.id }),
+        q
+          .delete(expenses)
+          .where(and(eq(expenses.shopId, D), eq(expenses.curated, false), lt(expenses.createdAt, deleteBefore)))
+          .returning({ id: expenses.id }),
         // 1. Erase New_Messages older than 24 h (16.2). Not an Owner_Action: no Audit_Record.
         q
           .update(messages)
@@ -518,7 +544,7 @@ export function createOwnerRepository(handle: DbHandle): OwnerRepository {
           .where(and(eq(clients.shopId, D), eq(clients.curated, false), lt(clients.updatedAt, deleteBefore)))
           .returning({ id: clients.id }),
       ]);
-      const n = (k: number) => rowsOf(results[k]).length;
+      const n = (k: number) => rowsOf(results[k + SALON_STATEMENTS]).length;
       return { erased: n(0), deletedAuditRecords: n(1), deletedMessages: n(3), deletedBookings: n(4), deletedCalls: n(6), deletedClients: n(7) };
     },
 

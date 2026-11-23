@@ -97,6 +97,27 @@ describe("salon schema 0009", () => {
     expect(await code(ins())).toBe("23505");
   });
 
+  it("deleting a booking keeps its payment with booking_id null", async () => {
+    const id = await insertBooking("voice", "+34600000001");
+    await t.pg.query(`INSERT INTO payments (shop_id, booking_id, amount_cents, method, paid_at) VALUES ($1, $2, 2500, 'cash', now())`, [SHOP, id]);
+    await t.pg.query("DELETE FROM bookings WHERE id = $1", [id]);
+    const r = await t.pg.query<{ booking_id: string | null; amount_cents: number }>("SELECT booking_id, amount_cents FROM payments");
+    expect(r.rows).toEqual([{ booking_id: null, amount_cents: 2500 }]);
+  });
+
+  it("deleting a booking or a client keeps its outbox message with the link null", async () => {
+    const id = await insertBooking("voice", "+34600000001");
+    const c = await t.pg.query<{ id: string }>(`INSERT INTO clients (shop_id, phone, name) VALUES ($1, '+34600000001', 'Ana') RETURNING id`, [SHOP]);
+    await t.pg.query(
+      `INSERT INTO outbox (shop_id, kind, dedupe_key, client_id, booking_id, phone, language, body) VALUES ($1, 'reminder', 'k', $2, $3, '+34600000001', 'es', 'Hola')`,
+      [SHOP, c.rows[0].id, id],
+    );
+    await t.pg.query("DELETE FROM bookings WHERE id = $1", [id]);
+    await t.pg.query("DELETE FROM clients WHERE id = $1", [c.rows[0].id]);
+    const r = await t.pg.query<{ booking_id: string | null; client_id: string | null }>("SELECT booking_id, client_id FROM outbox");
+    expect(r.rows).toEqual([{ booking_id: null, client_id: null }]);
+  });
+
   it("owner_actions accept book and pay", async () => {
     const id = await insertBooking("manual", "");
     for (const action of ["book", "pay"]) {
@@ -157,5 +178,5 @@ describe("salon schema 0009", () => {
       await pg.close();
       fs.rmSync(tmp, { recursive: true, force: true });
     }
-  });
+  }, 60_000);
 });
