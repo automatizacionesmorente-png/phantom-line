@@ -111,6 +111,18 @@ export type FetchRoute = (url: string, init: RequestInit | undefined) => Respons
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
+const WEEK = {
+  from: "2026-11-03",
+  to: "2026-11-10",
+  callsAnswered: 9,
+  bookings: 3,
+  revenueCents: 7500,
+  revenueFrom: false,
+  lostCalls: 2,
+  timeSavedSeconds: 1620,
+  timedCalls: 9,
+};
+
 /**
  * A fake `fetch` for the Machine_API: Polls answer from `polls` in order (the last one
  * repeats), PLAY answers with TRANSCRIPT, ERASE with a version. Every call is recorded.
@@ -122,6 +134,8 @@ export function fakeMachineApi(polls: (PollChanged | PollUnchanged)[] = []) {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     const method = init?.method ?? "GET";
     const body = typeof init?.body === "string" ? JSON.parse(init.body) : null;
+    // "Últimos 7 días" reads its own route; it is not a Poll and is not recorded with them.
+    if (method === "GET" && /^\/api\/machine\/[^/]+\/week$/.test(url)) return json(WEEK);
     calls.push({ url, method, body });
     if (method === "GET" && /^\/api\/machine\/[^/]+\?since=/.test(url)) {
       const p = polls[Math.min(next, polls.length - 1)];

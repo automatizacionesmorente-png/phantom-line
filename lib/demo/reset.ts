@@ -76,7 +76,7 @@ export async function resetDemo(
         customerPhone: b.customerPhone,
         channel: "voice",
         callId: b.callId,
-        createdAt: at,
+        createdAt: b.createdAt ? toDate(b.createdAt) : at,
         ownerConfirmedAt: b.ownerConfirmed ? at : null,
         curated: true,
       })),
