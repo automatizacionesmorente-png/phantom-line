@@ -42,7 +42,7 @@ export async function createTestDb(): Promise<TestDb> {
     handle,
     repo: createRepository(handle),
     reset: async () => {
-      await db.execute(sql`TRUNCATE owner_actions, voice_cache, messages, bookings, calls, rate_limits, shops CASCADE`);
+      await db.execute(sql`TRUNCATE waitlist, owner_actions, voice_cache, messages, bookings, calls, rate_limits, shops CASCADE`);
     },
     close: () => pg.close(),
   };

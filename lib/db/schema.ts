@@ -224,6 +224,28 @@ export const rateLimits = pgTable(
 );
 
 /**
+ * The /startup waitlist (BACKLOG 12). Private: no route or page ever reads it back. `email` is
+ * stored lowercased and is unique, so a repeat sign-up is a no-op. `consent_at` is the moment the
+ * visitor ticked the explicit consent box; a row without it cannot exist.
+ */
+export const waitlist = pgTable(
+  "waitlist",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    shopName: text("shop_name").notNull(),
+    city: text().notNull(),
+    email: text().notNull(),
+    language: text().notNull(),
+    consentAt: tstz("consent_at").notNull(),
+    createdAt: tstz("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("waitlist_email_uq").on(t.email),
+    check("waitlist_language_ck", sql`${t.language} IN ('es', 'en')`),
+  ],
+);
+
+/**
  * `bytea` as a Uint8Array. drizzle-orm 0.45 has no `bytea` column builder, so this is a custom
  * type. Values are sent as a Buffer: PGlite binds it as binary, and the Neon HTTP driver encodes
  * a Buffer parameter as Postgres hex text itself (`encodeBuffersAsBytea`). Neon returns a Buffer

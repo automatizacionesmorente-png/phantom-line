@@ -43,6 +43,13 @@
       "when": 1795381020820,
       "tag": "0005_curated_demo_rows",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795394298266,
+      "tag": "0006_waitlist",
+      "breakpoints": true
     }
   ]
 }

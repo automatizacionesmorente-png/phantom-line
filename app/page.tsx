@@ -71,6 +71,13 @@ export default function Home() {
           )}
           <DemoNotice lang="en" />
         </section>
+
+        <p className="mt-8 font-inter text-base text-text">
+          Run a salon?{" "}
+          <Link href="/startup" className="focus-ring font-semibold text-gold-text underline">
+            See Phantom Line for salons
+          </Link>
+        </p>
       </main>
     </div>
   );
