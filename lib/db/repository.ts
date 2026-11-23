@@ -12,7 +12,8 @@ import type { CallerBooking, Channel, Lang, Repository, StoredCall, Write } from
 import { getSectorPack } from "@/lib/sectors";
 import * as schema from "./schema";
 import { shopIsLive } from "./shopLive";
-import { bookings, calls, clients, messages, rateLimits, shops } from "./schema";
+import { blocksAsBusy } from "@/lib/salon/blocks";
+import { bookings, calls, clients, messages, rateLimits, shops, timeBlocks } from "./schema";
 
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
 export type Query = BatchItem<"pg">;
@@ -207,20 +208,44 @@ export function createRepository(handle: DbHandle): Repository {
       return rows.length === 0 ? null : toStoredCall(rows[0]);
     },
 
+    /**
+     * The busy list of the booking rules: confirmed bookings plus the time blocks that overlap
+     * the window, expanded per resource here because this is where the shop's resources are known.
+     * Block entries carry `block:` ids, so callers never mistake one for a booking.
+     */
     async listBookings(shopId, from, to): Promise<ExistingBooking[]> {
-      const rows = await db
-        .select({ id: bookings.id, resourceId: bookings.resourceId, startsAt: bookings.startsAt, endsAt: bookings.endsAt })
-        .from(bookings)
-        .where(
-          and(
-            eq(bookings.shopId, shopId),
-            eq(bookings.status, "confirmed"),
-            lt(bookings.startsAt, toDate(to)),
-            gt(bookings.endsAt, toDate(from)),
-          ),
-        )
-        .orderBy(asc(bookings.startsAt), asc(bookings.id));
-      return rows.map((r) => ({ id: r.id, resourceId: r.resourceId, start: toInstant(r.startsAt), end: toInstant(r.endsAt) }));
+      const [rows, blockRows, shopRows] = await Promise.all([
+        db
+          .select({ id: bookings.id, resourceId: bookings.resourceId, startsAt: bookings.startsAt, endsAt: bookings.endsAt })
+          .from(bookings)
+          .where(
+            and(
+              eq(bookings.shopId, shopId),
+              eq(bookings.status, "confirmed"),
+              lt(bookings.startsAt, toDate(to)),
+              gt(bookings.endsAt, toDate(from)),
+            ),
+          )
+          .orderBy(asc(bookings.startsAt), asc(bookings.id)),
+        db
+          .select()
+          .from(timeBlocks)
+          .where(and(eq(timeBlocks.shopId, shopId), lt(timeBlocks.startsAt, toDate(to)), gt(timeBlocks.endsAt, toDate(from))))
+          .orderBy(asc(timeBlocks.startsAt), asc(timeBlocks.id)),
+        // Only needed when a block exists.
+        db.select({ profile: shops.profile }).from(shops).where(eq(shops.id, shopId)).limit(1),
+      ]);
+      const booked = rows.map((r) => ({ id: r.id, resourceId: r.resourceId, start: toInstant(r.startsAt), end: toInstant(r.endsAt) }));
+      if (blockRows.length === 0) return booked;
+      const raw = (shopRows[0]?.profile as { resources?: unknown } | undefined)?.resources;
+      const resources = Array.isArray(raw)
+        ? raw.flatMap((x) => (x && typeof (x as { id?: unknown }).id === "string" ? [{ id: (x as { id: string }).id }] : []))
+        : [];
+      const busy = blocksAsBusy(
+        blockRows.map((b) => ({ id: b.id, resourceId: b.resourceId, start: toInstant(b.startsAt), end: toInstant(b.endsAt), reason: b.reason })),
+        resources,
+      );
+      return [...booked, ...busy];
     },
 
     async findCallerBookings(shopId, phone, now): Promise<CallerBooking[]> {
