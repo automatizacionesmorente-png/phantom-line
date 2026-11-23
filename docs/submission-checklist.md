@@ -12,7 +12,7 @@ Status: DONE (evidence in the repo or checked), OPEN (can be done in the repo), 
 | Bonus categories Best Student and Best Startup | OWNER | Fill the bonus fields in the form (below) |
 | Built with Kiro, `/.kiro` at the repo root and not ignored | DONE | 36 files tracked under `.kiro/` (steering, 5 specs, hooks, agents, settings); `.gitignore` has no `.kiro` rule |
 | Honest Kiro / Claude split | DONE | README, `NOTAS-KIRO.md` (rows 2026-11-22 and 23), `docs/submission.md`; commits say "Written by Claude (Kiro credits exhausted)" |
-| Open-source LICENSE | DONE | MIT `LICENSE` at the root. OWNER: after the repo is public, check GitHub shows the license in About |
+| Open-source LICENSE | DONE | AGPL-3.0 `LICENSE` at the root (OSI-approved). OWNER: after the repo is public, check GitHub shows the license in About |
 | Public GitHub repo | OWNER | Remote `origin` is `automatizacionesmorente-png/phantom-line`. Make it public (Settings, Danger zone) and check no secret is in history |
 
 ## Working product

@@ -2,7 +2,7 @@
 
 An 80s answering machine brought back from the dead, as the AI phone receptionist of a hair salon. When nobody picks up, it answers by voice in Spanish or English, books inside opening hours, and leaves the owner a message on a blinking tape. The model proposes; plain TypeScript decides every booking.
 
-Kiroween 2026 (Devpost), category **Resurrection**, plus Best Student and Best Startup. Founder: Miguel Morente, student at UFV Madrid. MIT license.
+Kiroween 2026 (Devpost), category **Resurrection**, plus Best Student and Best Startup. Founder: Miguel Morente, student at UFV Madrid. AGPL-3.0 license.
 
 ## Try it in 30 seconds
 
@@ -96,4 +96,6 @@ Runs on Vercel's free tier with the default Node.js runtime. Set the same enviro
 
 ## License
 
-MIT, see [LICENSE](LICENSE).
+GNU Affero General Public License v3.0 (AGPL-3.0), see [LICENSE](LICENSE). Copyright (c) 2026 Miguel Morente de las Heras.
+
+You may read, run and change this code. If you offer a modified version to users over a network, you must publish your full source under the same license.
