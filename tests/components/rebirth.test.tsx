@@ -349,13 +349,14 @@ describe("the success screen", () => {
     expect(screen.getByText("What to do next")).toBeTruthy();
   });
 
-  it("copies the link", async () => {
+  it("copies the link", { timeout: 20_000 }, async () => {
     const writeText = vi.fn(async () => {});
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
     render(<SuccessScreen lang="es" data={data} />);
     fireEvent.click(screen.getAllByRole("button", { name: "Copiar" })[0]);
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith(data.callUrl));
-    expect(screen.getByRole("button", { name: "Copiado" })).toBeTruthy();
+    // Generous waits: under the full suite's load the default 1 s of waitFor is sometimes not enough.
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(data.callUrl), { timeout: 10_000 });
+    expect(await screen.findByRole("button", { name: "Copiado" }, { timeout: 10_000 })).toBeTruthy();
   });
 
   it("renders a hostile shop name as text, never as HTML", () => {

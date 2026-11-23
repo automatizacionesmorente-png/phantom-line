@@ -77,7 +77,11 @@ function toCase(g: typeof arbRaw extends fc.Arbitrary<infer T> ? T : never) {
     // el pelo y corte de mujer" names one cut, read by tie rule 5(c) as the women's cut the caller
     // also named, so the set {barba, corte-hombre, corte-mujer} was never said. The assertions and
     // numRuns did not change.
-    const sharedFree = !said.some((id) => id !== "corte-hombre" && (owners.get(phraseKey(sharedWord))?.has(id) ?? false));
+    // Second generator fix (23 Nov 2026): the index drops a leading article ("un corte" is the entry
+    // "corte"), so the lookup also tries the word without it; before, "quería barba, un corte y corte
+    // de mujer" was generated and read, rightly, as one cut.
+    const sharers = owners.get(phraseKey(sharedWord)) ?? owners.get(phraseKey(sharedWord).replace(/^(un|una|el|la|a) /, ""));
+    const sharedFree = !said.some((id) => id !== "corte-hombre" && (sharers?.has(id) ?? false));
     const phrases = said.map((id, k) => {
       if (id === "corte-hombre" && g.useShared && partner && sharedFree) return sharedWord;
       const own = ownAliases.get(id)!;
