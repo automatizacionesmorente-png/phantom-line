@@ -165,7 +165,7 @@ export interface SlotsResponse {
 /** Every error body: a stable code, plus what the dialog needs to refresh in place. */
 export type MachineErrorBody =
   | { error: "wrong_pin" | "too_many_tries" | "no_pin" | "machine_not_configured" }
-  | { error: "shop_not_found" | "message_not_found" | "booking_not_found" | "bad_origin" }
+  | { error: "shop_not_found" | "message_not_found" | "booking_not_found" | "client_not_found" | "bad_origin" }
   | { error: "invalid_request"; issues: { path: (string | number)[]; message: string }[] }
   | { error: "not_allowed" }
   | { error: "unavailable" }

@@ -169,6 +169,10 @@ export function client(h: MachineHandlers, seen: string[] = []) {
       run(h.message(mreq("POST", `/api/machine/${shopId}/messages/${messageId}`, { body, ...o }), { shopId, messageId })),
     booking: (shopId: string, bookingId: string, body: unknown, o: ReqOptions = {}) =>
       run(h.booking(mreq("POST", `/api/machine/${shopId}/bookings/${bookingId}`, { body, ...o }), { shopId, bookingId })),
+    clients: (shopId: string, o: ReqOptions = {}) =>
+      run(h.clients(mreq("GET", `/api/machine/${shopId}/clients`, o), { shopId })),
+    clientAction: (shopId: string, clientId: string, body: unknown, o: ReqOptions = {}) =>
+      run(h.client(mreq("POST", `/api/machine/${shopId}/clients/${clientId}`, { body, ...o }), { shopId, clientId })),
     slots: (shopId: string, bookingId: string, date: string, o: ReqOptions = {}) =>
       run(
         h.slots(mreq("GET", `/api/machine/${shopId}/bookings/${bookingId}/slots`, { ...o, query: `?date=${date}` }), {

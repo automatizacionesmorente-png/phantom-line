@@ -7,7 +7,9 @@ import { toShopRules } from "@/lib/conversation/shopProfile";
 import { buildCuratedSet, TEST_BOOKING_NAMES } from "@/lib/demo/curated";
 import { checkResetTarget } from "@/lib/demo/guard";
 import { resetDemo } from "@/lib/demo/reset";
-import { bookings, calls, messages, ownerActions } from "@/lib/db/schema";
+import { buildClientBook } from "@/lib/clients/book";
+import { bookings, calls, clients, messages, ownerActions } from "@/lib/db/schema";
+import { getSectorPack } from "@/lib/sectors";
 import { lolaSeedProfile } from "@/lib/db/seed";
 import { DEMO_SHOP_ID } from "@/lib/owner/demo";
 import { runDemoRetention } from "@/lib/owner/demoRetention";
@@ -181,6 +183,34 @@ describe("Demo_Retention keeps the curated set", () => {
     const after = await rowsOf(D);
     expect(after.calls).toHaveLength(4);
     expect(after.messages).toHaveLength(4);
+  });
+});
+
+describe("curated clients (BACKLOG 14, 15)", () => {
+  it("loads five curated clients with history, two of them overdue, and the demo's retention keeps them", async () => {
+    await run();
+    await run(); // twice: the same set, not duplicates
+    const owner = ownerRepoOf(t);
+    const records = await owner.listClients(D, 100);
+    expect(records).toHaveLength(5);
+    const rowsClients = await t.handle.db.select().from(clients).where(eq(clients.shopId, D));
+    expect(rowsClients.every((c) => c.curated)).toBe(true);
+    expect(records.every((r) => r.bookings.length > 0)).toBe(true);
+
+    const pack = getSectorPack(lolaSeedProfile.sectorPackId);
+    const book = buildClientBook(records, NOW, lolaSeedProfile, pack, []);
+    expect(book.clients.find((c) => c.name === "Lucía Pardo")).toMatchObject({ noShows: 1 });
+    expect(book.clients.find((c) => c.name === "Carlos Vega")?.usualServices[0]).toEqual({
+      serviceId: "corte-hombre+degradado",
+      count: 4,
+    });
+    expect(book.lapsed.map((l) => l.name).sort()).toEqual(["Elena Soto", "John Carter", "Marta Ibáñez"]);
+    expect(book.lapsed.find((l) => l.name === "John Carter")?.text).toContain("Hi John");
+
+    // A month later the sweep leaves curated clients and their history alone.
+    const later = NOW.add({ hours: 24 * 30 });
+    await runDemoRetention({ repo: owner, clock: () => later, newId: () => randomUUID(), log: () => {} });
+    expect(await owner.listClients(D, 100)).toHaveLength(5);
   });
 });
 

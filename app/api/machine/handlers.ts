@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import { ClientActionSchema } from "@/lib/clients/api";
 import { summarizeError } from "@/lib/conversation/fallbackLog";
 import {
   BookingActionSchema,
@@ -10,6 +11,8 @@ import {
 } from "@/lib/owner/api";
 import {
   handleBookingAction,
+  handleClientAction,
+  handleClients,
   handleLogin,
   handleMessageAction,
   handlePoll,
@@ -46,6 +49,9 @@ export interface MessageParams extends ShopParams {
 export interface BookingParams extends ShopParams {
   bookingId: string;
 }
+export interface ClientParams extends ShopParams {
+  clientId: string;
+}
 
 type Handler<P> = (request: Request, params: P) => Promise<Response>;
 
@@ -62,6 +68,10 @@ export interface MachineHandlers {
   booking: Handler<BookingParams>;
   /** GET /api/machine/[shopId]/bookings/[bookingId]/slots */
   slots: Handler<BookingParams>;
+  /** GET /api/machine/[shopId]/clients */
+  clients: Handler<ShopParams>;
+  /** POST /api/machine/[shopId]/clients/[clientId] */
+  client: Handler<ClientParams>;
 }
 
 const NO_STORE = "no-store";
@@ -285,6 +295,36 @@ export function makeMachineHandlers(opts: MachineHandlerOptions): MachineHandler
               shopId,
               bookingId: params.bookingId,
               date: query.data.date,
+              token: readCookie(request.headers.get("cookie"), SESSION_COOKIE),
+            },
+            deps,
+          ),
+          (b) => json(b, 200),
+        ),
+      );
+    },
+
+    async clients(request, params) {
+      return guarded("clients", params.shopId, async (shopId, deps) =>
+        respond(
+          await handleClients({ shopId, token: readCookie(request.headers.get("cookie"), SESSION_COOKIE) }, deps),
+          (b) => json(b, 200),
+        ),
+      );
+    },
+
+    async client(request, params) {
+      const bad = checkOrigin(request);
+      if (bad) return bad;
+      const body = await readBody(request, ClientActionSchema);
+      if (!body.ok) return body.response;
+      return guarded("client", params.shopId, async (shopId, deps) =>
+        respond(
+          await handleClientAction(
+            {
+              shopId,
+              clientId: params.clientId,
+              req: body.data,
               token: readCookie(request.headers.get("cookie"), SESSION_COOKIE),
             },
             deps,

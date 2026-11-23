@@ -8,7 +8,8 @@ const keyOf = (shopId: string) => `pl:view:${shopId}`;
 
 function read(shopId: string): MachineView {
   try {
-    return window.sessionStorage.getItem(keyOf(shopId)) === "agenda" ? "agenda" : "tape";
+    const v = window.sessionStorage.getItem(keyOf(shopId));
+    return v === "agenda" || v === "clients" ? v : "tape";
   } catch {
     return "tape";
   }
@@ -24,7 +25,7 @@ function subscribe(onChange: () => void): () => void {
 }
 
 /**
- * The last view (Tape or Agenda) for this tab's session (owner-machine 6.6), kept in
+ * The last view (Tape, Agenda or Clients) for this tab's session (owner-machine 6.6), kept in
  * `sessionStorage`. The server renders the Tape; the stored view applies after hydration.
  */
 export function useStoredView(shopId: string): [MachineView, (v: MachineView) => void] {

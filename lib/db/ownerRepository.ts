@@ -15,9 +15,10 @@ import { initialCallState, type Channel, type Lang, type Outcome, type Urgency }
 import type { AgendaBooking, OwnerBookingAction } from "@/lib/owner/agenda";
 import type { SampleKey } from "@/lib/owner/api";
 import { DEMO_RETENTION_EVERY_MIN, DEMO_SHOP_ID, type DemoCutoffs, type DemoSample } from "@/lib/owner/demo";
-import type { OwnerCommand, OwnerCommandResult, OwnerRepository, TapeRow } from "@/lib/owner/types";
+import type { ClientBooking } from "@/lib/clients/summary";
+import type { ClientRecord, OwnerCommand, OwnerCommandResult, OwnerRepository, TapeRow } from "@/lib/owner/types";
 import { isOverlapViolation, type Db, type DbHandle } from "./repository";
-import { bookings, calls, messages, ownerActions, rateLimits, shops } from "./schema";
+import { bookings, calls, clients, messages, ownerActions, rateLimits, shops } from "./schema";
 
 const toDate = (i: Temporal.Instant) => new Date(i.epochMilliseconds);
 const toInstant = (d: Date) => Temporal.Instant.fromEpochMilliseconds(d.getTime());
@@ -195,6 +196,72 @@ export function createOwnerRepository(handle: DbHandle): OwnerRepository {
     });
   }
 
+  /** "No vino" or its undo, on a finished booking of the client with this phone, with its Audit_Record. */
+  async function noShowCommand(cmd: Extract<OwnerCommand, { kind: "no_show" }>): Promise<OwnerCommandResult> {
+    if (!isUuid(cmd.bookingId)) return { status: "not_found", version: await versionOf(cmd.shopId) };
+    const now = iso(cmd.now);
+    const statement = sql`
+      WITH changed AS (
+        UPDATE bookings b SET no_show_at = ${cmd.noShow ? sql`${now}::timestamptz` : sql`NULL`}
+          FROM bookings o
+         WHERE o.id = b.id AND b.id = ${cmd.bookingId}::uuid AND b.shop_id = ${cmd.shopId}
+           AND b.customer_phone = ${cmd.phone}
+           AND b.status = 'confirmed' AND b.ends_at <= ${now}::timestamptz
+           AND (b.no_show_at IS NOT NULL) <> ${cmd.noShow}::boolean
+        RETURNING b.id, (o.no_show_at IS NOT NULL) AS was, (b.no_show_at IS NOT NULL) AS is_now
+      )
+      INSERT INTO owner_actions (shop_id, action, booking_id, actor_session, actor_label, before, after, created_at)
+      SELECT ${cmd.shopId}, 'no_show', id, ${cmd.actor.sessionId}, ${cmd.actor.label},
+             jsonb_build_object('noShow', was), jsonb_build_object('noShow', is_now), ${now}::timestamptz
+        FROM changed
+      RETURNING id`;
+    return run(cmd.shopId, statement, async () => {
+      const rows = await db
+        .select()
+        .from(bookings)
+        .where(and(eq(bookings.id, cmd.bookingId), eq(bookings.shopId, cmd.shopId), eq(bookings.customerPhone, cmd.phone)))
+        .limit(1);
+      const b = rows[0];
+      if (!b) return "not_found";
+      // Already in the asked state: nothing to change. Not finished or cancelled: not allowed (stale).
+      if (b.status !== "confirmed" || b.endsAt.getTime() > cmd.now.epochMilliseconds) return "stale";
+      return "noop";
+    });
+  }
+
+  type ClientRow = typeof clients.$inferSelect;
+  /** Clients with their bookings: one read of the clients, one of the bookings of the same shop and those phones. */
+  async function withBookings(shopId: string, rows: ClientRow[]): Promise<ClientRecord[]> {
+    if (rows.length === 0) return [];
+    const found = await db
+      .select()
+      .from(bookings)
+      .where(and(eq(bookings.shopId, shopId), inArray(bookings.customerPhone, rows.map((r) => r.phone))))
+      .orderBy(asc(bookings.startsAt), asc(bookings.id));
+    const byPhone = new Map<string, ClientBooking[]>();
+    for (const b of found) {
+      const list = byPhone.get(b.customerPhone) ?? [];
+      list.push({
+        id: b.id,
+        serviceId: b.serviceId,
+        start: toInstant(b.startsAt),
+        end: toInstant(b.endsAt),
+        status: b.status as ClientBooking["status"],
+        noShow: b.noShowAt !== null,
+      });
+      byPhone.set(b.customerPhone, list);
+    }
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      phone: r.phone,
+      language: r.language as Lang,
+      note: r.note,
+      createdAt: toInstant(r.createdAt),
+      bookings: byPhone.get(r.phone) ?? [],
+    }));
+  }
+
   const D = DEMO_SHOP_ID;
   const oldCalls = (deleteBefore: Date) =>
     db.select({ id: calls.id }).from(calls).where(and(eq(calls.shopId, D), eq(calls.curated, false), lt(calls.startedAt, deleteBefore)));
@@ -328,7 +395,38 @@ export function createOwnerRepository(handle: DbHandle): OwnerRepository {
     },
 
     applyOwnerCommand(cmd) {
+      if (cmd.kind === "no_show") return noShowCommand(cmd);
       return "messageId" in cmd ? messageCommand(cmd) : bookingCommand(cmd);
+    },
+
+    async listClients(shopId, limit) {
+      const rows = await db
+        .select()
+        .from(clients)
+        .where(eq(clients.shopId, shopId))
+        .orderBy(desc(clients.updatedAt), asc(clients.id))
+        .limit(limit);
+      return withBookings(shopId, rows);
+    },
+
+    async getClient(shopId, clientId) {
+      if (!isUuid(clientId)) return null;
+      const rows = await db
+        .select()
+        .from(clients)
+        .where(and(eq(clients.id, clientId), eq(clients.shopId, shopId)))
+        .limit(1);
+      return (await withBookings(shopId, rows))[0] ?? null;
+    },
+
+    async setClientNote(shopId, clientId, note) {
+      if (!isUuid(clientId)) return false;
+      const rows = await db
+        .update(clients)
+        .set({ note, updatedAt: sql`now()` })
+        .where(and(eq(clients.id, clientId), eq(clients.shopId, shopId)))
+        .returning({ id: clients.id });
+      return rows.length > 0;
     },
 
     setOwnerPin: (shopId, hash, at) => setOwnerPin(db, shopId, hash, at),
@@ -413,9 +511,14 @@ export function createOwnerRepository(handle: DbHandle): OwnerRepository {
           .delete(calls)
           .where(and(eq(calls.shopId, D), eq(calls.curated, false), lt(calls.startedAt, deleteBefore)))
           .returning({ id: calls.id }),
+        // 5. Clients the demo's visitors made (a name and a phone), as old as the Calls that made them.
+        q
+          .delete(clients)
+          .where(and(eq(clients.shopId, D), eq(clients.curated, false), lt(clients.updatedAt, deleteBefore)))
+          .returning({ id: clients.id }),
       ]);
       const n = (k: number) => rowsOf(results[k]).length;
-      return { erased: n(0), deletedAuditRecords: n(1), deletedMessages: n(3), deletedBookings: n(4), deletedCalls: n(6) };
+      return { erased: n(0), deletedAuditRecords: n(1), deletedMessages: n(3), deletedBookings: n(4), deletedCalls: n(6), deletedClients: n(7) };
     },
 
     async demoTapeState() {

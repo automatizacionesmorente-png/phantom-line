@@ -1,5 +1,6 @@
 import { Temporal } from "temporal-polyfill";
-import { toInstant, type ExistingBooking } from "@/lib/booking";
+import { COMBO_SEPARATOR, toInstant, type ExistingBooking } from "@/lib/booking";
+import { recognises, usualOffer, welcomeBack, type ClientRecall } from "@/lib/clients/welcome";
 import { callReceptionist, type ModelFailure, type ModelFailureInfo, type ModelResult } from "@/lib/receptionist/callModel";
 import { phrases, type PhraseSet, type Said } from "@/lib/receptionist/phrases";
 import { buildInput, buildSystemInstruction } from "@/lib/receptionist/prompt";
@@ -477,6 +478,12 @@ async function say(
     }
   }
 
+  // "¿Lo de siempre…?" was offered last Turn and the caller says yes with nothing else: that is
+  // the offered service (BACKLOG 14). Anything else the caller says is read as usual.
+  if (state.usualOffer && !state.fields.serviceId && facts.yes && facts.serviceChange.next === null && facts.services.kind === "none") {
+    facts = { ...facts, serviceChange: { ...facts.serviceChange, next: state.usualOffer.split(COMBO_SEPARATOR) } };
+  }
+
   // Which facts this Turn needs from the database, read fresh in this request (5.9).
   const times = timesFor(facts);
   const wantsChange =
@@ -484,9 +491,24 @@ async function say(
     CHANGE_INTENTS.has(state.intent) ||
     state.existingBookingId !== undefined ||
     (state.pending !== undefined && state.pending.kind !== "book");
-  const phone = mergeFields(state, facts, shop).fields.phone;
+  const mergedFields = mergeFields(state, facts, shop).fields;
+  const phone = mergedFields.phone;
   const callerBookings: CallerBooking[] =
     wantsChange && phone ? await deps.repo.findCallerBookings(shop.id, phone, now) : [];
+
+  // A returning client (BACKLOG 14): looked up only when the caller has just given a name and phone
+  // pair, and recognised only when the stored name passes the same name + phone rule as a booking.
+  let recall: ClientRecall | null = null;
+  if (
+    !state.welcomed &&
+    deps.repo.findClient &&
+    mergedFields.name &&
+    mergedFields.phone &&
+    (mergedFields.name !== state.fields.name || mergedFields.phone !== state.fields.phone)
+  ) {
+    const found = await deps.repo.findClient(shop.id, mergedFields.phone, now);
+    recall = recognises(mergedFields, found) ? found : null;
+  }
 
   // The early read is used only if it covers exactly the times the chosen facts involve.
   let existing: ExistingBooking[];
@@ -499,7 +521,7 @@ async function say(
     existing = await readBookings(shop.id, times, now, deps);
   }
   for (let attempt = 1; ; attempt++) {
-    const decision = stages.brain(() =>
+    const decided = stages.brain(() =>
       decideTurn({
         state: decideState,
         facts,
@@ -514,9 +536,13 @@ async function say(
         callId: call.id,
       }),
     );
-    const lang = decision.state.language;
+    const lang = decided.state.language;
+    const client = recall !== null && !decided.complete && decided.state.stage !== "done" ? recall : null;
+    const greeted = client !== null;
+    const decision = client ? withWelcome(decided, client, client.name, shop, lang) : clearUsualOffer(decided);
     // A template may have 3 sentences, the model's own words keep 2 (Requirements 9.7, 11.3).
-    const text = decision.fromModel ? toSpokenReply(decision.reply, lang) : spokenTemplate(decision.reply, lang);
+    const text =
+      decision.fromModel && !greeted ? toSpokenReply(decision.reply, lang) : spokenTemplate(decision.reply, lang);
     const dontKnow = text ? null : phrases(lang, pack, shop, undefined, now).dontKnow();
     const spoken = dontKnow ? spokenTemplate(dontKnow.text, lang) : text;
     const cacheable = dontKnow ? dontKnow.cacheable : decision.cacheable;
@@ -531,6 +557,27 @@ async function say(
     if (attempt >= MAX_COMMIT_ATTEMPTS) return giveUpAfterConflicts(call, decideState, input, pack, deps);
     existing = await readBookings(shop.id, times, now, deps);
   }
+}
+
+/** The Turn's reply with "¡Hola de nuevo, Carlos!" in front, and "¿Lo de siempre…?" when a booking still needs its service. Never cacheable: it has a name. */
+function withWelcome(d: Decision, client: ClientRecall, name: string, shop: ShopProfile, lang: Lang): Decision {
+  const hello = welcomeBack(name, lang);
+  const s = d.state;
+  const offer =
+    client.usualServiceId && s.intent === "booking" && s.stage === "collecting" && !s.fields.serviceId
+      ? usualOffer(client.usualServiceId, shop.services, lang)
+      : null;
+  return {
+    ...d,
+    reply: offer ? `${hello} ${offer}` : `${hello} ${d.reply}`,
+    cacheable: false,
+    state: { ...s, welcomed: true, usualOffer: offer ? (client.usualServiceId ?? undefined) : undefined },
+  };
+}
+
+/** An offer not taken up (or taken) this Turn is over. */
+function clearUsualOffer(d: Decision): Decision {
+  return d.state.usualOffer === undefined ? d : { ...d, state: { ...d.state, usualOffer: undefined } };
 }
 
 /** Still conflicting after every retry: nothing was booked; the Owner gets a Message to call back. */

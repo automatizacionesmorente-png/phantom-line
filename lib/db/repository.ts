@@ -3,13 +3,15 @@ import type { BatchItem } from "drizzle-orm/batch";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import { Temporal } from "temporal-polyfill";
 import type { ExistingBooking } from "@/lib/booking";
+import { summarize, usualService } from "@/lib/clients/summary";
+import type { ClientRecall } from "@/lib/clients/welcome";
 import { buildOwnerMessage, isActionable } from "@/lib/conversation/ownerMessage";
 import { messageWrite } from "@/lib/conversation/messageWrite";
 import { ShopProfileSchema, type ShopProfile } from "@/lib/conversation/shopProfile";
 import type { CallerBooking, Channel, Lang, Repository, StoredCall, Write } from "@/lib/conversation/types";
 import { getSectorPack } from "@/lib/sectors";
 import * as schema from "./schema";
-import { bookings, calls, messages, rateLimits, shops } from "./schema";
+import { bookings, calls, clients, messages, rateLimits, shops } from "./schema";
 
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
 export type Query = BatchItem<"pg">;
@@ -37,11 +39,36 @@ export function isOverlapViolation(err: unknown): boolean {
   return false;
 }
 
+/** The phone shape the `clients` table accepts (its CHECK): "+" and 6 to 15 digits. */
+const E164 = /^\+[0-9]{6,15}$/;
+const MAX_CLIENT_NAME = 120;
+
+/**
+ * Creates or updates the Client of this shop and phone, in the same batch as the Booking or the
+ * Message that carried the name and the phone (BACKLOG 14). Nothing for a phone that is not E.164
+ * or a blank name. A curated demo client is never overwritten. The language is the Call's.
+ */
+function clientUpsert(q: Db, shopId: string, name: string | null, phone: string | null, callId: string): Query[] {
+  const clean = name?.trim().replace(/\s+/g, " ").slice(0, MAX_CLIENT_NAME) ?? "";
+  if (!clean || !phone || !E164.test(phone)) return [];
+  const language = sql`COALESCE((SELECT c.language FROM calls c WHERE c.id = ${callId}::uuid), 'es')`;
+  return [
+    q
+      .insert(clients)
+      .values({ shopId, phone, name: clean, language })
+      .onConflictDoUpdate({
+        target: [clients.shopId, clients.phone],
+        set: { name: clean, language, updatedAt: sql`now()` },
+        setWhere: eq(clients.curated, false),
+      }),
+  ];
+}
+
 function buildWrites(q: Db, writes: readonly Write[]): Query[] {
-  return writes.map((w): Query => {
+  return writes.flatMap((w): Query[] => {
     switch (w.type) {
       case "insertCall":
-        return q.insert(calls).values({
+        return [q.insert(calls).values({
           id: w.call.id,
           shopId: w.call.shopId,
           channel: w.call.channel,
@@ -50,9 +77,9 @@ function buildWrites(q: Db, writes: readonly Write[]): Query[] {
           state: w.call.state,
           transcript: w.call.transcript,
           turnCount: w.call.turnCount,
-        });
+        })];
       case "updateCall":
-        return q
+        return [q
           .update(calls)
           .set({
             state: w.state,
@@ -63,9 +90,9 @@ function buildWrites(q: Db, writes: readonly Write[]): Query[] {
             ...(w.status ? { status: w.status } : {}),
             ...(w.status && w.status !== "open" ? { endedAt: sql`now()` } : {}),
           })
-          .where(eq(calls.id, w.callId));
+          .where(eq(calls.id, w.callId))];
       case "insertBooking":
-        return q.insert(bookings).values({
+        return [q.insert(bookings).values({
           id: w.booking.id,
           shopId: w.booking.shopId,
           resourceId: w.booking.resourceId,
@@ -77,16 +104,17 @@ function buildWrites(q: Db, writes: readonly Write[]): Query[] {
           channel: w.booking.channel,
           callId: w.booking.callId,
           rescheduledFrom: w.booking.rescheduledFrom ?? null,
-        });
+        }),
+        ...clientUpsert(q, w.booking.shopId, w.booking.customerName, w.booking.customerPhone, w.booking.callId)];
       case "cancelBooking":
         // A cancel from a Call is the caller's (11.5); the Owner's goes through ownerRepository.
-        return q
+        return [q
           .update(bookings)
           .set({ status: "cancelled", cancelledAt: sql`now()`, cancelledBy: "caller" })
-          .where(and(eq(bookings.id, w.bookingId), eq(bookings.status, "confirmed")));
+          .where(and(eq(bookings.id, w.bookingId), eq(bookings.status, "confirmed")))];
       case "insertMessage": {
         // One Message per Call: a repeated hang-up or a late sweep inserts nothing.
-        return q
+        return [q
           .insert(messages)
           .values({
             shopId: w.message.shopId,
@@ -105,7 +133,8 @@ function buildWrites(q: Db, writes: readonly Write[]): Query[] {
             modelFailed: w.message.modelFailed,
             bookingId: w.message.bookingId ?? null,
           })
-          .onConflictDoNothing({ target: messages.callId });
+          .onConflictDoNothing({ target: messages.callId }),
+        ...clientUpsert(q, w.message.shopId, w.message.callerName, w.message.callerPhone, w.message.callId)];
       }
     }
   });
@@ -215,6 +244,33 @@ export function createRepository(handle: DbHandle): Repository {
         customerName: r.customerName,
         customerPhone: r.customerPhone,
       }));
+    },
+
+    async findClient(shopId, phone, now): Promise<ClientRecall | null> {
+      // Scoped to the shop and the exact phone; the caller still has to pass the name rule.
+      const rows = await db
+        .select({ name: clients.name, phone: clients.phone })
+        .from(clients)
+        .where(and(eq(clients.shopId, shopId), eq(clients.phone, phone)))
+        .limit(1);
+      const c = rows[0];
+      if (!c) return null;
+      const bs = await db
+        .select()
+        .from(bookings)
+        .where(and(eq(bookings.shopId, shopId), eq(bookings.customerPhone, phone)));
+      const summary = summarize(
+        bs.map((b) => ({
+          id: b.id,
+          serviceId: b.serviceId,
+          start: toInstant(b.startsAt),
+          end: toInstant(b.endsAt),
+          status: b.status as "confirmed" | "cancelled",
+          noShow: b.noShowAt !== null,
+        })),
+        now,
+      );
+      return { name: c.name, phone: c.phone, usualServiceId: usualService(summary) };
     },
 
     commit,
