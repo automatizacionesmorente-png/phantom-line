@@ -98,9 +98,17 @@ export function matchTopic(text: string | readonly Tok[], shop: ShopProfile, opt
   // FAQ_Entries, in the Call's language (an alias such as "red" means another thing in English).
   // An FAQ alias inside a longer service alias is the service's: "kids" in "kids' cut" (4.3).
   const serviceSpans = longestSpans(findSpans(toks, serviceIndex(shop).entries, isProtected));
-  const faqSpans = longestSpans(findSpans(toks, faqIndex(shop)[opts.lang], isProtected)).filter(
-    (f) => !serviceSpans.some((s) => s.start < f.end && f.start < s.end && s.end - s.start > f.end - f.start),
-  );
+  const notInService = (f: { start: number; end: number }) =>
+    !serviceSpans.some((s) => s.start < f.end && f.start < s.end && s.end - s.start > f.end - f.start);
+  let faqSpans = longestSpans(findSpans(toks, faqIndex(shop)[opts.lang], isProtected)).filter(notInService);
+  // A caller who asked "¿habláis inglés?" may go on in Spanish ("¿pagar con tarjeta?"), and the
+  // other way round. With nothing in the Call's language, the other language's aliases count too,
+  // but only those of two or more words: a single word may mean something else ("red" is the
+  // Spanish wifi alias and an English colour).
+  if (faqSpans.length === 0) {
+    const other: Lang = opts.lang === "es" ? "en" : "es";
+    faqSpans = longestSpans(findSpans(toks, faqIndex(shop)[other], isProtected)).filter((f) => notInService(f) && f.end - f.start >= 2);
+  }
   for (const s of faqSpans) for (let k = s.start; k < s.end; k++) faqPlaced.add(k);
 
   // 9.7: an urgent term counts only outside a matched FAQ alias and outside the pack's Not_Urgent_Phrases.
