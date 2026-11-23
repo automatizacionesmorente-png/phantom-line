@@ -25,7 +25,7 @@ describe("focus ring on every focusable control", () => {
   it("PIN_Gate", () => {
     vi.stubGlobal("fetch", fakeMachineApi([]).fetchMock);
     render(<PinGate shop={demoGate} />);
-    expect(tabbables().length).toBe(3);
+    expect(tabbables().length).toBe(5); // the ES / EN switch, PIN, name, Open
     expect(withoutRing()).toEqual([]);
   });
 

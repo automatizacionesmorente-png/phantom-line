@@ -2,13 +2,14 @@
 
 import { useCallback, useId, useState } from "react";
 import { useRouter } from "next/navigation";
+import { TryItGuide } from "@/components/guide/TryItGuide";
 import { LanguageSwitch } from "@/components/call/LanguageSwitch";
 import { lightAnnouncement, lightState, tapeCounts } from "@/lib/messages/tape";
 import type { AgendaDayDto, AgendaItem, PollChanged } from "@/lib/owner/api";
 import type { MachineShop } from "@/lib/owner/machineShop";
 import { withAgendaItem } from "@/lib/owner/poll";
 import { tapeItems } from "@/lib/owner/tapePlayer";
-import type { Lang } from "@/lib/sectors";
+import { useBrowserLang } from "../useBrowserLang";
 import { AgendaView } from "./AgendaView";
 import { DemoNotice } from "./DemoNotice";
 import { LockButton } from "./LockButton";
@@ -41,7 +42,7 @@ export interface MachineScreenProps {
 export function MachineScreen({ shop, initial, label }: MachineScreenProps) {
   const router = useRouter();
   const idBase = useId();
-  const [lang, setLang] = useState<Lang>(shop.languages[0] ?? "es");
+  const [lang, setLang] = useBrowserLang(shop.languages);
   const copy = MACHINE_COPY[lang];
   const reducedMotion = useReducedMotion();
   const [view, setView] = useStoredView(shop.id);
@@ -99,6 +100,7 @@ export function MachineScreen({ shop, initial, label }: MachineScreenProps) {
 
   return (
     <div lang={lang} className="flex w-full flex-col gap-4">
+      {shop.demo && <TryItGuide current={3} lang={lang} />}
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1.5">
           <p className="flex items-center gap-2 font-inter text-xs uppercase tracking-[0.18em] text-muted">

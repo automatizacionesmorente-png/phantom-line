@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowRight, Phone } from "lucide-react";
+import { TryItGuide } from "@/components/guide/TryItGuide";
 import { DemoNotice } from "@/components/machine/DemoNotice";
 import { GOLD_GRADIENT, PRIMARY_BUTTON } from "@/components/machine/controlButton";
 import { DEMO_SHOP_ID } from "@/lib/owner/demo";
@@ -31,9 +32,13 @@ export default function Home() {
           The phone rang for weeks, but <span className="text-gold-text">nobody answered</span>.
         </p>
 
+        <div className="mt-10 w-full">
+          <TryItGuide />
+        </div>
+
         <section
           aria-labelledby="demo-heading"
-          className="mt-12 flex w-full flex-col items-center gap-5 rounded-[28px] border border-gold-dot bg-section px-5 py-8 shadow-[0_18px_40px_rgb(36_29_20/0.14)] sm:px-8"
+          className="mt-6 flex w-full flex-col items-center gap-5 rounded-[28px] border border-gold-dot bg-section px-5 py-8 shadow-[0_18px_40px_rgb(36_29_20/0.14)] sm:px-8"
         >
           <h2 id="demo-heading" className="font-newsreader text-3xl font-medium tracking-tight text-ink">
             Try the demo: <span className="text-gold">Peluquería Lola</span>

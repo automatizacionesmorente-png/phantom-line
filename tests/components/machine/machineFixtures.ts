@@ -140,6 +140,10 @@ export function fakeMachineApi(polls: (PollChanged | PollUnchanged)[] = []) {
 
 /** A `matchMedia` stub that answers `(prefers-reduced-motion: reduce)` with `reduce`. */
 export function stubMatchMedia(reduce: boolean): void {
+  // The screens start in the browser language when the shop speaks it (BACKLOG 26): these suites assert the shop's first (Spanish).
+  vi.spyOn(navigator, "language", "get").mockReturnValue("es-ES");
+  // The "Try it in 30 seconds" strip is its own suite's business (tests/components/guide); here it is dismissed.
+  localStorage.setItem("pl:guide-dismissed", "1");
   window.matchMedia = ((query: string) => ({
     matches: query.includes("prefers-reduced-motion") ? reduce : false,
     media: query,

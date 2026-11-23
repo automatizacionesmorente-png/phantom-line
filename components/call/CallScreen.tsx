@@ -5,6 +5,7 @@ import type { PublicShop } from "@/lib/voice/publicShop";
 import { canType, canTypeInstead, type NoticeKey } from "@/lib/voice/callLoop";
 import { CALL_COPY } from "./callCopy";
 import { CallButton } from "./CallButton";
+import { TryItGuide } from "@/components/guide/TryItGuide";
 import { LanguageSwitch } from "./LanguageSwitch";
 import { Transcript } from "./Transcript";
 import { TypedInput } from "./TypedInput";
@@ -33,6 +34,7 @@ export function CallScreen({ shop, demo = false }: CallScreenProps) {
 
   return (
     <div lang={state.lang} className="flex w-full flex-col items-center gap-6 text-center">
+      {demo && <TryItGuide current={1} lang={state.lang} />}
       <p className="flex items-center gap-2 font-inter text-xs uppercase tracking-[0.18em] text-muted">
         <span className="inline-block h-1.5 w-1.5 rounded-full bg-gold-dot" aria-hidden="true" />
         {copy.eyebrow}

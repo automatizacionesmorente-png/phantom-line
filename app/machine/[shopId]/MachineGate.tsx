@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { ShopNotFound } from "@/components/call/ShopNotFound";
+import { notFound } from "next/navigation";
 import { DemoNotice } from "@/components/machine/DemoNotice";
 import { MACHINE_COPY } from "@/components/machine/machineCopy";
 import { MachineScreen } from "@/components/machine/MachineScreen";
@@ -17,12 +17,12 @@ import { loadMachine } from "./loadMachine";
 export async function MachineGate({ params }: { params: PageProps<"/machine/[shopId]">["params"] }) {
   const { shopId } = await params;
   const id = safeDecode(shopId);
-  if (id === null) return <ShopNotFound />;
+  if (id === null) notFound();
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   const view = await loadMachine(id, token);
   switch (view.kind) {
     case "not_found":
-      return <ShopNotFound />;
+      return notFound();
     case "no_pin":
       return <NotSetUp shop={view.shop} />;
     case "gate":
