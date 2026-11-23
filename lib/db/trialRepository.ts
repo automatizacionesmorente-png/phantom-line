@@ -3,7 +3,7 @@ import type { Temporal } from "temporal-polyfill";
 import type { ShopProfile } from "@/lib/conversation/shopProfile";
 import type { WizardKind, WizardLimiter, TrialStore } from "@/lib/rebirth/ports";
 import type { DbHandle } from "./repository";
-import { bookings, calls, messages, ownerActions, rateLimits, shops, voiceCache } from "./schema";
+import { bookings, calls, clients, messages, ownerActions, rateLimits, shops, voiceCache } from "./schema";
 
 const toDate = (i: Temporal.Instant) => new Date(i.epochMilliseconds);
 const DAY_MS = 86_400_000;
@@ -86,6 +86,7 @@ export function createTrialStore(handle: DbHandle): TrialStore {
         q.delete(bookings).where(inArray(bookings.shopId, ids)).returning({ id: bookings.id }),
         q.delete(calls).where(inArray(calls.shopId, ids)).returning({ id: calls.id }),
         q.delete(voiceCache).where(inArray(voiceCache.shopId, ids)).returning({ key: voiceCache.key }),
+        q.delete(clients).where(inArray(clients.shopId, ids)).returning({ id: clients.id }),
         q.delete(shops).where(and(eq(shops.trial, true), inArray(shops.id, ids))).returning({ id: shops.id }),
       ]);
       return ids.length;

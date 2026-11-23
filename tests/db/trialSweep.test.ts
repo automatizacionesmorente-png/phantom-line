@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { eq, sql } from "drizzle-orm";
 import { Temporal } from "temporal-polyfill";
 import { makeCronHandler } from "@/app/api/cron/demo-retention/handler";
-import { bookings, calls, messages, ownerActions, shops, voiceCache } from "@/lib/db/schema";
+import { bookings, calls, clients, messages, ownerActions, shops, voiceCache } from "@/lib/db/schema";
 import { createTrialStore } from "@/lib/db/trialRepository";
 import { TRIAL_DAYS } from "@/lib/rebirth/draft";
 import { lolaProfile } from "../fixtures/lola";
@@ -43,13 +43,15 @@ async function trialShop(id: string, expiresAt: Temporal.Instant, trial = true) 
     sizeBytes: 3,
     source: "live",
   });
+  // A client of the customer book (BACKLOG 14): it must go with its shop.
+  await t.handle.db.insert(clients).values({ shopId: id, phone: "+34612345678", name: "Ana" });
 }
 const counts = async (id: string) => {
   const n = async (table: string) => Number(((await t.handle.db.execute(sql.raw(`SELECT count(*)::int AS n FROM ${table} WHERE ${table === "shops" ? "id" : "shop_id"} = '${id}'`))) as unknown as { rows: { n: number }[] }).rows[0].n);
-  return { shops: await n("shops"), calls: await n("calls"), bookings: await n("bookings"), messages: await n("messages"), owner_actions: await n("owner_actions"), voice_cache: await n("voice_cache") };
+  return { shops: await n("shops"), calls: await n("calls"), bookings: await n("bookings"), messages: await n("messages"), owner_actions: await n("owner_actions"), voice_cache: await n("voice_cache"), clients: await n("clients") };
 };
-const NONE = { shops: 0, calls: 0, bookings: 0, messages: 0, owner_actions: 0, voice_cache: 0 };
-const ALL = { shops: 1, calls: 1, bookings: 1, messages: 1, owner_actions: 1, voice_cache: 1 };
+const NONE = { shops: 0, calls: 0, bookings: 0, messages: 0, owner_actions: 0, voice_cache: 0, clients: 0 };
+const ALL = { shops: 1, calls: 1, bookings: 1, messages: 1, owner_actions: 1, voice_cache: 1, clients: 1 };
 
 describe("deleteExpired", () => {
   it("deletes an expired trial shop and every row that belongs to it", async () => {
