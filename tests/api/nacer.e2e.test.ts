@@ -87,7 +87,7 @@ describe("a shop made by the wizard takes a booking", () => {
 
     const rows = await t.handle.db.select().from(bookings);
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ shopId, serviceId: "corte-de-hombre", status: "confirmed", customerName: "Ana García", customerPhone: "+34612345678" });
+    expect(rows[0]).toMatchObject({ shopId, serviceId: "corte-hombre", status: "confirmed", customerName: "Ana García", customerPhone: "+34612345678" });
     expect(["sillon-1", "sillon-2"]).toContain(rows[0].resourceId);
     expect(rows[0].startsAt.toISOString()).toBe(Temporal.Instant.from("2026-11-11T18:30:00Z").toString().replace("Z", ".000Z"));
     expect(rows[0].endsAt.getTime() - rows[0].startsAt.getTime()).toBe(30 * 60_000);
