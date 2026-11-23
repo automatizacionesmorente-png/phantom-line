@@ -1,8 +1,11 @@
+import { hairSalonCatalogue } from "./starters/hairSalon";
+import { arriveEarlyFaq, commonFaq } from "./starters/common";
 import type { SectorPack } from "./types";
 
 /** Hair salon (Peluquería Lola): appointments on chairs. */
 export const hairSalon: SectorPack = {
   id: "hair-salon",
+  displayName: { es: "Peluquería", en: "Hair salon" },
   unit: "appointment",
   resourceKind: {
     es: { one: "sillón", many: "sillones" },
@@ -93,4 +96,6 @@ export const hairSalon: SectorPack = {
       "a price that is not on the list",
     ],
   },
+  starterCatalogue: hairSalonCatalogue,
+  starterFaq: [...commonFaq, arriveEarlyFaq],
 };
