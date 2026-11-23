@@ -197,9 +197,9 @@ export function createOwnerRepository(handle: DbHandle): OwnerRepository {
 
   const D = DEMO_SHOP_ID;
   const oldCalls = (deleteBefore: Date) =>
-    db.select({ id: calls.id }).from(calls).where(and(eq(calls.shopId, D), lt(calls.startedAt, deleteBefore)));
+    db.select({ id: calls.id }).from(calls).where(and(eq(calls.shopId, D), eq(calls.curated, false), lt(calls.startedAt, deleteBefore)));
   const oldBookings = (deleteBefore: Date) =>
-    db.select({ id: bookings.id }).from(bookings).where(and(eq(bookings.shopId, D), lt(bookings.endsAt, deleteBefore)));
+    db.select({ id: bookings.id }).from(bookings).where(and(eq(bookings.shopId, D), eq(bookings.curated, false), lt(bookings.endsAt, deleteBefore)));
 
   return {
     async getShopAccess(shopId) {
@@ -359,7 +359,9 @@ export function createOwnerRepository(handle: DbHandle): OwnerRepository {
         q
           .update(messages)
           .set({ erasedAt: now, readAt: sql`COALESCE(${messages.readAt}, ${now})` })
-          .where(and(eq(messages.shopId, D), isNull(messages.erasedAt), lt(messages.createdAt, eraseBefore)))
+          .where(
+            and(eq(messages.shopId, D), eq(messages.curated, false), isNull(messages.erasedAt), lt(messages.createdAt, eraseBefore)),
+          )
           .returning({ id: messages.id }),
         // 2. Audit_Records of the Messages and Bookings about to go (16.3).
         q
@@ -396,11 +398,11 @@ export function createOwnerRepository(handle: DbHandle): OwnerRepository {
         // 4. Messages of old Calls, old Bookings, the links of Bookings that stay, then the Calls.
         q
           .delete(messages)
-          .where(and(eq(messages.shopId, D), inArray(messages.callId, oldCalls(deleteBefore))))
+          .where(and(eq(messages.shopId, D), eq(messages.curated, false), inArray(messages.callId, oldCalls(deleteBefore))))
           .returning({ id: messages.id }),
         q
           .delete(bookings)
-          .where(and(eq(bookings.shopId, D), lt(bookings.endsAt, deleteBefore)))
+          .where(and(eq(bookings.shopId, D), eq(bookings.curated, false), lt(bookings.endsAt, deleteBefore)))
           .returning({ id: bookings.id }),
         q
           .update(bookings)
@@ -409,7 +411,7 @@ export function createOwnerRepository(handle: DbHandle): OwnerRepository {
           .returning({ id: bookings.id }),
         q
           .delete(calls)
-          .where(and(eq(calls.shopId, D), lt(calls.startedAt, deleteBefore)))
+          .where(and(eq(calls.shopId, D), eq(calls.curated, false), lt(calls.startedAt, deleteBefore)))
           .returning({ id: calls.id }),
       ]);
       const n = (k: number) => rowsOf(results[k]).length;

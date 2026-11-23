@@ -67,6 +67,8 @@ export const calls = pgTable(
     startedAt: tstz("started_at").notNull().defaultNow(),
     updatedAt: tstz("updated_at").notNull().defaultNow(),
     endedAt: tstz("ended_at"),
+    /** Curated demo row (npm run demo:reset): Demo_Retention never erases or deletes it. */
+    curated: boolean().notNull().default(false),
   },
   (t) => [
     index("calls_shop_started_idx").on(t.shopId, t.startedAt.desc()),
@@ -105,6 +107,8 @@ export const bookings = pgTable(
     cancelledBy: text("cancelled_by"),
     /** Bumped by trigger on every UPDATE, whoever writes: the optimistic check of 10.7. */
     revision: integer().notNull().default(0),
+    /** Curated demo row (npm run demo:reset): Demo_Retention never erases or deletes it. */
+    curated: boolean().notNull().default(false),
   },
   (t) => [
     check("bookings_time_order", sql`${t.endsAt} > ${t.startsAt}`),
@@ -150,6 +154,8 @@ export const messages = pgTable(
     urgencyBasis: jsonb("urgency_basis").$type<UrgencyBasis>(),
     /** Set on the Demo_Shop's Sample_Messages (16.4). */
     sampleKey: text("sample_key"),
+    /** Curated demo row (npm run demo:reset): Demo_Retention never erases or deletes it. */
+    curated: boolean().notNull().default(false),
   },
   (t) => [
     /** One Message per Call: hang-up and retries are idempotent. */

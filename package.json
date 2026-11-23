@@ -12,7 +12,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "db:seed": "node --env-file=.env.local --import tsx scripts/seed.ts"
+    "db:seed": "node --env-file=.env.local --import tsx scripts/seed.ts",
+    "demo:reset": "node --env-file=.env.local --import tsx scripts/demo-reset.ts"
   },
   "dependencies": {
     "@google/genai": "^2.32.0",
