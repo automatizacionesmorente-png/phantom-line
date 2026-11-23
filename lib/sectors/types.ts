@@ -65,6 +65,10 @@ export interface SectorPack {
   rules: readonly SectorRule[];
   /** How the receptionist and the owner screen name things, plus the Urgency_Terms, per language. */
   vocabulary: Record<Lang, PackVocabulary>;
+  /** What the owner's visit note is called in this sector (colour formula, work done...); none = no visit note. */
+  visitNoteLabel?: Record<Lang, string>;
+  /** Extra fields on the client card (e.g. car and plate), stored in `clients.fields`. */
+  clientFields?: readonly ClientFieldDef[];
   /** The default voice per language. A Shop_Profile may override voice, classicVoice and style. */
   voice: Record<Lang, VoiceProfile>;
   /** Never advise on these; take a message for the owner instead. */
@@ -75,6 +79,13 @@ export interface SectorPack {
   starterCatalogue?: StarterCatalogue;
   /** Default everyday answers (prices, payment, parking, cancellation, accessibility...) for a new shop. */
   starterFaq?: readonly StarterFaqEntry[];
+}
+
+/** One extra client-card field of a sector. */
+export interface ClientFieldDef {
+  id: string;
+  label: Record<Lang, string>;
+  maxLength: number;
 }
 
 /** One language of a pack's vocabulary. */
@@ -142,6 +153,17 @@ export const SectorPackDataSchema = z.strictObject({
     es: VoiceProfileSchema.refine((v) => v.languageCode === LANGUAGE_CODE.es, "the es voice must use es-ES"),
     en: VoiceProfileSchema.refine((v) => v.languageCode === LANGUAGE_CODE.en, "the en voice must use en-US"),
   }),
+  visitNoteLabel: perLang(text).optional(),
+  clientFields: z
+    .array(
+      z.strictObject({
+        id: z.string().regex(/^[a-z][a-z0-9_]{0,19}$/),
+        label: perLang(text),
+        maxLength: z.number().int().min(1).max(500),
+      }),
+    )
+    .refine((fs) => new Set(fs.map((f) => f.id)).size === fs.length, "client field ids must not repeat")
+    .optional(),
   sensitiveTopics: perLang(z.array(text)),
   neverPromise: perLang(z.array(text)),
   // Deep-checked against ShopProfileSchema by the registry (it cannot be imported here without a cycle).

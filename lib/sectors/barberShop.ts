@@ -7,6 +7,7 @@ export const barberShop: SectorPack = {
   id: "barber-shop",
   displayName: { es: "Barbería", en: "Barber shop" },
   unit: "appointment",
+  visitNoteLabel: { es: "Fórmula del color / notas", en: "Colour formula / notes" },
   resourceKind: {
     es: { one: "sillón", many: "sillones" },
     en: { one: "chair", many: "chairs" },

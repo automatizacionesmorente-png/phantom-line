@@ -11,6 +11,7 @@ export const dentalClinic: SectorPack = {
   id: "dental-clinic",
   displayName: { es: "Clínica dental", en: "Dental clinic" },
   unit: "appointment",
+  visitNoteLabel: { es: "Notas de la visita", en: "Visit notes" },
   resourceKind: {
     es: { one: "gabinete", many: "gabinetes" },
     en: { one: "surgery", many: "surgeries" },

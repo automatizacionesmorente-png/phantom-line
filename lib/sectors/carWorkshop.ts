@@ -48,6 +48,8 @@ export const carWorkshop: SectorPack = {
   id: "car-workshop",
   displayName: { es: "Taller mecánico", en: "Car repair shop" },
   unit: "appointment",
+  visitNoteLabel: { es: "Trabajo realizado", en: "Work done" },
+  clientFields: [{ id: "car", label: { es: "Coche y matrícula", en: "Car and plate" }, maxLength: 60 }],
   resourceKind: {
     es: { one: "mecánico", many: "mecánicos" },
     en: { one: "mechanic", many: "mechanics" },

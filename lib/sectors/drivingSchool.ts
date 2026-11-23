@@ -47,6 +47,7 @@ export const drivingSchool: SectorPack = {
   id: "driving-school",
   displayName: { es: "Autoescuela", en: "Driving school" },
   unit: "appointment",
+  visitNoteLabel: { es: "Lo trabajado en clase", en: "What we covered" },
   resourceKind: {
     es: { one: "profesor", many: "profesores" },
     en: { one: "instructor", many: "instructors" },

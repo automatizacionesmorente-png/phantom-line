@@ -7,6 +7,7 @@ export const hairSalon: SectorPack = {
   id: "hair-salon",
   displayName: { es: "Peluquería", en: "Hair salon" },
   unit: "appointment",
+  visitNoteLabel: { es: "Fórmula del color / notas", en: "Colour formula / notes" },
   resourceKind: {
     es: { one: "sillón", many: "sillones" },
     en: { one: "chair", many: "chairs" },

@@ -23,6 +23,7 @@ export const physioClinic: SectorPack = {
   id: "physio-clinic",
   displayName: { es: "Clínica de fisioterapia", en: "Physiotherapy clinic" },
   unit: "appointment",
+  visitNoteLabel: { es: "Notas de la visita", en: "Visit notes" },
   resourceKind: {
     es: { one: "camilla", many: "camillas" },
     en: { one: "treatment room", many: "treatment rooms" },

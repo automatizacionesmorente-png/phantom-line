@@ -23,6 +23,7 @@ export const tutoringAcademy: SectorPack = {
   id: "tutoring-academy",
   displayName: { es: "Academia de clases", en: "Tutoring academy" },
   unit: "appointment",
+  visitNoteLabel: { es: "Lo trabajado en clase", en: "What we covered" },
   resourceKind: {
     es: { one: "profesor", many: "profesores" },
     en: { one: "teacher", many: "teachers" },

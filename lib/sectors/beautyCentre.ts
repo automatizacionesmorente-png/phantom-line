@@ -7,6 +7,7 @@ export const beautyCentre: SectorPack = {
   id: "beauty-centre",
   displayName: { es: "Centro de estética y uñas", en: "Beauty and nails centre" },
   unit: "appointment",
+  visitNoteLabel: { es: "Fórmula del color / notas", en: "Colour formula / notes" },
   resourceKind: {
     es: { one: "cabina", many: "cabinas" },
     en: { one: "room", many: "rooms" },
