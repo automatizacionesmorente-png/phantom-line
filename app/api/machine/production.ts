@@ -1,3 +1,4 @@
+import { rateLimitSalt } from "@/app/api/visitorKey";
 import { randomUUID } from "node:crypto";
 import { getDb, getRepository } from "@/lib/db/client";
 import { createOwnerRepository } from "@/lib/db/ownerRepository";
@@ -27,5 +28,5 @@ export function productionOwnerDeps(): OwnerDeps {
 
 export const machineHandlers = makeMachineHandlers({
   owner: productionOwnerDeps,
-  salt: () => process.env.RATE_LIMIT_SALT ?? "",
+  salt: () => rateLimitSalt(),
 });

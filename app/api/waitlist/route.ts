@@ -1,3 +1,4 @@
+import { rateLimitSalt } from "@/app/api/visitorKey";
 import { Temporal } from "temporal-polyfill";
 import { getDb } from "@/lib/db/client";
 import { createWaitlistRepository } from "@/lib/db/waitlistRepository";
@@ -7,5 +8,5 @@ import { makeWaitlistHandler } from "./handler";
 export const POST = makeWaitlistHandler({
   store: () => createWaitlistRepository(getDb()),
   clock: () => Temporal.Now.instant(),
-  salt: () => process.env.RATE_LIMIT_SALT ?? "",
+  salt: () => rateLimitSalt(),
 });

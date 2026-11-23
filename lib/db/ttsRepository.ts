@@ -46,6 +46,7 @@ export function createTtsRepository(handle: DbHandle): TtsLimitStore {
           { key: visitor, windowStart: toDate(w.visitorWindow) },
           { key: TTS_GLOBAL_HOUR_KEY, windowStart: toDate(w.globalWindow) },
           { key: TTS_GLOBAL_DAY_KEY, windowStart: toDate(quotaDayStart(now)) },
+          { key: `${visitor}:d`, windowStart: toDate(quotaDayStart(now)) },
         ]),
         db
           .select({ key: rateLimits.key })
@@ -54,7 +55,7 @@ export function createTtsRepository(handle: DbHandle): TtsLimitStore {
       ]);
       const count = (key: string) => rows.find((r) => r.key === key)?.count ?? 0;
       return {
-        counts: { visitor: count(visitor), hour: count(TTS_GLOBAL_HOUR_KEY), day: count(TTS_GLOBAL_DAY_KEY) },
+        counts: { visitor: count(visitor), visitorDay: count(`${visitor}:d`), hour: count(TTS_GLOBAL_HOUR_KEY), day: count(TTS_GLOBAL_DAY_KEY) },
         exhausted: marks.map((m) => m.key.slice(TTS_EXHAUSTED_PREFIX.length)),
       };
     },

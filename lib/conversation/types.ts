@@ -259,7 +259,7 @@ export interface Repository {
 }
 
 export interface RateLimiter {
-  hit(visitorKey: string, now: Temporal.Instant): Promise<{ visitor: number; global: number }>;
+  hit(visitorKey: string, now: Temporal.Instant): Promise<{ visitor: number; visitorHour?: number; global: number }>;
 }
 
 export type Clock = () => Temporal.Instant;

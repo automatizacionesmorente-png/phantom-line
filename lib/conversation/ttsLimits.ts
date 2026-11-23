@@ -12,15 +12,18 @@ import { Temporal } from "temporal-polyfill";
 
 export interface TtsLimitConfig {
   perVisitorPerMinute: number;
+  /** One visitor cannot spend the whole daily neural-voice quota (security audit, 23 Nov 2026). */
+  perVisitorPerDay?: number;
   globalPerHour: number;
   globalPerDay: number;
 }
 
 /** 30 a day is the measured total of the three streaming models (10 each). */
-export const DEFAULT_TTS_LIMITS: TtsLimitConfig = { perVisitorPerMinute: 12, globalPerHour: 20, globalPerDay: 30 };
+export const DEFAULT_TTS_LIMITS: TtsLimitConfig = { perVisitorPerMinute: 12, perVisitorPerDay: 10, globalPerHour: 20, globalPerDay: 30 };
 
 export interface TtsCounts {
   visitor: number;
+  visitorDay?: number;
   hour: number;
   day: number;
 }
@@ -30,6 +33,7 @@ export type TtsLimitDecision = { blocked: false } | { blocked: true; limit: "vis
 /** Counts already include this request, so the 12th in a minute is allowed and the 13th is blocked. */
 export function checkTtsLimits(counts: TtsCounts, config: TtsLimitConfig): TtsLimitDecision {
   if (counts.visitor > config.perVisitorPerMinute) return { blocked: true, limit: "visitor" };
+  if ((counts.visitorDay ?? 0) > (config.perVisitorPerDay ?? Infinity)) return { blocked: true, limit: "visitor" };
   if (counts.hour > config.globalPerHour) return { blocked: true, limit: "hour" };
   if (counts.day > config.globalPerDay) return { blocked: true, limit: "day" };
   return { blocked: false };
@@ -45,6 +49,7 @@ export function ttsLimitsFromEnv(env: Record<string, string | undefined>): TtsLi
   };
   return {
     perVisitorPerMinute: read("TTS_LIMIT_PER_VISITOR_PER_MINUTE", DEFAULT_TTS_LIMITS.perVisitorPerMinute),
+    perVisitorPerDay: read("TTS_LIMIT_PER_VISITOR_PER_DAY", DEFAULT_TTS_LIMITS.perVisitorPerDay ?? 10),
     globalPerHour: read("TTS_LIMIT_GLOBAL_PER_HOUR", DEFAULT_TTS_LIMITS.globalPerHour),
     globalPerDay: read("TTS_LIMIT_GLOBAL_PER_DAY", DEFAULT_TTS_LIMITS.globalPerDay),
   };

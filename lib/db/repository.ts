@@ -225,6 +225,7 @@ export function createRepository(handle: DbHandle): Repository {
         .insert(rateLimits)
         .values([
           { key: visitorKey, windowStart: toDate(w.visitorWindow), count: 1 },
+          { key: `${visitorKey}:h`, windowStart: toDate(w.globalWindow), count: 1 },
           { key: GLOBAL_RATE_KEY, windowStart: toDate(w.globalWindow), count: 1 },
         ])
         .onConflictDoUpdate({
@@ -233,7 +234,7 @@ export function createRepository(handle: DbHandle): Repository {
         })
         .returning({ key: rateLimits.key, count: rateLimits.count });
       const count = (key: string) => rows.find((r) => r.key === key)?.count ?? 0;
-      return { visitor: count(visitorKey), global: count(GLOBAL_RATE_KEY) };
+      return { visitor: count(visitorKey), visitorHour: count(`${visitorKey}:h`), global: count(GLOBAL_RATE_KEY) };
     },
 
     async pruneRateLimits(before) {

@@ -1,3 +1,4 @@
+import { rateLimitSalt } from "@/app/api/visitorKey";
 import { after } from "next/server";
 import { Temporal } from "temporal-polyfill";
 import type { ShopProfile } from "@/lib/conversation/shopProfile";
@@ -47,5 +48,5 @@ function productionDeps(): SpeechDeps {
 export const POST = makeSpeechHandler({
   deps: productionDeps,
   schedule: (task) => after(task),
-  salt: () => process.env.RATE_LIMIT_SALT ?? "",
+  salt: () => rateLimitSalt(),
 });

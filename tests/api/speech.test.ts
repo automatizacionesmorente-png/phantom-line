@@ -324,16 +324,17 @@ describe("say: TTS limits (Requirement 5.5)", () => {
     const repo = createTtsRepository(t.handle);
     const a = await repo.hitSay("visitor-a", NOW);
     const b = await repo.hitSay("visitor-a", NOW.add({ seconds: 10 }));
-    expect(a.counts).toEqual({ visitor: 1, hour: 1, day: 1 });
-    expect(b.counts).toEqual({ visitor: 2, hour: 2, day: 2 });
+    expect(a.counts).toEqual({ visitor: 1, visitorDay: 1, hour: 1, day: 1 });
+    expect(b.counts).toEqual({ visitor: 2, visitorDay: 2, hour: 2, day: 2 });
     // A new minute starts the visitor's count again; the hour and the day keep counting.
     const c = await repo.hitSay("visitor-a", NOW.add({ minutes: 1 }));
-    expect(c.counts).toEqual({ visitor: 1, hour: 3, day: 3 });
+    expect(c.counts).toEqual({ visitor: 1, visitorDay: 3, hour: 3, day: 3 });
     // Midnight Pacific starts a new day.
     const d = await repo.hitSay("visitor-a", nextQuotaReset(NOW));
     expect(d.counts.day).toBe(1);
+    expect(d.counts.visitorDay).toBe(1);
     const keys = (await t.handle.db.select().from(rateLimits)).map((r) => r.key);
-    expect(new Set(keys)).toEqual(new Set(["tts:visitor-a", "tts-global-h", "tts-global-d"]));
+    expect(new Set(keys)).toEqual(new Set(["tts:visitor-a", "tts:visitor-a:d", "tts-global-h", "tts-global-d"]));
     // The Turn limits use other keys, so the text model keeps its own counters.
     expect(keys).not.toContain("global");
   });

@@ -155,13 +155,13 @@ describe("rate limits", () => {
 
   it("counts per visitor per minute and globally per hour", async () => {
     const now = at("2026-11-11T09:12:30Z");
-    expect(await t.repo.hitRateLimits("visitor-a", now)).toEqual({ visitor: 1, global: 1 });
-    expect(await t.repo.hitRateLimits("visitor-a", at("2026-11-11T09:12:59Z"))).toEqual({ visitor: 2, global: 2 });
-    expect(await t.repo.hitRateLimits("visitor-b", now)).toEqual({ visitor: 1, global: 3 });
-    // Next minute, same hour: the visitor window resets, the global one does not.
-    expect(await t.repo.hitRateLimits("visitor-a", at("2026-11-11T09:13:00Z"))).toEqual({ visitor: 1, global: 4 });
-    // Next hour: both reset.
-    expect(await t.repo.hitRateLimits("visitor-a", at("2026-11-11T10:00:00Z"))).toEqual({ visitor: 1, global: 1 });
+    expect(await t.repo.hitRateLimits("visitor-a", now)).toEqual({ visitor: 1, visitorHour: 1, global: 1 });
+    expect(await t.repo.hitRateLimits("visitor-a", at("2026-11-11T09:12:59Z"))).toEqual({ visitor: 2, visitorHour: 2, global: 2 });
+    expect(await t.repo.hitRateLimits("visitor-b", now)).toEqual({ visitor: 1, visitorHour: 1, global: 3 });
+    // Next minute, same hour: the visitor minute resets; the visitor hour and the global hour do not.
+    expect(await t.repo.hitRateLimits("visitor-a", at("2026-11-11T09:13:00Z"))).toEqual({ visitor: 1, visitorHour: 3, global: 4 });
+    // Next hour: all reset.
+    expect(await t.repo.hitRateLimits("visitor-a", at("2026-11-11T10:00:00Z"))).toEqual({ visitor: 1, visitorHour: 1, global: 1 });
   });
 
   it("windows are UTC minutes and hours, also for a half-hour time zone offset", () => {
@@ -174,8 +174,8 @@ describe("rate limits", () => {
   it("prunes old windows", async () => {
     await t.repo.hitRateLimits("visitor-a", at("2026-11-09T09:00:00Z"));
     await t.repo.hitRateLimits("visitor-a", at("2026-11-11T09:00:00Z"));
-    expect(await t.repo.pruneRateLimits(at("2026-11-10T09:00:00Z"))).toBe(2); // visitor + global rows of the 9th
-    expect((await t.handle.db.select().from(rateLimits)).length).toBe(2);
+    expect(await t.repo.pruneRateLimits(at("2026-11-10T09:00:00Z"))).toBe(3); // visitor minute, visitor hour and global rows of the 9th
+    expect((await t.handle.db.select().from(rateLimits)).length).toBe(3);
   });
 });
 
