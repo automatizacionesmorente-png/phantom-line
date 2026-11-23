@@ -1,150 +1,94 @@
-# Video script: Phantom Line (target 2:40, hard limit 2:50)
+# Video script: Phantom Line (target 2:45, hard limit 2:55)
 
-Narration is the owner's voice, in English. During the Spanish call, the subtitles show the Spanish words as spoken, with an English translation on a second line, so both kinds of viewer can follow. Every receptionist line below comes from the code (`lib/receptionist/phrases.ts`) or from a test that pins it (`tests/api/turn.booking.test.ts`, `tests/api/turn.realCall.test.ts`). The model only reads what the caller said.
+Narration is the owner's voice, in English. During the Spanish call, subtitles show the Spanish words as spoken with an English line below. Receptionist lines come from the code and some have two wordings, so read the subtitles from the take, not from this file. Updated 23 Nov 2026 for commit 545e2a2.
 
 | # | Segment | Time | Length |
 |---|---|---|---|
-| 1 | Hook | 0:00–0:05 | 5 s |
-| 2 | Problem | 0:05–0:20 | 15 s |
-| 3 | Live call in Spanish | 0:20–1:00 | 40 s |
-| 4 | Owner's machine blinking | 1:00–1:25 | 25 s |
-| 5 | English call | 1:25–1:45 | 20 s |
-| 6 | How Kiro built it | 1:45–2:30 | 45 s |
-| 7 | Close | 2:30–2:40 | 10 s |
+| 1 | Hook | 0:00-0:08 | 8 s |
+| 2 | Problem | 0:08-0:20 | 12 s |
+| 3 | Guided path and Spanish call | 0:20-1:00 | 40 s |
+| 4 | The machine blinks | 1:00-1:25 | 25 s |
+| 5 | English call | 1:25-1:45 | 20 s |
+| 6 | How Kiro built it | 1:45-2:10 | 25 s |
+| 7 | Kiro, then Claude (honest line) | 2:10-2:20 | 10 s |
+| 8 | /startup | 2:20-2:38 | 18 s |
+| 9 | Close | 2:38-2:45 | 7 s |
 
-## Before recording (or the call will not work the first time)
+## Before recording
 
-1. **Record on a Monday to Friday.** Lola is open Tuesday to Saturday, 10:00–14:00 and 17:00–20:00 (Europe/Madrid). Both calls say "mañana" / "tomorrow", and the 19:30 offer only exists if tomorrow is an open day.
-2. **Clear the demo agenda for tomorrow evening.** If 19:30, 19:15 or 19:00 is taken on both chairs, the offer changes. TODO (owner): remove the test bookings from the demo database (BACKLOG item 1, "demo reset", is not built yet).
-3. **The demo PIN must be 6 digits.** With a 4-digit PIN such as 1980, the machine says "Este contestador aún no está configurado" (owner-machine manual checklist).
-4. **Use Chrome** on desktop for both calls; Safari has no speech recognition yet. Allow the microphone once before recording.
-5. **Window layout:** window A is `/machine/peluqueria-lola`, already unlocked with the PIN. Window B is `/call/peluqueria-lola`. Put them side by side for segment 4.
-6. **Do a dry run** of each call a few minutes before. The free-tier model sometimes answers 503. If a reply is "Perdona, ahora mismo no puedo atenderte bien…", hang up and call again. Do not cut the take mid-call.
-7. **Wording can vary.** Some replies have two approved variants, picked from the call id, so the take may say either one. Both are listed below.
+1. **Record Tuesday to Saturday.** Lola is open Tuesday to Saturday, 10:00-14:00 and 17:00-20:00 (Europe/Madrid). "Tomorrow at 9 pm" needs tomorrow to be an open day. The 19:30 offer needs free chairs.
+2. **Reset the demo** first: `npm run demo:reset -- --allow-remote` (owner's call, it touches the live database). It clears test bookings and restores the curated set.
+3. **Chrome on desktop** for both calls (speech recognition). Allow the microphone once beforehand.
+4. **Layout:** window A is `/machine/peluqueria-lola` unlocked with PIN 198000 (public demo PIN). Window B is `/call/peluqueria-lola`. Side by side for segment 4. Show the PIN gate for one second in a separate take if you want it on screen.
+5. **Dry run** each call a few minutes before. If a reply is the "can't help right now" fallback, hang up and call again; never cut a take mid-call.
+6. **No music**, or royalty-free only (the rules ban copyrighted music).
 
----
+## 1. Hook (0:00-0:08)
 
-## 1. Hook (0:00–0:05)
+- **Shot:** close-up of the ivory machine, terracotta light blinking, reels still.
+- **On screen:** "An 80s answering machine, brought back from the dead."
+- **Narration:** "Every missed call at a small shop is a customer who hung up. So we brought the answering machine back."
 
-- **Shot:** close-up of the ivory machine with the terracotta light blinking and the reels still.
-- **On screen:** "The voices of customers nobody answered… come back."
-- **Narration:** "Every missed call at a small shop is a customer who hung up."
+## 2. Problem (0:08-0:20)
 
-## 2. Problem (0:05–0:20)
+- **Shot:** self-shot footage of a salon chair and a phone ringing, cut to the landing page `/`.
+- **Narration:** "Lola runs her salon alone. While she cuts hair, nobody picks up and the booking is gone. Phantom Line answers for her, by voice, in Spanish or English, with her real hours and prices."
 
-- **Shot:** stock or self-shot footage of a salon owner cutting hair while a phone rings unanswered. Cut to the landing page `/`.
-- **On screen:** "Small shops miss calls every day. A receptionist costs more than they earn."
-- **Narration:** "Lola runs her salon alone. When she is cutting hair, nobody picks up, and that booking is gone. Phantom Line answers for her: by voice, in Spanish or English, with her real hours and prices."
+## 3. Guided path and Spanish call (0:20-1:00)
 
-## 3. Live call in Spanish (0:20–1:00)
+- **Shot:** window B. First 4 s on the "Try it in 30 seconds" strip (call, PIN, watch the light). Then ES selected, press **Llamar**. Transcript fills as the call goes.
+- **On screen (corner):** "Live call · real Gemini · real database"
 
-> **This call is a haircut (corte), not "corte + degradado".** The deployed demo profile has three services: corte, tinte and barba. Degradado and two services in one sentence come from the front-desk-brain spec (0 of 14 tasks done). The "corte + degradado" version is under "Swap-in once front-desk-brain lands" below; use it only after that spec's tasks 2, 4, 5, 6, 8, 9 and 10 are ticked and the new seed is on Neon.
-
-- **Shot:** window B full screen. ES selected on the language switch. Press **Llamar** / Call. The transcript fills in as the call goes.
-- **On screen (corner tag):** "Live call · real Gemini · real database"
-
-Say exactly these lines, and wait for each reply to finish before speaking.
-
-| Who | What is said (Spanish subtitle) | English subtitle |
-|---|---|---|
-| Receptionist | "¡Hola! Estás llamando a Peluquería Lola, soy su asistente virtual. ¿En qué te puedo ayudar?" (or "¡Hola! Has llamado a Peluquería Lola. Te atiende su asistente virtual, ¿qué necesitas?") | "Hi! You've reached Peluquería Lola, I'm its virtual assistant. How can I help?" |
-| **You say** | **"Quiero cortarme el pelo mañana a las nueve de la noche."** | "I'd like a haircut tomorrow at nine at night." |
-| Receptionist | "Mañana a las nueve ya hemos cerrado. ¿Te viene bien a las siete y media? También tengo a las siete y cuarto o a las siete." | "Tomorrow at nine we're already closed. Does half past seven suit you? I also have quarter past seven or seven." |
-| **You say** | **"Vale, a las siete y media."** | "OK, half past seven." |
-| Receptionist | "Genial, mañana a las siete y media tengo hueco. ¿Me dices tu nombre?" (or "Vale, mañana a las siete y media me cuadra. ¿A nombre de quién lo pongo?") | "Great, tomorrow at half past seven is free. What's your name?" |
-| **You say** | **"Ana García."** | |
-| Receptionist | "Perfecto. ¿Me dejas un teléfono de contacto?" (or "Muy bien. ¿Y un teléfono por si hay que avisarte?") | "Perfect. Can you leave a contact number?" |
-| **You say** | **"Seis uno dos, tres cuatro cinco, seis siete ocho."** | "Six one two, three four five, six seven eight." |
-| Receptionist | "Te apunto un corte mañana [día] a las siete y media, a nombre de Ana García. Tu teléfono es el seis uno dos, tres cuatro cinco, seis siete ocho, ¿vale?" | "I'm booking you a haircut tomorrow at half past seven, for Ana García. Your number is six one two, three four five, six seven eight, right?" |
-| **You say** | **"Sí."** | "Yes." |
-| Receptionist | "¡Hecho! Te esperamos mañana [día] a las siete y media. Lola verá tu mensaje y te confirma." (or "¡Listo, apuntado para mañana [día] a las siete y media! Lola verá tu mensaje y te confirma.") | "Done! See you tomorrow at half past seven. Lola will see your message and confirm." |
-
-`[día]` is tomorrow's weekday ("mañana miércoles"). If the receptionist reads back only "mañana", that is fine too.
-
-- **Narration (over the 21:00 → 19:30 moment, about 8 s):** "I asked for nine at night. The model only reads what I said. The code checks the hours, sees both chairs, and offers the nearest free time."
-- **On screen at that moment:** "The model proposes. The code decides."
-
-## 4. Owner's machine blinking (1:00–1:25)
-
-- **Shot:** cut to the two windows side by side, or straight to window A. Within about 5 seconds of the call ending (one Poll), the light starts blinking and the counter goes up.
-- **On screen:** what the machine itself shows, for example "Tienes 1 mensaje nuevo" (the count depends on the tape; do not overlay a number the machine does not show).
-- **Actions:**
-  1. Point at the blinking light and the counter (3 s).
-  2. Press **PLAY**. The reels turn and the transcript of the call appears (6 s).
-  3. Show the tape card: caller Ana García, the reason, the urgency badge, what was agreed ("Cita de corte … 19:30 (Sillón 1)", or Sillón 2) and the suggested reply in handwriting (6 s).
-  4. Open the **Agenda** tab: the 19:30 haircut on tomorrow's day (5 s).
-- **Narration:** "Seconds later, Lola's answering machine blinks. One tap plays the call back. She sees who called, what was agreed and a reply she can send, and the booking is already in her agenda. Double bookings are blocked by the database itself."
-
-## 5. English call (1:25–1:45)
-
-- **Shot:** window B, switch to **EN**, press Call. Cut between replies to keep it under 20 s: show the greeting, the 9 pm rejection and the final confirmation; speed-ramp the name and phone turns.
-- **On screen:** "Same brain, in English."
-
-| Who | What is said |
+| Who | Say / happens |
 |---|---|
-| Receptionist | "Hi! You've reached Peluquería Lola, I'm the salon's virtual assistant. How can I help?" (or "Hello! This is Peluquería Lola. You're talking to the salon's virtual assistant, what do you need?") |
-| **You say** | **"I'd like a haircut tomorrow at nine in the evening."** |
-| Receptionist | "Tomorrow at nine we're already closed. Does half past seven work for you? I also have …" (the last free times may differ, because the Spanish call just took one chair at 19:30) |
-| **You say** | **"OK, half past seven then."** |
-| Receptionist | "Great, tomorrow at half past seven works. Can I have your name?" (or "Okay, tomorrow at half past seven is free. What name should I put it under?") |
-| **You say** | **"John Smith."** |
-| Receptionist | "Perfect. Can I have a contact number?" |
-| **You say** | **"Six one two, three four five, six seven eight."** |
-| Receptionist | The read-back: "I'll put you down for a haircut tomorrow … at half past seven, under John Smith. Your number is …, right?" |
-| **You say** | **"Yes please."** |
+| **You say** | **"Hola, quería cortarme el pelo y hacerme un degradado mañana a las nueve de la noche."** |
+| Receptionist | Names the combined service with duration and price, says nine is closed, offers 19:30 and nearby times |
+| **You say** | **"Vale, a las siete y media."** |
+| Receptionist | Asks the name; you say **"Ana García"**; asks the phone; you say **"seis uno dos, tres cuatro cinco, seis siete ocho"** |
+| Receptionist | Reads the booking back with day, time and phone |
+| **You say** | **"Sí."** and the receptionist confirms |
 
-- **Narration (short, over the confirmation):** "English callers get the same rules, the same agenda, and a second chair."
-- **Note:** after the Spanish call took one chair at 19:30, the English 19:30 goes on the other chair. Both chairs are then full at 19:30, so do not run a third take for the same time.
-- **TODO (owner):** the English neural voice is not chosen yet (natural-voice task 2.4). Until it is, listen to the dry run and decide whether the English voice is good enough for the video.
+- **Narration (over the 21:00 to 19:30 moment):** "I asked for nine at night. The model only reads what I said. The code checks hours and chairs, and offers the nearest free time."
+- **On screen then:** "The model proposes. The code decides."
+- Speed-ramp the name and phone turns if the call runs long.
 
-## 6. How Kiro built it (1:45–2:30)
+## 4. The machine blinks (1:00-1:25)
 
-Four shots, about 11 s each. Record them as screen captures in Kiro (IDE or `kiro-cli`).
+- **Shot:** both windows, then window A. Within about 5 s of hanging up (one poll) the light blinks and the counter rises.
+- **Actions:** point at the light and counter (3 s); press **PLAY**, reels turn, transcript appears (6 s); show the card: caller, reason, urgency badge, what was agreed, suggested reply (6 s); open **Agenda** and show the booking (5 s).
+- **Narration:** "Seconds later Lola's machine blinks. One tap plays the call back. She sees who called, what was agreed and a reply she can send, and the booking is already in her agenda. The database itself refuses double bookings."
 
-**6a. A spec (1:45–1:56)**
-- **Shot:** scroll `.kiro/specs/core-call-loop/requirements.md` (EARS lines), then `design.md`'s numbered correctness properties, then `tasks.md` with ticked boxes.
-- **On screen:** "5 specs · reviewed by a human before any code"
-- **Narration:** "Every feature started as a Kiro spec. I reviewed each one like a shop owner, and Kiro found where my own changes contradicted its requirements."
+## 5. English call (1:25-1:45)
 
-**6b. A property that caught a real bug (1:56–2:07)**
-- **Shot:** the N7 row of the catch log in `.kiro/specs/natural-voice/tasks.md`, highlighted: the English read-back for "María del Carmen Pérez García" ran to 26 words.
-- **On screen:** "Property N7 found a 26-word sentence. The 25-word limit would have cut off the caller's name."
-- **Narration:** "Fifty-five properties check the rules on thousands of random cases. This one found a read-back so long that the caller's name would have been cut off."
+- **Shot:** window B, switch to **EN**, press Call. Show the greeting, the 9 pm rejection with an offer, and the confirmation; speed-ramp the name and phone.
+- **You say:** **"I'd like a men's haircut tomorrow at nine in the evening."**, then **"Half past seven, then."**, **"John Smith"**, the phone, **"Yes please."**
+- **On screen:** "Same brain, in English."
+- **Narration:** "English callers get the same rules, the same agenda and a second chair."
+- **Note:** after the Spanish call took one chair at 19:30, the English 19:30 goes on the other chair. Do not record a third take for the same time without a reset.
 
-**6c. A hook firing (2:07–2:19)**
-- **Shot:** in a builder session, ask Kiro: *"Remove the fit check (step 5) from `lib/booking/rules.ts`, then restore it."* After the write, the `booking-properties` hook prints "booking properties FAILED after your write to lib/booking. Fix the code, never the property:" with P3's shrunk counterexample. After the restore it prints "booking properties after your write: green".
-- **On screen:** "Hook: every write to the booking rules runs their properties"
-- **Narration:** "Hooks keep Kiro honest. Break a booking rule, and the properties fail on the same write."
-- **TODO (owner):** this run has not been recorded yet (jury-polish task 2.5). The counterexample on screen must be the one the hook actually prints. For reference, the earlier mutation proof shrank to a 158-minute service at 09:14 in a session closing at 09:15.
+## 6. How Kiro built it (1:45-2:10)
 
-**6d. The MCP (2:19–2:30)**
-- **Shot:** `.kiro/settings/mcp.json` with the Context7 server, then a Kiro chat asking Context7 for a current doc (for example the `@google/genai` interactions API) and the answer.
-- **On screen:** "MCP: current docs before memory"
-- **Narration:** "Through MCP, Kiro reads current docs before it writes code. Docs changed more than six of its first choices."
-- **TODO (owner):** in the logged sessions, Context7 calls failed at the permission step. Record a real successful call for this shot. If the `phantom-booking` MCP server (jury-polish task 3) is built by then, show it answering `check_slot` for tomorrow at 21:00 instead.
+Screen captures, about 8 s each.
 
-## 7. Close (2:30–2:40)
+- **Spec:** scroll `.kiro/specs/core-call-loop/requirements.md` (EARS lines), then a design with numbered properties. **Narration:** "Every feature started as a Kiro spec. I reviewed each like a shop owner, and Kiro found where my own changes contradicted its requirements."
+- **Property:** `NOTAS-KIRO.md` row of 2026-11-12, "mutation proof". **On screen:** "Break a rule on purpose: property P3 shrinks to a 158-minute service at 09:14." **Narration:** "Property tests check the rules on thousands of random cases, and Kiro broke the code on purpose to prove they work."
+- **Steering and hooks:** flash `.kiro/steering/` and `.kiro/hooks/booking-properties.json`. **On screen:** "Steering · specs · hooks · property tests".
+- Do not show a Context7 call: no successful call has been logged.
 
-- **Shot:** the machine, light blinking, the reels turning slowly; fade to the landing page.
-- **On screen:** "Phantom Line · Try it: DEMO_URL · Code and specs: REPO_URL · #KiroweenHackathon26"
+## 7. Kiro, then Claude (2:10-2:20)
+
+- **Shot:** `NOTAS-KIRO.md` scrolled to the 2026-11-22 row, then the git log with "Written by Claude (Kiro credits exhausted)".
+- **On screen:** "Kiro: 5-16 Nov. Claude: after the credits ran out."
+- **Narration (10 s, read as is):** "Kiro built the core until its credits ran out on the seventeenth of November. The rest, the judge guide, the startup page and the QA fixes, was written by Claude under my direction, and every commit says so."
+
+## 8. /startup (2:20-2:38)
+
+- **Shot:** `/startup`: the problem numbers, the cost per call, the planned Salon plan, the waitlist form (do not submit a real email on camera).
+- **On screen:** "Sourced numbers. Planned price, not market-tested."
+- **Narration:** "Phantom Line is also a startup. The numbers on this page cite their sources and show their arithmetic: about four cents a call at the upper bound, and a planned 29 euros a month per salon. I'm Miguel Morente, a student at UFV Madrid."
+
+## 9. Close (2:38-2:45)
+
+- **Shot:** the machine, light blinking, reels turning slowly; fade to the demo URL.
+- **On screen:** "Phantom Line · phantom-line-nine.vercel.app · #KiroweenHackathon26"
 - **Narration:** "Phantom Line. Nobody hangs up on a silent shop again."
-
----
-
-## Swap-in once front-desk-brain lands: "corte + degradado" (segment 3)
-
-Use this only when front-desk-brain tasks 2, 4, 5, 6, 8, 9 and 10 are ticked, and the Rich_Profile seed has been run on Neon (task 14). The lines come from the spec's regression case, Real_Call_2026_11_16 (task 10.1), not from a run.
-
-| Who | What is said | English subtitle |
-|---|---|---|
-| **You say** | **"Hola Lola, quería cortarme el pelo y hacerme un degradado."** | "Hi Lola, I'd like a haircut and a fade." |
-| Receptionist | "… son cincuenta minutos y veinticuatro euros. ¿Te viene bien [first free slot]? …" | "… that's fifty minutes and twenty-four euros. Does [slot] suit you? …" |
-| **You say** | **"Sí."** | "Yes." |
-| Receptionist | asks for the name | |
-| **You say** | **"Me llamo Ana."** | "My name is Ana." |
-| Receptionist | asks for the phone | |
-| **You say** | **"Seis uno dos, tres cuatro cinco, seis siete ocho."** | |
-| Receptionist | read-back with "Corte de hombre + Degradado" and the total price | |
-| **You say** | **"Sí."** | |
-
-TODO (owner): once task 10.1 passes, copy its exact First_Offer text into this table. The offered slot depends on the recording day and the agenda.

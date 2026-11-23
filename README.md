@@ -1,8 +1,53 @@
 # Phantom Line
 
-An AI answering machine for small local businesses. When nobody picks up, Phantom Line answers by voice in Spanish or English, takes bookings inside opening hours, and leaves the owner a message on the tape. The model proposes; plain TypeScript decides every booking.
+An 80s answering machine brought back from the dead, as the AI phone receptionist of a hair salon. When nobody picks up, it answers by voice in Spanish or English, books inside opening hours, and leaves the owner a message on a blinking tape. The model proposes; plain TypeScript decides every booking.
 
-Built with Next.js (App Router), TypeScript, Tailwind CSS, Gemini (`@google/genai`), Postgres on Neon with Drizzle, and Vitest with fast-check.
+Kiroween 2026 (Devpost), category **Resurrection**, plus Best Student and Best Startup. Founder: Miguel Morente, student at UFV Madrid. MIT license.
+
+## Try it in 30 seconds
+
+Best in **Chrome** (speech recognition). Demo shop: Peluquería Lola, Madrid.
+
+1. Open the [call page](https://phantom-line-nine.vercel.app/call/peluqueria-lola), press **Call**, ask for a haircut tomorrow at 9 pm (the shop is closed, so it offers the nearest free time), give a name and phone, say yes. Or press **Type instead**. ES / EN switch on the page.
+2. Open the [owner's machine](https://phantom-line-nine.vercel.app/machine/peluqueria-lola) and enter the public demo PIN **198000**.
+3. Within about 5 seconds the red light **blinks** and the counter goes up. Press PLAY to hear the call back; the booking is in the Agenda tab.
+
+Also: [landing page](https://phantom-line-nine.vercel.app), [/startup](https://phantom-line-nine.vercel.app/startup) (the business angle, with a waitlist). The demo is free to use until 29 Jan 2027; demo messages are cleaned up automatically.
+
+## How Kiro was used (5 to 16 Nov 2026)
+
+Phantom Line was built spec-first with [Kiro](https://kiro.dev), IDE and CLI (`kiro-cli chat --no-interactive`):
+
+- [`.kiro/steering/`](.kiro/steering/): six standing docs (product, tech, structure, sector packs, receptionist voice, visual design).
+- Specs, each with requirements, design and tasks: [core-call-loop](.kiro/specs/core-call-loop/), [natural-voice](.kiro/specs/natural-voice/), [owner-machine](.kiro/specs/owner-machine/), [front-desk-brain](.kiro/specs/front-desk-brain/) (tasks 1-11, 15, 17, 18 done by Kiro), and [jury-polish](.kiro/specs/jury-polish/) (partly done).
+- Property-based tests with fast-check, proven by mutation: Kiro broke the code on purpose and recorded the shrunk counterexamples.
+- [`.kiro/hooks/`](.kiro/hooks/) (secret guard, booking properties after each write, session brief), [`.kiro/agents/builder.json`](.kiro/agents/builder.json) (a builder agent that cannot push or read secrets) and a Context7 docs MCP in [`.kiro/settings/`](.kiro/settings/).
+- Day-by-day log: [`NOTAS-KIRO.md`](NOTAS-KIRO.md). The most telling rows:
+  - 2026-11-06, Kiro applied an 11-point owner review to its own requirements.
+  - 2026-11-11, "Human review vs docs": the design said Node has Temporal built in; `typeof Temporal` said otherwise, before any code.
+  - 2026-11-12, "mutation proof": dropping the fit check shrank property P3 to a 158-minute service at 09:14.
+  - 2026-11-16, "from a production log": a real failed call became the front-desk-brain spec and a regression test.
+
+## What Claude wrote after Kiro's credits ran out (from 17 Nov)
+
+Kiro's 4,000 hackathon credits were used up on 17 Nov. The rest was written by Claude (Anthropic's coding assistant) under the owner's direction; the commits say "Written by Claude (Kiro credits exhausted)". This is not Kiro's work:
+
+- Fix of the B15 counterexamples in front-desk-brain (`52a5c7e`).
+- BACKLOG 1: `npm run demo:reset`, a curated demo set (`caafb29`).
+- BACKLOG 11 and 12: `/startup` page, waitlist, `docs/impact.md` (`d98397b`).
+- BACKLOG 2, 26, 27, 28: the "Try it in 30 seconds" guide, browser-language machine, route titles, real 404 (`6de4fed`).
+- BACKLOG 19-25: QA fixes (stale reply, call-back needs a phone, code-built owner reason, no empty cards) (`f087657`, `e5b2d77`).
+- English cut aliases (men's, women's, kids' haircut) (`545e2a2`).
+- These docs (README, submission, checklist, video script).
+
+## Architecture
+
+- Next.js 16 (App Router), TypeScript strict, Tailwind 4, Postgres on Neon with Drizzle. Gemini (`@google/genai`) for conversation and optional neural voice, on the server only.
+- One channel-agnostic core, `handleTurn`: a rule-based Code_Brain reads the caller first; Gemini is called only when it is not sure, and a model failure never ends a call.
+- `decideTurn` and `lib/booking` are pure TypeScript: hours, service length, shop time zone and free chairs. A Postgres exclusion constraint makes double bookings impossible.
+- Urgency and the owner's message are built by code from the caller's words, never from the model's text.
+- The owner's machine polls for changes (light, counter, tape, agenda, audited owner actions, scrypt PIN with signed session).
+- Sector packs (hair salon ships) supply vocabulary and defaults.
 
 ## Run it locally
 
@@ -37,17 +82,18 @@ Needs Node.js 20.19 or newer, a free [Neon](https://neon.tech) Postgres database
    npm run dev
    ```
 
-Tests run without a database or network (PGlite and a fake model): `npx vitest run`. The manual Chrome checks are in [`.kiro/specs/core-call-loop/manual-checklist.md`](.kiro/specs/core-call-loop/manual-checklist.md).
+Tests run without a database or network (PGlite and a fake model). Current run: **1923 tests in 192 files, all passing**.
 
-## How it was built with Kiro
+```bash
+npx vitest run
+```
 
-The project was written spec-first with [Kiro](https://kiro.dev):
+Manual Chrome checks: [`.kiro/specs/core-call-loop/manual-checklist.md`](.kiro/specs/core-call-loop/manual-checklist.md). To reset the demo shop to its curated set: `npm run demo:reset` (add `-- --allow-remote` for Neon).
 
-- [`.kiro/steering/`](.kiro/steering/): the standing rules every session starts from (product, tech stack, structure, sector packs, receptionist voice, visual design).
-- [`.kiro/specs/core-call-loop/`](.kiro/specs/core-call-loop/): the first spec, as requirements, design (with correctness properties and the findings that changed it) and tasks, including the catch log of bugs found by property tests and real calls.
-- [`.kiro/agents/`](.kiro/agents/): the scoped builder agent used for headless runs.
-- [`NOTAS-KIRO.md`](NOTAS-KIRO.md): a dated log of what Kiro did and what it caught, with real examples.
+## Deploy
 
-## Deploy on Vercel
+Runs on Vercel's free tier with the default Node.js runtime. Set the same environment variables in the project settings.
 
-The app runs on Vercel's free tier with the default Node.js runtime. Set the same environment variables in the Vercel project settings. See the [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying).
+## License
+
+MIT, see [LICENSE](LICENSE).
