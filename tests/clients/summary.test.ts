@@ -13,6 +13,8 @@ const b = (id: string, daysAgo: number, over: Partial<ClientBooking> = {}): Clie
   end: ago(daysAgo).add({ minutes: 30 }),
   status: "confirmed",
   noShow: false,
+  paidCents: null,
+  visitNote: "",
   ...over,
 });
 

@@ -45,7 +45,7 @@ import {
   type SessionPayload,
 } from "./session";
 import type { WeekSource } from "./weekStats";
-import { consoleOwnerLogger, type Actor, type OwnerCommandResult, type OwnerLogger, type OwnerRepository, type TapeRow } from "./types";
+import { consoleOwnerLogger, type Actor, type ClientPatch, type OwnerCommandResult, type OwnerLogger, type OwnerRepository, type TapeRow } from "./types";
 
 export interface OwnerDeps {
   repo: OwnerRepository;
@@ -426,8 +426,26 @@ export async function handleClientAction(
   if (!client) return fail(404, { error: "client_not_found" });
 
   const { req } = i;
-  if (req.action === "note") {
-    if (!(await d.repo.setClientNote(i.shopId, i.clientId, req.note.trim()))) return fail(404, { error: "client_not_found" });
+  if (req.action === "note" || req.action === "birthday" || req.action === "consent" || req.action === "fields") {
+    let patch: ClientPatch;
+    if (req.action === "note") patch = { note: req.note.trim() };
+    else if (req.action === "birthday") patch = { birthday: req.birthday };
+    else if (req.action === "consent") patch = { promoConsentAt: req.consent ? d.clock() : null };
+    else {
+      const defs = new Map((getSectorPack(access.profile.sectorPackId).clientFields ?? []).map((f) => [f.id, f]));
+      const clean: Record<string, string> = {};
+      for (const [id, raw] of Object.entries(req.fields)) {
+        const def = defs.get(id);
+        const value = raw.trim();
+        if (!def) return fail(422, { error: "invalid_request", issues: [{ path: ["fields", id], message: "This sector has no such field" }] });
+        if (value.length > def.maxLength) {
+          return fail(422, { error: "invalid_request", issues: [{ path: ["fields", id], message: `At most ${def.maxLength} characters` }] });
+        }
+        if (value !== "") clean[id] = value;
+      }
+      patch = { fields: clean };
+    }
+    if (!(await d.repo.updateClient(i.shopId, i.clientId, patch))) return fail(404, { error: "client_not_found" });
   } else {
     const r = await d.repo.applyOwnerCommand({
       kind: "no_show",

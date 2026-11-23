@@ -238,13 +238,16 @@ export function createOwnerRepository(handle: DbHandle): OwnerRepository {
   /** Clients with their bookings: one read of the clients, one of the bookings of the same shop and those phones. */
   async function withBookings(shopId: string, rows: ClientRow[]): Promise<ClientRecord[]> {
     if (rows.length === 0) return [];
+    // The client's bookings are those of the same shop and phone (the history's rule); the payment is
+    // joined by booking id, at most one per booking.
     const found = await db
-      .select()
+      .select({ b: bookings, paid: payments.amountCents })
       .from(bookings)
+      .leftJoin(payments, and(eq(payments.bookingId, bookings.id), eq(payments.shopId, shopId)))
       .where(and(eq(bookings.shopId, shopId), inArray(bookings.customerPhone, rows.map((r) => r.phone))))
       .orderBy(asc(bookings.startsAt), asc(bookings.id));
     const byPhone = new Map<string, ClientBooking[]>();
-    for (const b of found) {
+    for (const { b, paid } of found) {
       const list = byPhone.get(b.customerPhone) ?? [];
       list.push({
         id: b.id,
@@ -253,6 +256,8 @@ export function createOwnerRepository(handle: DbHandle): OwnerRepository {
         end: toInstant(b.endsAt),
         status: b.status as ClientBooking["status"],
         noShow: b.noShowAt !== null,
+        paidCents: paid,
+        visitNote: b.visitNote,
       });
       byPhone.set(b.customerPhone, list);
     }
@@ -262,6 +267,10 @@ export function createOwnerRepository(handle: DbHandle): OwnerRepository {
       phone: r.phone,
       language: r.language as Lang,
       note: r.note,
+      birthday: r.birthday,
+      promoConsentAt: r.promoConsentAt ? toInstant(r.promoConsentAt) : null,
+      fields: r.fields,
+      spentCents: (byPhone.get(r.phone) ?? []).reduce((n, b) => n + (b.paidCents ?? 0), 0),
       createdAt: toInstant(r.createdAt),
       bookings: byPhone.get(r.phone) ?? [],
     }));
@@ -428,11 +437,17 @@ export function createOwnerRepository(handle: DbHandle): OwnerRepository {
       return (await withBookings(shopId, rows))[0] ?? null;
     },
 
-    async setClientNote(shopId, clientId, note) {
+    async updateClient(shopId, clientId, patch) {
       if (!isUuid(clientId)) return false;
       const rows = await db
         .update(clients)
-        .set({ note, updatedAt: sql`now()` })
+        .set({
+          updatedAt: sql`now()`,
+          ...(patch.note !== undefined && { note: patch.note }),
+          ...(patch.birthday !== undefined && { birthday: patch.birthday }),
+          ...(patch.promoConsentAt !== undefined && { promoConsentAt: patch.promoConsentAt ? toDate(patch.promoConsentAt) : null }),
+          ...(patch.fields !== undefined && { fields: patch.fields }),
+        })
         .where(and(eq(clients.id, clientId), eq(clients.shopId, shopId)))
         .returning({ id: clients.id });
       return rows.length > 0;

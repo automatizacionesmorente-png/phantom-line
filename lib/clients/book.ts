@@ -69,6 +69,10 @@ export function buildClientBook(
     phone: r.phone,
     language: r.language,
     note: r.note,
+    birthday: r.birthday,
+    promoConsentAt: r.promoConsentAt?.toString() ?? null,
+    fields: r.fields,
+    spentCents: r.spentCents,
     totalVisits: s.totalVisits,
     noShows: s.noShows,
     lastVisit: s.lastVisit?.toString() ?? null,
@@ -87,6 +91,8 @@ export function buildClientBook(
           end: b.end.toString(),
           state,
           canMarkNoShow: state === "visit" || state === "no_show",
+          paidCents: b.paidCents,
+          visitNote: b.visitNote,
         };
       }),
   }));

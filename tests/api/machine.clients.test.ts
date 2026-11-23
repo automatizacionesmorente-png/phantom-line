@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import type { ClientsResponse } from "@/lib/clients/api";
-import { clients } from "@/lib/db/schema";
+import { bookings, clients, payments, shops } from "@/lib/db/schema";
 import { addBooking, addCall, auditRows } from "../db/ownerFixtures";
 import { createTestDb, type TestDb } from "../db/pglite";
 import { DEMO, REAL, client, createMachineEnv, seedShops, tokenFor, type MachineEnv } from "./machineHarness";
@@ -197,3 +197,70 @@ describe("POST a client action", () => {
     expect(b.lapsed).toEqual([]);
   });
 });
+
+describe("richer client cards (salon 6)", () => {
+  const row = async () => (await t.handle.db.select().from(clients).where(eq(clients.id, mine)))[0];
+  const post = (body: unknown) => api.clientAction(REAL, mine, body, { token });
+
+  it("consent on sets the date and off clears it", async () => {
+    const on = await post({ action: "consent", consent: true });
+    expect(on.status).toBe(200);
+    expect(book(on).clients[0].promoConsentAt).toBe(env.now().toString());
+    expect((await row()).promoConsentAt?.getTime()).toBe(env.now().epochMilliseconds);
+    const off = await post({ action: "consent", consent: false });
+    expect(book(off).clients[0].promoConsentAt).toBeNull();
+    expect((await row()).promoConsentAt).toBeNull();
+  });
+
+  it("birthday rejects 02-30 and stores a real day or null", async () => {
+    for (const bad of ["02-30", "13-01", "00-10", "1-1", "2026-01-01", "04-31"]) {
+      expect((await post({ action: "birthday", birthday: bad })).status).toBe(400);
+    }
+    expect((await row()).birthday).toBeNull();
+    const ok = await post({ action: "birthday", birthday: "02-29" });
+    expect(book(ok).clients[0].birthday).toBe("02-29");
+    expect(book(await post({ action: "birthday", birthday: null })).clients[0].birthday).toBeNull();
+  });
+
+  it("fields reject an id the pack does not define, and a value over maxLength", async () => {
+    // The barbershop pack has no client fields at all.
+    const none = await post({ action: "fields", fields: { car: "Seat Ibiza" } });
+    expect(none.status).toBe(422);
+    expect(none.json).toMatchObject({ error: "invalid_request", issues: [{ path: ["fields", "car"] }] });
+    expect((await row()).fields).toEqual({});
+
+    const profile = (await t.handle.db.select().from(shops).where(eq(shops.id, REAL)))[0].profile;
+    await t.handle.db.update(shops).set({ profile: { ...profile, sectorPackId: "car-workshop" } as typeof shops.$inferInsert.profile }).where(eq(shops.id, REAL));
+    expect((await post({ action: "fields", fields: { colour: "x" } })).status).toBe(422);
+    expect((await post({ action: "fields", fields: { car: "x".repeat(61) } })).status).toBe(422);
+    expect((await row()).fields).toEqual({});
+    const ok = await post({ action: "fields", fields: { car: "  Seat Ibiza 1234ABC  " } });
+    expect(ok.status).toBe(200);
+    expect(book(ok).clients[0].fields).toEqual({ car: "Seat Ibiza 1234ABC" });
+    expect(book(await post({ action: "fields", fields: { car: "" } })).clients[0].fields).toEqual({});
+  });
+
+  it("spentCents sums payments of the client's bookings, and history carries paidCents and visitNote", async () => {
+    await t.handle.db.insert(payments).values([
+      { shopId: REAL, bookingId: pastBooking, amountCents: 1800, method: "cash", paidAt: new Date("2026-09-01T09:00:00Z") },
+    ]);
+    const first = (await t.handle.db.select().from(bookings).where(eq(bookings.shopId, REAL))).find((b) => b.startsAt.toISOString().startsWith("2026-08-01"))!;
+    await t.handle.db.insert(payments).values({ shopId: REAL, bookingId: first.id, amountCents: 2200, method: "card", paidAt: new Date("2026-08-01T09:00:00Z") });
+    await t.handle.db.update(bookings).set({ visitNote: "Tinte 6.3" }).where(eq(bookings.id, pastBooking));
+    // A product sale and another client's payment must not count.
+    await t.handle.db.insert(payments).values({ shopId: REAL, bookingId: null, amountCents: 900, method: "cash", paidAt: new Date("2026-09-02T09:00:00Z") });
+    const stranger = await addBooking(t, REAL, { start: "2026-09-05T08:00:00Z", name: "Otra", phone: "+34600000077" });
+    await t.handle.db.insert(payments).values({ shopId: REAL, bookingId: stranger, amountCents: 5000, method: "cash", paidAt: new Date("2026-09-05T09:00:00Z") });
+
+    const c = book(await api.clients(REAL, { token })).clients[0];
+    expect(c.spentCents).toBe(4000);
+    const paid = c.history.find((h) => h.bookingId === pastBooking)!;
+    expect(paid).toMatchObject({ paidCents: 1800, visitNote: "Tinte 6.3" });
+    expect(c.history.find((h) => h.bookingId === futureBooking)).toMatchObject({ paidCents: null, visitNote: "" });
+  });
+
+  it("a client with nothing paid has spentCents 0", async () => {
+    expect(book(await api.clients(REAL, { token })).clients[0]).toMatchObject({ spentCents: 0, birthday: null, promoConsentAt: null, fields: {} });
+  });
+});
+

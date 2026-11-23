@@ -106,23 +106,23 @@ describe("owner reads and the private note are scoped to the shop", () => {
     expect(list[0].name).toBe("Carlos Vega");
   });
 
-  it("getClient and setClientNote refuse another shop's id and a malformed id", async () => {
+  it("getClient and updateClient refuse another shop's id and a malformed id", async () => {
     await callWithBooking(R);
     const [mine] = await owner.listClients(R, 10);
     expect(await owner.getClient(D, mine.id)).toBeNull();
-    expect(await owner.setClientNote(D, mine.id, "pwned")).toBe(false);
+    expect(await owner.updateClient(D, mine.id, { note: "pwned" })).toBe(false);
     expect(await owner.getClient(R, "not-a-uuid")).toBeNull();
-    expect(await owner.setClientNote(R, "not-a-uuid", "x")).toBe(false);
+    expect(await owner.updateClient(R, "not-a-uuid", { note: "x" })).toBe(false);
     expect((await rows(R))[0].note).toBe("");
-    expect(await owner.setClientNote(R, mine.id, "Prefiere el sillón 2")).toBe(true);
+    expect(await owner.updateClient(R, mine.id, { note: "Prefiere el sillón 2" })).toBe(true);
     expect((await owner.getClient(R, mine.id))?.note).toBe("Prefiere el sillón 2");
   });
 
   it("the database refuses a note over 500 characters", async () => {
     await callWithBooking(R);
     const [mine] = await owner.listClients(R, 10);
-    await expect(owner.setClientNote(R, mine.id, "x".repeat(501))).rejects.toThrow();
-    expect(await owner.setClientNote(R, mine.id, "x".repeat(500))).toBe(true);
+    await expect(owner.updateClient(R, mine.id, { note: "x".repeat(501) })).rejects.toThrow();
+    expect(await owner.updateClient(R, mine.id, { note: "x".repeat(500) })).toBe(true);
   });
 });
 

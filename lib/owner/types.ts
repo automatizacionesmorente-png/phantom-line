@@ -111,8 +111,24 @@ export interface ClientRecord {
   phone: string;
   language: Lang;
   note: string;
+  /** "MM-DD" or null. */
+  birthday: string | null;
+  /** When the client agreed to promotions; null = never message them. */
+  promoConsentAt: Temporal.Instant | null;
+  /** Sector fields (the pack's clientFields). */
+  fields: Record<string, string>;
+  /** Sum of the payments of this client's bookings (the bookings of the same shop and phone, as the history). */
+  spentCents: number;
   createdAt: Temporal.Instant;
   bookings: ClientBooking[];
+}
+
+/** What the Owner may change on a Client card; an absent key is left alone. */
+export interface ClientPatch {
+  note?: string;
+  birthday?: string | null;
+  promoConsentAt?: Temporal.Instant | null;
+  fields?: Record<string, string>;
 }
 
 export interface OwnerRepository {
@@ -133,8 +149,8 @@ export interface OwnerRepository {
   listClients(shopId: string, limit: number): Promise<ClientRecord[]>;
   /** One Client of this shop, or null for an unknown id or one that belongs to another shop. */
   getClient(shopId: string, clientId: string): Promise<ClientRecord | null>;
-  /** Sets the Owner's private note; false when no Client of this shop has that id. */
-  setClientNote(shopId: string, clientId: string, note: string): Promise<boolean>;
+  /** Changes the given parts of a Client card; false when no Client of this shop has that id. */
+  updateClient(shopId: string, clientId: string, patch: ClientPatch): Promise<boolean>;
   /** Seed only. */
   setOwnerPin(shopId: string, hash: string, at: Temporal.Instant): Promise<void>;
   // Demo_Retention (16). None of these takes a shop id: they act on DEMO_SHOP_ID only.

@@ -22,7 +22,7 @@ const bookingArb = fc
   .map(
     (b): ClientBooking => {
       const start = at(b.startDays);
-      return { id: b.id, serviceId: b.serviceId, start, end: start.add({ minutes: b.minutes }), status: b.status, noShow: b.noShow };
+      return { id: b.id, serviceId: b.serviceId, start, end: start.add({ minutes: b.minutes }), status: b.status, noShow: b.noShow, paidCents: null, visitNote: "" };
     },
   );
 
@@ -89,6 +89,8 @@ describe("lapsedClients (BACKLOG 15)", () => {
       end: at(-days).add({ minutes: 30 }),
       status: "confirmed",
       noShow: false,
+      paidCents: null,
+      visitNote: "",
     });
     const one = summarize([visit("a", 59)], NOW);
     const oneOld = summarize([visit("b", 61)], NOW);

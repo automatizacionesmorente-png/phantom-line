@@ -14,6 +14,10 @@ export interface ClientBooking {
   status: "confirmed" | "cancelled";
   /** The Owner marked "No vino". */
   noShow: boolean;
+  /** What the cash desk took for this booking, in cents; null when it is not paid. */
+  paidCents: number | null;
+  /** The Owner's visit note ('' when none). */
+  visitNote: string;
 }
 
 /** `visit`: confirmed, finished, came. `upcoming`: confirmed and not finished yet. */

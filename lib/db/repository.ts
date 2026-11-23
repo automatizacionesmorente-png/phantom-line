@@ -294,6 +294,8 @@ export function createRepository(handle: DbHandle): Repository {
           end: toInstant(b.endsAt),
           status: b.status as "confirmed" | "cancelled",
           noShow: b.noShowAt !== null,
+          paidCents: null,
+          visitNote: "",
         })),
         now,
       );
