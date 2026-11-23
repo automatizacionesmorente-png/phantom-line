@@ -36,6 +36,13 @@
       "when": 1794790423915,
       "tag": "0004_machine_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795381037420,
+      "tag": "0005_waitlist",
+      "breakpoints": true
     }
   ]
 }
