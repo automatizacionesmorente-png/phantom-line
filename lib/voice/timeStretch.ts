@@ -5,7 +5,7 @@
  *
  * WSOLA (waveform-similarity overlap-add):
  * - frames of 20 ms with 50 % overlap, so the output advances by a synthesis hop of 10 ms;
- * - the k-th frame is read near input position round(k · hop · rate), shifted by up to ±5 ms to
+ * - the k-th frame is read near input position round(k · hop · rate), shifted by up to ±8 ms to
  *   the similarity peak (over one whole frame) with the natural continuation of the previous frame;
  * - frames are Hann-windowed (periodic Hann at 50 % overlap sums to 1) and added. The first
  *   frame's first half is not windowed, so the reply does not fade in.
@@ -17,7 +17,7 @@
  */
 
 export const FRAME_MS = 20;
-export const SEARCH_MS = 5;
+export const SEARCH_MS = 8;
 
 export interface TimeStretcher {
   readonly rate: number;

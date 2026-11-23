@@ -89,11 +89,11 @@ function chunked(x: Float32Array, cuts: number[], rate: number): Float32Array {
  * shifted tone for every rate in [0.8, 1.25], and the 0.6-amplitude tone has 9 times the power of
  * any quieter one (at most 0.2).
  *
- * Known real failures, not oracle noise (BACKLOG item 18): with the dominant tone at exactly
- * 100 Hz, whose 10 ms period equals the whole ±5 ms search width, the stretcher itself changes the
- * pitch. Seed 13 run 124 (rate 1.25) moves all of the 100 Hz to 75 Hz and 125 Hz; seed 9 run 80
- * (rate 1.029) moves it to 103 Hz, confirmed by zero crossings (98.4 to 101.6 per second). About 2
- * cases in 3000, so this property fails about 1 suite run in 10 until `timeStretch.ts` is fixed.
+ * Fixed real failure (BACKLOG item 18): with a ±5 ms search the dominant tone at exactly 100 Hz
+ * (a 10 ms period, the whole search width) could have no interior similarity peak, and the
+ * stretcher moved its pitch (seed -1766375849: 100 Hz + 400 Hz, 300 ms, rate 1.2498, 19 % off).
+ * The search is now ±8 ms, wider than one period of any voice pitch, and 1500 runs plus those
+ * cases pass.
  */
 const SEARCH_LOW = 0.7;
 const SEARCH_HIGH = 1.4;
