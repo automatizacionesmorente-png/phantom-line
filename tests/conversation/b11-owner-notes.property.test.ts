@@ -100,7 +100,9 @@ describe("B11: owner requests and unanswered questions keep the Call alive and r
         expect(notes.map((n) => n.kind)).toEqual(expectedNotes.slice(0, MAX_OWNER_NOTES));
 
         if (ended === undefined) {
-          const bye = await c.say("Adiós, gracias");
+          // Notes promise a call back: with no phone, the first goodbye asks for the contact (backlog 20).
+          let bye = await c.say("Adiós, gracias");
+          if (!bye.complete) bye = await c.say("Adiós, gracias");
           expect(bye.complete).toBe(true);
           ended = bye.outcome;
         }
@@ -114,8 +116,8 @@ describe("B11: owner requests and unanswered questions keep the Call alive and r
           reached.message++;
           expect(m.outcome).toBe("message");
         }
-        const lang = h.repo.calls()[0].state.language;
-        const notesText = notes.map((n) => phrases(lang, pack, shop).owner.note(n)).join(". ");
+        // The Owner reads the reason in the shop's first language, whatever language the Call ended in (backlog 21).
+        const notesText = notes.map((n) => phrases(shop.languages[0], pack, shop).owner.note(n)).join(". ");
         expect(notesFollow(m.reason, notesText), `${m.reason} | ${notesText}`).toBe(true);
         if (m.reason.endsWith("…")) reached.truncated++;
       }),

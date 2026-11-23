@@ -169,7 +169,8 @@ describe.each(scripts)("a full scripted booking Call in $lang", (sc) => {
       callId: caller.callId,
       callerName: sc.name,
       callerPhone: "+34612345678",
-      reason: sc.model.reason,
+      // Built by code in the owner's language (backlog 21), never the model's note.
+      reason: phrases("es", pack, lolaProfile).owner.reasonWants(["corte"]),
       urgency: "normal",
       outcome: "booked",
       modelFailed: false,

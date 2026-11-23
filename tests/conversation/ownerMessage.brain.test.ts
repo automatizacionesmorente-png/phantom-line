@@ -12,7 +12,7 @@ const pack = getSectorPack("hair-salon");
 const state = (over: Partial<CallState> = {}): CallState => ({ ...initialCallState("es"), ...over });
 
 describe("the code-built reason when the Call had brain Turns (10.7)", () => {
-  it("the services asked for, the topics answered and the notes, in the Call's language", () => {
+  it("the services asked for, the topics answered and the notes, in the owner's language whatever the Call's", () => {
     const s = state({
       brainTurns: 3,
       fields: { serviceId: "corte-hombre+degradado" },
@@ -22,8 +22,9 @@ describe("the code-built reason when the Call had brain Turns (10.7)", () => {
     expect(buildOwnerMessage(s, "message", shop, pack).reason).toBe(
       "Quiere Corte de hombre + Degradado. Preguntó por el horario y pagar con tarjeta. Pide que Lola le llame",
     );
+    // Lola reads the machine in Spanish, so an English Call gives the same Spanish reason (backlog 21).
     expect(buildOwnerMessage({ ...s, language: "en" }, "message", shop, pack).reason).toBe(
-      "Wants Men's cut + Fade. Asked about the opening hours and pay by card. Asked for Lola to call back",
+      buildOwnerMessage(s, "message", shop, pack).reason,
     );
   });
 
@@ -47,14 +48,16 @@ describe("the code-built reason when the Call had brain Turns (10.7)", () => {
 });
 
 describe("the Owner_Notes after the main reason (10.6)", () => {
-  it("model-only Call: the model's reason first, then the notes", () => {
+  it("model-only Call: the model's note is never used; the notes stand on their own (backlog 21)", () => {
     const s = state({ note: { reason: "Quiere cita para un corte", urgency: "normal" }, notes: [{ kind: "sensitive", term: "alergia" }] });
-    expect(buildOwnerMessage(s, "message", shop, pack).reason).toBe("Quiere cita para un corte. Tema delicado («alergia»), no se le aconsejó");
+    expect(buildOwnerMessage(s, "message", shop, pack).reason).toBe("Tema delicado («alergia»), no se le aconsejó");
   });
 
-  it("a model-only Call with no notes keeps the model's reason exactly (owner-machine unchanged)", () => {
-    const s = state({ note: { reason: "Pregunta precios", urgency: "low" } });
-    expect(buildOwnerMessage(s, "answered", shop, pack).reason).toBe("Pregunta precios");
+  it("a model's goodbye or English note never reaches the reason (backlog 21)", () => {
+    for (const note of ["El cliente se despide.", "Caller said goodbye", "Pregunta precios"]) {
+      const s = state({ note: { reason: note, urgency: "low" } });
+      expect(buildOwnerMessage(s, "answered", shop, pack).reason).toBe("Llamada sin terminar");
+    }
   });
 
   it("the Owner never sees an empty reason", () => {
@@ -86,7 +89,8 @@ describe("the suggested urgency is null when no Turn had a valid model answer (o
   });
 
   it("end to end: a brain-only Call's Message has no suggestion and a code-built reason", () => {
-    const turns = brainCall(["¿aceptáis bizum?", "quiero hablar con Lola", "gracias, adiós"], { shop, now: SAT_1930 });
+    // The Owner_Request leaves no phone, so the first goodbye asks for the contact (backlog 20).
+    const turns = brainCall(["¿aceptáis bizum?", "quiero hablar con Lola", "gracias, adiós", "gracias, adiós"], { shop, now: SAT_1930 });
     const save = turns.at(-1)!.decision.effects.find((e) => e.type === "saveMessage");
     expect(save?.type === "saveMessage" && save.message).toMatchObject({
       outcome: "message",

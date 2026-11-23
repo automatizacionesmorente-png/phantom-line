@@ -136,18 +136,18 @@ describe("N16: cache keys and cacheability", () => {
     );
   });
 
-  it("the model's own text is never cacheable, whatever it says", () => {
+  it("the model's own text is never cacheable, and out-of-profile or not-understood Turns never speak it (backlog 23, 24)", () => {
     fc.assert(
       fc.property(
         fc.constantFrom<Lang>("es", "en"),
         fc.string({ minLength: 1, maxLength: 200 }),
-        fc.constantFrom("question", "outOfProfile", "other") as fc.Arbitrary<"question" | "outOfProfile" | "other">,
+        fc.constantFrom("question", "outOfProfile", "other", "order") as fc.Arbitrary<"question" | "outOfProfile" | "other" | "order">,
         fc.uuid(),
         (lang, reply, kind, callId) => {
           const turn = modelTurn({
             reply,
             language: lang,
-            intent: kind === "question" ? "question" : kind === "other" ? "other" : "booking",
+            intent: kind === "question" ? "question" : kind === "other" ? "other" : kind === "order" ? "order" : "booking",
             outOfProfile: kind === "outOfProfile",
             service: null,
           });
@@ -162,9 +162,19 @@ describe("N16: cache keys and cacheability", () => {
             callId,
           });
           if (d.fromModel) expect(d.cacheable).toBe(false);
-          // The model spoke in every one of these cases (no service, no flow the code owns).
-          expect(d.fromModel).toBe(true);
-          expect(toSpokenReply(d.reply, lang)).toBe(toSpokenReply(reply, lang));
+          if (kind === "order") {
+            // Free conversation is the only case where the model still speaks.
+            expect(d.fromModel).toBe(true);
+            expect(toSpokenReply(d.reply, lang)).toBe(toSpokenReply(reply, lang));
+          } else {
+            // A question the profile does not answer gets the Keep_Alive_Line, and a Turn that placed
+            // nothing gets the reprompt: templates, never the model's words.
+            expect(d.fromModel).toBe(false);
+            const P = phrases(lang, pack, lolaProfile, { callId, turn: 1 }, NOWS[0]);
+            // (Inside a booking intent the Keep_Alive_Line is the prefix and the flow's template question follows.)
+            const head = kind === "other" ? P.notUnderstood() : kind === "question" ? P.unknownKeepAlive() : P.unknownKeepAlive(true);
+            expect(d.reply.startsWith(head.text)).toBe(true);
+          }
         },
       ),
       { numRuns: 300 },

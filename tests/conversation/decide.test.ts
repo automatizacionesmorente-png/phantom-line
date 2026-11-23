@@ -196,19 +196,22 @@ describe("decideTurn: language, questions, limits", () => {
     expect(d2.reply).toBe("Sorry, we don't do manicure. We have haircut, colour and beard, would any of those work?");
   });
 
-  it("a question outside the profile gets the model's line and no effects", () => {
+  it("a question outside the profile gets the template Keep_Alive_Line, never the model's words, and an Owner_Note (backlog 23)", () => {
     const d = decide(state(), {
       intent: "question",
       outOfProfile: true,
-      reply: "Eso no lo sé, pero se lo dejo apuntado a Lola para que te llame.",
+      reply: "No tenemos aparcamiento propio.",
     });
-    expect(d.reply).toBe("Eso no lo sé, pero se lo dejo apuntado a Lola para que te llame.");
+    expect(d.reply).toBe("Eso no lo sé, pero se lo apunto a Lola. ¿Te ayudo con una cita, horarios o precios?");
+    expect(d.fromModel).toBe(false);
+    expect(d.state.notes?.map((n) => n.kind)).toEqual(["unanswered"]);
     expect(d.effects).toEqual([]);
     expect(d.complete).toBe(false);
   });
 
   it("the 20th Turn ends the Call with a message for the owner", () => {
-    const d19 = decide(state({ turnCount: 18 }), {});
+    const known = { name: "Ana", phone: "+34612345678" } as const;
+    const d19 = decide(state({ turnCount: 18, fields: known }), {});
     expect(d19.complete).toBe(false);
     const d20 = decide(d19.state, {});
     expect(d20.state.turnCount).toBe(20);
@@ -219,10 +222,16 @@ describe("decideTurn: language, questions, limits", () => {
   });
 
   it("a caller who wants to end gets what happens next, and a Message", () => {
-    const d = decide(state(), { intent: "question", callerWantsToEnd: true });
+    const d = decide(state({ fields: { name: "Ana", phone: "+34612345678" } }), { intent: "question", callerWantsToEnd: true });
     expect(d.reply).toBe("¡Gracias por llamar! Lola verá tu mensaje y te dice algo. ¡Hasta luego!");
     expect(d.outcome).toBe("answered");
     expect(d.effects.map((e) => e.type)).toEqual(["saveMessage"]);
+  });
+
+  it("a Call with nothing actionable ends without a Message (backlog 25)", () => {
+    const d = decide(state(), { intent: "question", callerWantsToEnd: true });
+    expect(d.complete).toBe(true);
+    expect(d.effects).toEqual([]);
   });
 });
 

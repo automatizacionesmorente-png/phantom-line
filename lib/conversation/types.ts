@@ -120,6 +120,8 @@ export interface CallState {
   topics?: AnsweredTopic[];
   /** Not-understood Turns in a row (10.3). */
   misses?: number;
+  /** The Caller was asked for a name and phone because an Owner_Note promised a call back (backlog 20). */
+  callbackAsked?: boolean;
   /**
    * Turns whose facts came from the Code_Brain (1.6). Counted by `decideTurn`. The design's
    * `modelTurns` is not stored: only a valid model Turn writes `note.reason`, so an empty

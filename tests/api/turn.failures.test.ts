@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { Temporal } from "temporal-polyfill";
 import { bookingWrite, callWrite, insertShop } from "../db/helpers";
 import { lolaProfile } from "../fixtures/lola";
@@ -65,7 +65,7 @@ function thenFails(failing: ModelClient): ModelClient & { count: number } {
 async function expectFallbackMessage(callId: string) {
   const ms = await allMessages();
   expect(ms).toHaveLength(1);
-  expect(ms[0]).toMatchObject({ callId, outcome: "fallback", modelFailed: true, callerName: "Ana", reason: "Quiere un corte" });
+  expect(ms[0]).toMatchObject({ callId, outcome: "fallback", modelFailed: true, callerName: "Ana", reason: "Quiere corte" });
   expect(ms[0].agreed).toBeTruthy();
   expect(ms[0].suggestedReply).toContain("Ana");
   expect(await allBookings()).toHaveLength(0);
@@ -113,6 +113,11 @@ async function brainReply(callId: string, utterance: string): Promise<string> {
 
 /** The Call went on after the failure, then ended by goodbye: one Message, model_failed, the caller's name, no fallback. */
 async function expectGoodbyeMessage(c: Caller) {
+  // The off-profile questions left Owner_Notes that promise a call back, and the Caller gave no phone:
+  // the first goodbye asks for it (backlog 20); the second one ends the Call.
+  const ask = await c.say("Adiós, gracias");
+  expect(ask.body.complete).toBe(false);
+  expect(await allMessages()).toHaveLength(0);
   const bye = await c.say("Adiós, gracias");
   expect(bye.body.complete).toBe(true);
   expect(bye.body.outcome).not.toBe("fallback");
@@ -249,7 +254,7 @@ describe("hang-up", () => {
 
     const ms = await allMessages();
     expect(ms).toHaveLength(1);
-    expect(ms[0]).toMatchObject({ outcome: "abandoned", callerName: "Ana", reason: "Quiere un corte", modelFailed: false });
+    expect(ms[0]).toMatchObject({ outcome: "abandoned", callerName: "Ana", reason: "Quiere corte", modelFailed: false });
     expect(await allBookings()).toHaveLength(0);
     expect((await callRow(c.callId)).status).toBe("abandoned");
 
@@ -260,18 +265,25 @@ describe("hang-up", () => {
     expect(await allMessages()).toHaveLength(1);
   });
 
-  it("a hang-up that never arrives: the after() sweep closes the idle Call with its Message", async () => {
-    const stale = callWrite(SHOP);
-    await t.repo.commit([stale]);
-    await t.handle.db.update(calls).set({ updatedAt: new Date(Date.now() - 11 * 60_000) }).where(eq(calls.id, stale.call.id));
+  it("a hang-up that never arrives: the after() sweep closes the idle Call; a Message only if the Call had something actionable", async () => {
+    const empty = callWrite(SHOP);
+    const named = callWrite(SHOP);
+    named.call.state = { ...named.call.state, fields: { name: "Ana" } };
+    await t.repo.commit([empty, named]);
+    await t.handle.db
+      .update(calls)
+      .set({ updatedAt: new Date(Date.now() - 11 * 60_000) })
+      .where(inArray(calls.id, [empty.call.id, named.call.id]));
     // The sweep compares with the deps' clock; use the real one here, as production does.
     const deps = { ...makeDeps(t, createScriptedModel([])), clock: () => Temporal.Now.instant() };
     const { POST, settle } = makePost(deps);
     await new Caller(POST).start();
     await settle();
-    expect((await callRow(stale.call.id)).status).toBe("abandoned");
+    expect((await callRow(empty.call.id)).status).toBe("abandoned");
+    expect((await callRow(named.call.id)).status).toBe("abandoned");
+    // The empty Call writes no card on the tape (backlog 25); the one with a name does.
     const ms = await allMessages();
-    expect(ms.map((m) => [m.callId, m.outcome])).toEqual([[stale.call.id, "abandoned"]]);
+    expect(ms.map((m) => [m.callId, m.outcome])).toEqual([[named.call.id, "abandoned"]]);
   });
 });
 

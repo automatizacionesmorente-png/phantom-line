@@ -75,6 +75,10 @@ export interface PhraseSet {
   bookingNotFound(): Said;
   dontKnow(): Said;
   goodbye(): Said;
+  /** The goodbye of a Call that left an Owner_Note but no phone: the Owner cannot call back (20). */
+  goodbyeNoPhone(): Said;
+  /** After the Caller gave the contact an Owner_Note needed. */
+  contactThanks(): Said;
   maxTurns(): Said;
   fallbackEnd(): Said;
   fallbackRetry(): Said;
@@ -128,6 +132,8 @@ export interface PhraseSet {
     /** The code-built reason's parts (front-desk-brain 10.7). */
     reasonWants(names: readonly string[]): string;
     reasonAsked(topics: readonly AnsweredTopic[]): string;
+    /** The Caller wants to change or cancel an existing Booking. */
+    reasonChange(kind: "reschedule" | "cancel"): string;
     note(note: OwnerNote): string;
   };
 }
@@ -538,6 +544,9 @@ function spanish(k: Kit): PhraseSet {
     bookingNotFound: () => said(`Vaya, no encuentro nada con esos datos. ¿Quieres que le deje un mensaje a ${owner}?`),
     dontKnow: () => said(`Eso no lo sé, pero se lo dejo apuntado a ${owner} y te llama.`),
     goodbye: () => said(`¡Gracias por llamar! ${owner} verá tu mensaje y te dice algo. ¡Hasta luego!`),
+    goodbyeNoPhone: () =>
+      said(`Sin un teléfono, ${owner} no podrá llamarte, pero verá tu mensaje. ¡Gracias por llamar, hasta luego!`),
+    contactThanks: () => said("Apuntado, gracias. ¿Te ayudo con algo más?"),
     maxTurns: () => said(`Se lo dejo todo apuntado a ${owner} y te llama. ¡Gracias por llamar!`),
     fallbackEnd: () =>
       said(`Perdona, ahora mismo no puedo atenderte bien. Le dejo tu mensaje a ${owner} y te llama, ¿vale?`),
@@ -691,6 +700,7 @@ function spanish(k: Kit): PhraseSet {
       replyCallBack: (name) =>
         `${hello(name)}, soy ${owner}, de ${shop.name}. He visto tu mensaje, ¿en qué te puedo ayudar?`,
       reasonWants: (names) => `Quiere ${joinOr(names, "es")}`,
+      reasonChange: (kind) => (kind === "cancel" ? "Quiere anular su cita" : "Quiere cambiar su cita"),
       reasonAsked: (topics) => `Preguntó por ${joinAnd(topics.map((t) => topicLabel(shop, t, "es")), "es")}`,
       note: (n) => {
         switch (n.kind) {
@@ -835,6 +845,9 @@ function english(k: Kit): PhraseSet {
       said(`Sorry, I can't find anything with those details. Would you like me to leave a message for ${owner}?`),
     dontKnow: () => said(`I don't know that, but I'll leave a note for ${owner} and you'll get a call back.`),
     goodbye: () => said(`Thanks for calling! ${owner} will see your message and get back to you. Bye for now!`),
+    goodbyeNoPhone: () =>
+      said(`Without a phone number, ${owner} won't be able to call you back, but will see your message. Thanks for calling, bye for now!`),
+    contactThanks: () => said("Got it, thank you. Can I help with anything else?"),
     maxTurns: () => said(`I'll leave everything for ${owner}, who will call you. Thanks for calling!`),
     fallbackEnd: () =>
       said(`Sorry, I can't help you properly right now. I'll leave your message for ${owner} and you'll get a call back, okay?`),
@@ -979,6 +992,7 @@ function english(k: Kit): PhraseSet {
       replyCancelled: (name) => `${hello(name)}, your ${booking} is cancelled. Call us whenever you like. ${owner}`,
       replyCallBack: (name) => `${hello(name)}, this is ${owner} from ${shop.name}. I got your message, how can I help?`,
       reasonWants: (names) => `Wants ${joinOr(names, "en")}`,
+      reasonChange: (kind) => (kind === "cancel" ? "Wants to cancel their appointment" : "Wants to change their appointment"),
       reasonAsked: (topics) => `Asked about ${joinAnd(topics.map((t) => topicLabel(shop, t, "en")), "en")}`,
       note: (n) => {
         switch (n.kind) {

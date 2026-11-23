@@ -24,8 +24,10 @@ afterAll(async () => {
   await t.close();
 });
 
+// Intent "order": a model line that still reaches the caller. A `question` with no Profile_Topic is
+// answered by the Keep_Alive_Line and an `other` with nothing placed by the reprompt (backlog 23, 24).
 const question = (reply: string, language: "es" | "en" = "es") =>
-  modelTurn({ intent: "question", language, reply, reason: "Pregunta" });
+  modelTurn({ intent: "order", language, reply, reason: "Pregunta" });
 
 /**
  * Questions with no Profile_Topic, service, day or time in them. Since front-desk-brain the

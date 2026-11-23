@@ -1,6 +1,6 @@
 /**
  * Current_Reply (owner-machine 4.6): the suggested reply as it should be sent now.
- * The stored reply, unless the Owner changed the Booking after the Message; then the
+ * The stored reply, unless the Booking was cancelled by anyone, or the Owner moved it after the Message; then the
  * same `phrases(callLang).owner` template with the Booking as it is now, so the Owner
  * never copies a reply with a stale time. It stays in the Call's language, because it
  * goes to the customer. Pure.
@@ -29,7 +29,9 @@ export function currentReply(
   if (booking === null) return m.suggestedReply;
   const r = phrases(callLang, pack, shop).owner;
   if (booking.status === "cancelled") {
-    return booking.cancelledBy === "owner" ? r.replyCancelled(m.callerName) : m.suggestedReply;
+    // Whoever cancelled it (the Owner, or the Caller by cancelling or moving it), the stored reply
+    // names a time that no longer holds; a Booking moved by the Caller has its own newer Message.
+    return r.replyCancelled(m.callerName);
   }
   if (booking.ownerMovedAt !== null && Temporal.Instant.compare(booking.ownerMovedAt, m.createdAt) > 0) {
     return r.replyRescheduled(m.callerName, booking.serviceId, booking.start);

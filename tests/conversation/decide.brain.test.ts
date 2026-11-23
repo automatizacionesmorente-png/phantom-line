@@ -290,7 +290,13 @@ describe("ending the Call", () => {
   it("a goodbye after answered questions is 'answered'; with a note it is 'message' (10.6)", () => {
     const answered = call(["¿aceptáis bizum?", "gracias, adiós"]).at(-1)!.decision;
     expect([answered.complete, answered.outcome]).toEqual([true, "answered"]);
-    const noted = call(["¿y qué tal es Lola cortando?", "gracias, adiós"]).at(-1)!.decision;
+    // Answered with nothing the Owner can act on: no Message (backlog 25).
+    expect(answered.effects.map((e) => e.type)).not.toContain("saveMessage");
+    // The note promises a call back, so the first goodbye asks for the contact; the second ends (backlog 20).
+    const turns = call(["¿y qué tal es Lola cortando?", "gracias, adiós", "gracias, adiós"]);
+    expect(turns.at(-2)!.decision.complete).toBe(false);
+    const noted = turns.at(-1)!.decision;
     expect([noted.complete, noted.outcome]).toEqual([true, "message"]);
+    expect(noted.reply).toBe(phrases("es", pack, lolaSeedProfile).goodbyeNoPhone().text);
   });
 });

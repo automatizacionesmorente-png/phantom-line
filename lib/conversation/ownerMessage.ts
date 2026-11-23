@@ -14,9 +14,9 @@ export interface MessageBooking {
 }
 
 /**
- * The Message for the tape, built by code from server state. Owner-facing
- * texts are in the shop's first language; the suggested reply is in the
- * caller's language.
+ * The Message for the tape, built by code from server state, never from the
+ * model's words. Owner-facing texts (reason included) are in the shop's first
+ * language; the suggested reply is in the caller's language.
  *
  * It is a draft: it carries the model's Suggested_Urgency and the facts the
  * Urgency_Rules need, never a final urgency. Only `messageWrite` turns it into
@@ -33,7 +33,7 @@ export function buildOwnerMessage(
   const o = phrases(ownerLang, pack, shop).owner;
   const r = phrases(state.language, pack, shop).owner;
   const name = state.fields.name ?? null;
-  const reason = reasonOf(state, shop, pack, o.defaultReason());
+  const reason = reasonOf(state, shop, pack, booking);
   // 10.6: a Call that leaves the Owner something to do is a message unless it booked, moved or cancelled.
   const outcome: Outcome = asked === "answered" && (state.notes?.length ?? 0) > 0 ? "message" : asked;
 
@@ -76,26 +76,36 @@ const clamp = (text: string) =>
   text.length <= MAX_REASON_CHARS ? text : `${text.slice(0, MAX_REASON_CHARS - 1).trimEnd()}…`;
 
 /**
- * The Message's reason. With brain Turns it is built by code, in the Call's language (10.7): the
- * services asked for and the Profile_Topics answered. Otherwise it is the model's. Either way the
- * Owner_Notes follow the main reason (10.6), and the whole is at most 160 characters.
+ * The Message's reason, always built by code from server state and in the owner's language (the
+ * shop's first one), because the Owner reads it: what the Caller wanted (the booked service, or
+ * the services asked for), the change they asked for, the Profile_Topics answered, then the
+ * Owner_Notes (10.6), at most 160 characters. It never uses the model's note, so a goodbye or a
+ * language mix cannot reach the tape, and it names no relative day.
  */
-function reasonOf(state: CallState, shop: ShopProfile, pack: SectorPack, fallback: string): string {
-  const r = phrases(state.language, pack, shop).owner;
-  const notes = (state.notes ?? []).map((n) => r.note(n));
-  let main = state.note.reason.trim();
-  if ((state.brainTurns ?? 0) > 0) {
-    const id = state.fields.serviceId;
-    const names = id
-      ? [serviceView(id, shop, pack).name[state.language]]
-      : (state.fields.serviceChoice?.candidates ?? []).map((c) => serviceView(c, shop, pack).name[state.language]);
-    const parts: string[] = [];
-    if (names.length > 0) parts.push(r.reasonWants(names));
-    if ((state.topics?.length ?? 0) > 0) parts.push(r.reasonAsked(state.topics!));
-    main = parts.join(". ");
-  }
-  const all = [main, ...notes].filter((x) => x !== "").join(". ");
-  return all === "" ? fallback : clamp(all);
+function reasonOf(state: CallState, shop: ShopProfile, pack: SectorPack, booking: MessageBooking | undefined): string {
+  const ownerLang = shop.languages[0];
+  const o = phrases(ownerLang, pack, shop).owner;
+  const name = (id: string) => serviceView(id, shop, pack).name[ownerLang];
+  const id = booking?.serviceId ?? state.fields.serviceId;
+  const names = id ? [name(id)] : (state.fields.serviceChoice?.candidates ?? []).map(name);
+  const parts: string[] = [];
+  if (state.intent === "reschedule" || state.intent === "cancel") parts.push(o.reasonChange(state.intent));
+  else if (names.length > 0) parts.push(o.reasonWants(names));
+  if ((state.topics?.length ?? 0) > 0) parts.push(o.reasonAsked(state.topics!));
+  const all = [...parts, ...(state.notes ?? []).map((n) => o.note(n))].filter((x) => x !== "").join(". ");
+  return all === "" ? o.defaultReason() : clamp(all);
+}
+
+/**
+ * Whether a Call leaves the Owner anything to act on: a booking change, a model failure, or a
+ * name, phone, service, requested time or Owner_Note. A Call with none of these writes no Message,
+ * so the tape holds no empty cards.
+ */
+export function isActionable(state: CallState, outcome: Outcome): boolean {
+  if (outcome === "booked" || outcome === "rescheduled" || outcome === "cancelled" || outcome === "fallback") return true;
+  if (state.modelFailed) return true;
+  const f = state.fields;
+  return Boolean(f.name || f.phone || f.serviceId || f.serviceChoice || f.requested) || (state.notes?.length ?? 0) > 0;
 }
 
 /** The shop-local day the caller asked for, if any (5.4). `mergeFields` only stores valid dates. */

@@ -1,6 +1,6 @@
 import { Temporal } from "temporal-polyfill";
 import type { ExistingBooking } from "@/lib/booking";
-import { buildOwnerMessage } from "@/lib/conversation/ownerMessage";
+import { buildOwnerMessage, isActionable } from "@/lib/conversation/ownerMessage";
 import { messageWrite } from "@/lib/conversation/messageWrite";
 import type { ShopProfile } from "@/lib/conversation/shopProfile";
 import type { CallerBooking, NewBooking, Repository, StoredCall, Write } from "@/lib/conversation/types";
@@ -208,10 +208,10 @@ export function memoryRepository(opts: {
       for (const call of [...store.calls.values()]) {
         if (call.shopId !== shopId || call.status !== "open" || Temporal.Instant.compare(call.updatedAt, idleBefore) >= 0) continue;
         const state = { ...call.state, stage: "done" as const, pending: undefined };
-        const message = buildOwnerMessage(state, "abandoned", shop, pack);
+        const message = isActionable(state, "abandoned") ? buildOwnerMessage(state, "abandoned", shop, pack) : null;
         await repo.commit([
           { type: "updateCall", callId: call.id, state, transcript: call.transcript, turnCount: call.turnCount, status: "abandoned" },
-          messageWrite(message, { call, shop, pack, transcript: call.transcript, now }),
+          ...(message ? [messageWrite(message, { call, shop, pack, transcript: call.transcript, now })] : []),
         ]);
         closed++;
       }

@@ -154,7 +154,8 @@ describe("the owner's real call of 2026-11-13, replayed", () => {
     expect(rows[0].startsAt.toISOString()).toBe("2026-11-14T16:00:00.000Z");
     expect(rows[0].endsAt.toISOString()).toBe("2026-11-14T17:30:00.000Z");
     const [m] = await t.handle.db.select().from(messages);
-    expect(m.reason).toBe("Quiere pintarse el pelo de rosa");
+    // Built by code in the owner's language from the booked service, not the model's note (backlog 21).
+    expect(m.reason).toBe("Quiere tinte");
     expect(m.agreed).toContain("tinte");
     expect(m.suggestedReply).not.toMatch(/rosa/i); // nothing promises the result
     await settle();

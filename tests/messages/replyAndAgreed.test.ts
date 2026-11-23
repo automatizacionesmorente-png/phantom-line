@@ -64,10 +64,16 @@ describe("currentReply (owner-machine 4.6)", () => {
     expect(reply).not.toBe(m.suggestedReply);
   });
 
-  it("is unchanged when the caller changed the Booking, or the owner's move came before the Message", () => {
+  it("after a cancel by the caller (or a move by the caller, which cancels this Booking), it says the Booking was cancelled (backlog 19)", () => {
     const m = stored("es");
     const byCaller = replyBooking({ status: "cancelled", cancelledBy: "caller" });
-    expect(currentReply(m, byCaller, "es", lolaProfile, pack)).toBe(m.suggestedReply);
+    const reply = currentReply(m, byCaller, "es", lolaProfile, pack);
+    expect(reply).toBe("Hola Ana, te confirmo que he anulado tu cita. Cuando quieras, vuelve a llamar. Lola");
+    expect(reply).not.toContain("miércoles");
+  });
+
+  it("is unchanged when the owner's move came before the Message", () => {
+    const m = stored("es");
     const earlierMove = replyBooking({ start: moved, ownerMovedAt: at("2026-11-10T11:59:00Z") });
     expect(currentReply(m, earlierMove, "es", lolaProfile, pack)).toBe(m.suggestedReply);
     const sameInstant = replyBooking({ start: moved, ownerMovedAt: createdAt });

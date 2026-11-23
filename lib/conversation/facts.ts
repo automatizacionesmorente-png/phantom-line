@@ -184,6 +184,22 @@ export function factsFromModel(
   }
   const topic = reading?.topic ?? null;
   const unanswered = turn.outOfProfile && topic === null;
+  // A question with no Profile_Topic is not answered from the profile either, whatever the model said.
+  const unansweredQuestion = (unanswered || (turn.intent === "question" && topic === null)) && opts.utterance;
+  // The model placed nothing: no intent, field, question, language switch or goodbye, and the Reading found nothing either.
+  const notUnderstood =
+    turn.intent === "other" &&
+    !turn.outOfProfile &&
+    !turn.callerWantsToEnd &&
+    !turn.callerConfirmed &&
+    turn.wantsLanguage === null &&
+    turn.name === null &&
+    turn.phone === null &&
+    turn.date === null &&
+    turn.time === null &&
+    turn.service === null &&
+    services.kind === "none" &&
+    (reading === null || placedNothing(reading));
   return {
     source: "model",
     modelReply: turn.reply,
@@ -204,9 +220,9 @@ export function factsFromModel(
     topic,
     ownerRequest: reading?.ownerRequest ?? false,
     sensitive: reading?.sensitive ?? null,
-    notUnderstood: false,
+    notUnderstood,
     smallTalk: null,
-    unansweredQuestion: unanswered && opts.utterance ? noteQuestion(opts.utterance) : null,
+    unansweredQuestion: unansweredQuestion ? noteQuestion(opts.utterance as string) : null,
     reason: turn.reason,
     urgency: turn.urgency,
   };

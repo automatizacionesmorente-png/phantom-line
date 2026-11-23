@@ -11,7 +11,7 @@ import { consoleFallbackLogger, type FallbackLogEvent } from "./fallbackLog";
 import { factsFromModel, factsFromReading, type TurnFacts } from "./facts";
 import { readUtterance } from "./brain/read";
 import { mergeFields } from "./fields";
-import { buildOwnerMessage } from "./ownerMessage";
+import { buildOwnerMessage, isActionable } from "./ownerMessage";
 import { messageWrite } from "./messageWrite";
 import type { ShopProfile } from "./shopProfile";
 import {
@@ -547,10 +547,11 @@ async function giveUpAfterConflicts(
     state.language,
   );
   const final: CallState = { ...state, stage: "done", pending: undefined, turnCount: state.turnCount + 1 };
-  const message = buildOwnerMessage(final, "message", shop, pack);
   const transcript = [...call.transcript, { caller: input.utterance, receptionist: reply.text }];
   await deps.repo.commit([
-    messageWrite(message, { call, shop, pack, transcript, now: deps.clock() }),
+    ...(isActionable(final, "message")
+      ? [messageWrite(buildOwnerMessage(final, "message", shop, pack), { call, shop, pack, transcript, now: deps.clock() })]
+      : []),
     {
       type: "updateCall",
       callId: call.id,
@@ -576,9 +577,18 @@ async function hangup(
 
   // Requirement 6.6: the fields collected so far. No Booking is ever created on hang-up.
   const final: CallState = { ...call.state, stage: "done", pending: undefined };
-  const message = buildOwnerMessage(final, "abandoned", shop, pack);
   await deps.repo.commit([
-    messageWrite(message, { call, shop, pack, transcript: call.transcript, now: deps.clock() }),
+    ...(isActionable(final, "abandoned")
+      ? [
+          messageWrite(buildOwnerMessage(final, "abandoned", shop, pack), {
+            call,
+            shop,
+            pack,
+            transcript: call.transcript,
+            now: deps.clock(),
+          }),
+        ]
+      : []),
     {
       type: "updateCall",
       callId: call.id,

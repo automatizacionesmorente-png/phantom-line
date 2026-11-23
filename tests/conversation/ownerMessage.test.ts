@@ -36,7 +36,7 @@ describe("buildOwnerMessage", () => {
     const booked = buildOwnerMessage(full, "booked", lolaProfile, pack, booking);
     expect(booked.agreed).toBe("Cita de corte el miércoles 11 a las 19:30 (Sillón 1)");
     expect(booked.suggestedReply).toBe("Hola Ana, te confirmo tu cita de corte el miércoles 11 a las 19:30. ¡Hasta pronto! Lola");
-    expect(buildOwnerMessage(full, "answered", lolaProfile, pack).agreed).toBe("Nada acordado; Quiere cortarse el pelo");
+    expect(buildOwnerMessage(full, "answered", lolaProfile, pack).agreed).toBe("Nada acordado; Quiere corte");
     expect(buildOwnerMessage(full, "abandoned", lolaProfile, pack).agreed).toBe("Nada acordado; colgó antes de terminar");
     expect(buildOwnerMessage(full, "cancelled", lolaProfile, pack, booking).agreed).toContain("anulada");
     expect(buildOwnerMessage(full, "rescheduled", lolaProfile, pack, booking).agreed).toContain("ahora el miércoles 11 a las 19:30");

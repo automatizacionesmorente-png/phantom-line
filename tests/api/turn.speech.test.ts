@@ -64,7 +64,8 @@ describe("/api/turn: the speech hint", () => {
   it("the read-back (name and phone) is signed as not cacheable, and so is the model's own answer", async () => {
     const heard = { intent: "booking" as const, reason: "Quiere un corte", service: "cortarme el pelo", date: "2026-11-11", time: "19:30" };
     const model = createScriptedModel([
-      modelTurn({ reply: "Un corte cuesta quince euros.", intent: "question", service: null, reason: "Pregunta el precio" }),
+      // "order": a model line that still reaches the caller (a `question` gets the Keep_Alive_Line, backlog 23).
+      modelTurn({ reply: "Un corte cuesta quince euros.", intent: "order", service: null, reason: "Pregunta el precio" }),
       modelTurn({ ...heard, reply: "Vale." }),
       modelTurn({ ...heard, reply: "Vale.", name: "Ana" }),
       modelTurn({ ...heard, reply: "Vale.", name: "Ana", phone: "612 345 678" }),

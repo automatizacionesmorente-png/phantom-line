@@ -106,6 +106,8 @@ describe("a Caller line 'es urgente' with a model that says low stores urgent (b
     const c = new Caller(makePost(makeDeps(t, throws429)).POST);
     await c.start();
     expect((await c.say(URGENT_CUT)).body.complete).toBe(false);
+    // "es urgente" leaves an Owner_Note, so the first goodbye asks for the contact (backlog 20).
+    expect((await c.say("Adiós, gracias")).body.complete).toBe(false);
     const bye = await c.say("Adiós, gracias");
     expect(bye.body.complete).toBe(true);
     const m = await messageOf(c.callId);
@@ -146,7 +148,7 @@ describe("a Caller line 'es urgente' with a model that says low stores urgent (b
 describe("only the Caller's words count", () => {
   it("a Receptionist line with 'hoy' does not raise: the model's low stays low", async () => {
     // No service yet, so the model's own line is said as it is (decideTurn, booking flow).
-    const model = createScriptedModel([modelTurn({ reply: "Claro, ¿qué te quieres hacer hoy?", reason: "Quiere una cita", urgency: "low" })]);
+    const model = createScriptedModel([modelTurn({ reply: "Claro, ¿qué te quieres hacer hoy?", name: "Ana", reason: "Quiere una cita", urgency: "low" })]);
     const c = new Caller(makePost(makeDeps(t, model)).POST);
     await c.start();
     await c.say("Quería pedir cita");

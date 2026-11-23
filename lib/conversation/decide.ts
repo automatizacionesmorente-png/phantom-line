@@ -11,7 +11,7 @@ import { factsFromModel, type TurnFacts } from "./facts";
 import { mergeFields } from "./fields";
 import { matchesCaller } from "./matchCaller";
 import { looksLikeName } from "./names";
-import { buildOwnerMessage, type MessageBooking } from "./ownerMessage";
+import { buildOwnerMessage, isActionable, type MessageBooking } from "./ownerMessage";
 import { toShopRules, type ShopProfile } from "./shopProfile";
 import {
   MAX_OWNER_NOTES,
@@ -180,7 +180,8 @@ export function decideTurn(input: DecideInput): Decision {
   const end = (outcome: Outcome, line: Said, effects: Effect[] = [], booking?: MessageBooking): Decision => {
     s.stage = "done";
     s.pending = undefined;
-    const message = buildOwnerMessage(s, outcome, shop, pack, booking);
+    // A Call with nothing the Owner can act on writes no Message (no empty cards on the tape).
+    const message = isActionable(s, outcome) ? buildOwnerMessage(s, outcome, shop, pack, booking) : null;
     return {
       state: s,
       reply: line.text,
@@ -188,7 +189,7 @@ export function decideTurn(input: DecideInput): Decision {
       fromModel: false,
       complete: true,
       outcome,
-      effects: [...effects, { type: "saveMessage", message }],
+      effects: message ? [...effects, { type: "saveMessage", message }] : effects,
     };
   };
   const clearOffer = () => {
@@ -246,9 +247,24 @@ export function decideTurn(input: DecideInput): Decision {
   if (facts.wantsToEnd) {
     const asked = facts.intent === "question" || s.intent === "question" || (s.topics?.length ?? 0) > 0;
     const answered = asked && !facts.outOfProfile && (s.notes?.length ?? 0) === 0;
+    // An Owner_Note promises a call back, so ask for the contact before the goodbye, once; if it is
+    // still missing, say plainly that the Owner cannot call back.
+    if (!s.fields.phone && (s.notes?.length ?? 0) > 0) {
+      if (!prev.callbackAsked) {
+        s.callbackAsked = true;
+        return say(s.fields.name ? P.askPhone() : P.askName());
+      }
+      return end("message", P.goodbyeNoPhone());
+    }
     return end(answered ? "answered" : "message", P.goodbye());
   }
   if (s.turnCount >= maxTurns) return end("message", P.maxTurns());
+
+  // 2b. The contact an Owner_Note needed arrives with no flow open: take it, ask for what is missing.
+  if (prev.callbackAsked && !FLOW_INTENTS.includes(prev.intent) && (facts.name !== null || facts.phone !== null)) {
+    if (!s.fields.phone) return say(s.fields.name ? P.askPhone() : P.askName());
+    return say(P.contactThanks());
+  }
 
   // 3. Intent: a question in the middle of a booking, reschedule or cancel keeps the flow.
   if (FLOW_INTENTS.includes(facts.intent)) {
@@ -304,22 +320,23 @@ export function decideTurn(input: DecideInput): Decision {
     return noted(answer, answer);
   }
   if (facts.intent === "question" || facts.outOfProfile) {
-    if (!brain) return sayModelOr(P.unknownKeepAlive());
+    // On both paths the Keep_Alive_Line speaks, never the model's words: a fact the profile lacks is not the model's to state.
     addNote({ kind: "unanswered", question: facts.unansweredQuestion ?? "" });
     return noted(P.unknownKeepAlive(true), P.unknownKeepAlive());
   }
 
-  // 10. (brain) Nothing placed: the miss counter; small talk with nothing open.
-  if (brain) {
-    if (facts.notUnderstood) {
-      s.misses = (prev.misses ?? 0) + 1;
-      if (s.misses >= MAX_MISSES) {
-        s.misses = 0;
-        addNote({ kind: "not_understood" });
-        return say(P.notUnderstoodAgain());
-      }
-      if (!flowOpen) return say(P.notUnderstood());
+  // 10. Nothing placed (either path): the miss counter, with a templated reprompt, never the model's words.
+  if (facts.notUnderstood) {
+    s.misses = (prev.misses ?? 0) + 1;
+    if (s.misses >= MAX_MISSES) {
+      s.misses = 0;
+      addNote({ kind: "not_understood" });
+      return say(P.notUnderstoodAgain());
     }
+    if (!flowOpen) return say(P.notUnderstood());
+  }
+  // (brain) Small talk with nothing open.
+  if (brain) {
     if (!FLOW_INTENTS.includes(s.intent)) {
       if (facts.smallTalk) return say(P.smallTalk(facts.smallTalk));
       if (facts.no) return say(P.smallTalk("no"));
@@ -352,7 +369,10 @@ export function decideTurn(input: DecideInput): Decision {
 
   /** A prefix and the flow's reply, in at most 3 sentences: the flow's closing question alone if needed. */
   function prepend(prefix: Said, d: Decision): Decision {
-    if (d.fromModel || d.complete) return d;
+    if (d.complete) return d;
+    // The model's own line would drop the note the prefix speaks (and may state facts the profile lacks):
+    // the flow's next question, from the template, follows the prefix instead.
+    if (d.fromModel) return say(join(prefix, nextQuestion()));
     const line: Said = { text: d.reply, cacheable: d.cacheable };
     if (sentenceCount(prefix.text) + sentenceCount(d.reply) <= MAX_TEMPLATE_SENTENCES) return say(join(prefix, line));
     if (shortLine) return say(join(prefix, shortLine));

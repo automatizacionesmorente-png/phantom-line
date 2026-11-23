@@ -3,7 +3,7 @@ import type { BatchItem } from "drizzle-orm/batch";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import { Temporal } from "temporal-polyfill";
 import type { ExistingBooking } from "@/lib/booking";
-import { buildOwnerMessage } from "@/lib/conversation/ownerMessage";
+import { buildOwnerMessage, isActionable } from "@/lib/conversation/ownerMessage";
 import { messageWrite } from "@/lib/conversation/messageWrite";
 import { ShopProfileSchema, type ShopProfile } from "@/lib/conversation/shopProfile";
 import type { CallerBooking, Channel, Lang, Repository, StoredCall, Write } from "@/lib/conversation/types";
@@ -257,14 +257,14 @@ export function createRepository(handle: DbHandle): Repository {
       for (const row of stale) {
         const call = toStoredCall(row);
         const state = { ...call.state, stage: "done" as const, pending: undefined };
-        const message = buildOwnerMessage(state, "abandoned", shop, pack);
+        const message = isActionable(state, "abandoned") ? buildOwnerMessage(state, "abandoned", shop, pack) : null;
         // Only a Call that is still open is closed; a Message that already exists is kept.
         await handle.atomic((q) => [
           q
             .update(calls)
             .set({ status: "abandoned", state, updatedAt: sql`now()`, endedAt: sql`now()` })
             .where(and(eq(calls.id, call.id), eq(calls.status, "open"))),
-          ...buildWrites(q, [messageWrite(message, { call, shop, pack, transcript: call.transcript, now })]),
+          ...buildWrites(q, message ? [messageWrite(message, { call, shop, pack, transcript: call.transcript, now })] : []),
         ]);
         closed++;
       }
