@@ -5,7 +5,7 @@
 Category: **Resurrection** (also entered for Best Student and Best Startup).
 
 - Live demo: https://phantom-line-nine.vercel.app (Peluquería Lola, a demo salon in Madrid)
-- Code, specs and steering: REPO_URL (`.kiro/` at the root)
+- Code, specs and steering: https://github.com/automatizacionesmorente-png/phantom-line (`.kiro/` at the root)
 - Startup page: https://phantom-line-nine.vercel.app/startup
 
 ## Testing instructions for judges

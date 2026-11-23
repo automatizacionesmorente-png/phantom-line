@@ -31,10 +31,10 @@ Status: DONE (evidence in the repo or checked), OPEN (can be done in the repo), 
 | Item | Status | Evidence / what is left |
 |---|---|---|
 | README for judges | DONE | `README.md` |
-| Devpost write-up | DONE (draft) | `docs/submission.md`. OWNER: replace `REPO_URL` with the repo link and paste into the form |
+| Devpost write-up | DONE (draft) | `docs/submission.md`. OWNER: paste into the form (repo link filled in; the repo must be public first) |
 | Kiro usage log | DONE | `NOTAS-KIRO.md` |
 | Impact and startup numbers cited | DONE | `docs/impact.md`, `/startup` |
-| Social post text | OPEN | `docs/social-post.md` still has `DEMO_URL`, `REPO_URL` placeholders and says "5 specs" and "55 property-based tests"; update before posting and say that Claude wrote the work after the credits ran out |
+| Social post text | DONE (draft) | `docs/social-post.md`, links filled in. OWNER: publish it starting with #KiroweenHackathon26 during the submission period |
 
 ## Video
 
