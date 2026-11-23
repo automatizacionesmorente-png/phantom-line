@@ -5,7 +5,6 @@ The owner and the reviewer add items here. They are processed in order after the
 ## Open
 
 1. **Demo reset for judges.** A script `npm run demo:reset` (PGlite-tested, runs against Neon only with `--allow-remote`) that deletes every Call, Message and Booking of the demo shop and loads a curated set: 4 believable Messages (one urgent, one in English, one booking confirmed, one question answered by the Code_Brain), and a week of realistic Bookings across both chairs. Run before recording the video and before submission. The demo retention job keeps the curated set from ever looking empty or dirty.
-2. **Guided path for a judge.** On the landing, the call page and the machine: "Try it in 30 seconds": 1 call and book, 2 open the machine with PIN 198000, 3 watch it blink with your message. A small, dismissible step indicator on each page, in ES and EN, Marfil & Oro.
 3. **English is first class.** Run the same real-call regression set in English end to end (booking, two services, FAQ, price, reschedule, cancel, nonsense, insult), fix every wording that sounds translated, and add the English cases as tests.
 4. **Live blink across tabs.** A booking made on the call page appears on the machine in another tab within the Poll interval, with the red light blinking and the counter rising. Test it with two pages in a DOM or browser test, and record the measured delay.
 5. **Service names never mix languages.** Every place that shows or says a service (read-back, machine, agenda, suggested reply, messages) uses the catalog name in the Call's or the owner's language. No raw ids, no "haircut" in a Spanish screen.
@@ -29,9 +28,6 @@ The owner and the reviewer add items here. They are processed in order after the
 23. **Out-of-profile answers on the model path use the template** (QA 1). When the model sets `outOfProfile` or no Profile_Topic matches, speak the Keep_Alive_Line, never the model's words. Seen live: "No tenemos aparcamiento propio", which is not in the profile. Add a property for it.
 24. **Not understood on the model path** (QA 10). Use a templated reprompt instead of the model's repeated "I am Peluquería Lola's virtual assistant and Lola will see the message", and write no Message for a Call with nothing actionable.
 25. **No empty cards on the tape** (QA 3). A Call with no caller line, or with nothing actionable (no name, phone, service, time or Owner_Note), writes no Message, or one grouped "N llamadas sin mensaje" line. The live demo showed 47 new, 39 of them abandoned.
-26. **Machine and PIN_Gate in the judge's language** (QA 9). Start in the browser language when the shop speaks it (`PinGate.tsx:21` and `MachineScreen.tsx:45` use `languages[0]`), and add the ES / EN switch to the gate.
-27. **Page titles per route** (QA 11). "Llama a Peluquería Lola · Phantom Line" and "Contestador · Phantom Line" through `generateMetadata`. jury-polish 10.3 covers only the description.
-28. **Unknown shop answers 404** (QA 16). `/call/unknown-shop` answers 200 with "Este número no existe".
 29. **NOTAS-KIRO.md tidy** (QA 2). Rows in date order, and the empty Hooks / MCP / Property-based tests / Crew placeholder rows filled with evidence or removed.
 30. **Commit `scripts/measure-latency.ts`** (QA method note). Today it lives only, uncommitted, in the main worktree, and its default `audio: "inline"` body gets 400 from the deployed `/api/turn`. Detect the contract, or make `--legacy` the default until the inline contract is deployed.
 
@@ -39,3 +35,7 @@ The owner and the reviewer add items here. They are processed in order after the
 
 - Suggested reply in the Call's language: assigned to jury-polish (ctx update of 2026-11-16).
 - Machine_Page prerender database error: assigned to front-desk-brain (ctx update of 2026-11-16 16:05).
+- 2. Guided path for a judge ("Try it in 30 seconds" strip, ES/EN, dismissible): a806d7f.
+- 26. Machine and PIN_Gate in the browser language, ES/EN switch on the gate: a806d7f.
+- 27. Page titles per route through `generateMetadata`: a806d7f.
+- 28. Unknown shop answers HTTP 404 (proxy rewrite plus `not-found.tsx`): a806d7f.

@@ -25,9 +25,9 @@ const noPositiveTabindex = () => {
 };
 
 describe("keyboard order", () => {
-  it("PIN_Gate: PIN, then name, then Open the machine", () => {
+  it("PIN_Gate: language switch, PIN, then name, then Open the machine", () => {
     render(<PinGate shop={demoGate} />);
-    expect(tabbables().map(nameOf)).toEqual(["field:PIN de 6 cifras", "field:Tu nombre (opcional)", "Abrir el contestador"]);
+    expect(tabbables().map(nameOf)).toEqual(["Español", "English", "field:PIN de 6 cifras", "field:Tu nombre (opcional)", "Abrir el contestador"]);
     noPositiveTabindex();
   });
 

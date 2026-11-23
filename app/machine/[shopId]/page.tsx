@@ -1,5 +1,25 @@
+import type { Metadata } from "next";
 import { Suspense } from "react";
+import { machineTitle, notFoundTitle } from "@/lib/seo/titles";
+import { loadPublicShop } from "../../call/[shopId]/loadPublicShop";
 import { MachineGate } from "./MachineGate";
+
+/** "Contestador · Phantom Line" in the shop's first language; the lookup is the Call_Page's cached public one. */
+export async function generateMetadata({ params }: PageProps<"/machine/[shopId]">): Promise<Metadata> {
+  try {
+    const { shopId } = await params;
+    let id: string;
+    try {
+      id = decodeURIComponent(shopId);
+    } catch {
+      return { title: notFoundTitle() };
+    }
+    const shop = await loadPublicShop(id);
+    return { title: shop ? machineTitle(shop.languages[0] ?? "es") : notFoundTitle() };
+  } catch {
+    return {};
+  }
+}
 
 /**
  * The Owner's answering machine. The shell is static; `params`, the session cookie and the

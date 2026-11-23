@@ -4,6 +4,9 @@ import { useId, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import type { GateShop } from "@/lib/owner/machineShop";
+import { LanguageSwitch } from "@/components/call/LanguageSwitch";
+import { TryItGuide } from "@/components/guide/TryItGuide";
+import { useBrowserLang } from "../useBrowserLang";
 import { GOLD_GRADIENT, PRIMARY_BUTTON, sessionUrl } from "./controlButton";
 import { DemoNotice } from "./DemoNotice";
 import { MACHINE_COPY } from "./machineCopy";
@@ -18,7 +21,7 @@ const LABEL_MAX = 30;
  * shows the machine without a full reload (1.4).
  */
 export function PinGate({ shop }: { shop: GateShop }) {
-  const lang = shop.languages[0] ?? "es";
+  const [lang, setLang] = useBrowserLang(shop.languages);
   const copy = MACHINE_COPY[lang].gate;
   const router = useRouter();
   const id = useId();
@@ -61,6 +64,7 @@ export function PinGate({ shop }: { shop: GateShop }) {
 
   return (
     <section lang={lang} className="flex w-full max-w-md flex-col items-center gap-5 text-center">
+      {shop.demo && <TryItGuide current={2} lang={lang} />}
       <p className="flex items-center gap-2 font-inter text-xs uppercase tracking-[0.18em] text-muted">
         <span className="inline-block h-1.5 w-1.5 rounded-full bg-gold-dot" aria-hidden="true" />
         {MACHINE_COPY[lang].eyebrow}
@@ -69,6 +73,7 @@ export function PinGate({ shop }: { shop: GateShop }) {
         {copy.headingBefore} <span className="text-gold">{shop.name}</span>
       </h1>
       {shop.demo && <DemoNotice lang={lang} />}
+      <LanguageSwitch lang={lang} options={shop.languages} label={MACHINE_COPY[lang].languageLabel} onChange={setLang} />
 
       <form
         onSubmit={submit}

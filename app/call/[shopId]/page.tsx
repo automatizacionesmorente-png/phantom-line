@@ -1,8 +1,22 @@
+import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { CallScreen } from "@/components/call/CallScreen";
-import { ShopNotFound } from "@/components/call/ShopNotFound";
 import { isDemoShop } from "@/lib/owner/demo";
+import { callTitle, notFoundTitle } from "@/lib/seo/titles";
 import { loadPublicShop } from "./loadPublicShop";
+
+/** "Llama a Peluquería Lola · Phantom Line": the shop's name and first language; a lookup failure keeps the default title. */
+export async function generateMetadata({ params }: PageProps<"/call/[shopId]">): Promise<Metadata> {
+  try {
+    const { shopId } = await params;
+    const id = safeDecode(shopId);
+    const shop = id === null ? null : await loadPublicShop(id);
+    return { title: shop ? callTitle(shop.name, shop.languages[0] ?? "es") : notFoundTitle() };
+  } catch {
+    return {};
+  }
+}
 
 /**
  * The caller's side. The shell is static; `params` and the shop lookup are
@@ -24,7 +38,7 @@ async function ShopGate({ params }: { params: PageProps<"/call/[shopId]">["param
   const { shopId } = await params;
   const id = safeDecode(shopId);
   const shop = id === null ? null : await loadPublicShop(id);
-  if (!shop) return <ShopNotFound />;
+  if (!shop) notFound();
   // The Demo_Notice only for the public demo (owner-machine 3.3).
   return <CallScreen shop={shop} demo={isDemoShop(shop.id)} />;
 }
