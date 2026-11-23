@@ -43,7 +43,7 @@ export interface MachineCopy {
     noName: string;
     noPhone: string;
   };
-  channel: { voice: string; whatsapp: string; webchat: string };
+  channel: { voice: string; whatsapp: string; webchat: string; manual: string };
   sample: string;
   unheard: string;
   copied: string;
@@ -155,7 +155,7 @@ export const MACHINE_COPY: Record<Lang, MachineCopy> = {
       noName: "Sin nombre",
       noPhone: "Sin teléfono",
     },
-    channel: { voice: "Llamada", whatsapp: "WhatsApp", webchat: "Chat web" },
+    channel: { voice: "Llamada", whatsapp: "WhatsApp", webchat: "Chat web", manual: "A mano" },
     sample: "Ejemplo",
     unheard: "Sin escuchar",
     copied: "Respuesta copiada",
@@ -272,7 +272,7 @@ export const MACHINE_COPY: Record<Lang, MachineCopy> = {
       noName: "No name",
       noPhone: "No phone",
     },
-    channel: { voice: "Call", whatsapp: "WhatsApp", webchat: "Web chat" },
+    channel: { voice: "Call", whatsapp: "WhatsApp", webchat: "Web chat", manual: "By hand" },
     sample: "Sample",
     unheard: "Not played yet",
     copied: "Reply copied",

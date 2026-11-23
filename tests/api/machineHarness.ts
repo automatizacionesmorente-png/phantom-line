@@ -1,7 +1,8 @@
 import { expect } from "vitest";
 import { Temporal } from "temporal-polyfill";
 import { makeMachineHandlers, type MachineHandlers } from "@/app/api/machine/handlers";
-import type { OwnerDeps } from "@/lib/owner/handleOwner";
+import { createSalonRepository } from "@/lib/db/salonRepository";
+import type { SalonDeps } from "@/lib/salon/types";
 import { DEFAULT_PIN_LIMITS } from "@/lib/owner/limits";
 import { hashPin } from "@/lib/owner/pin";
 import { SESSION_COOKIE, pinVersionOf, signSession, type SessionPayload } from "@/lib/owner/session";
@@ -27,7 +28,7 @@ export const pinHash = () => (hashed ??= hashPin(PIN));
 
 export interface MachineEnv {
   t: TestDb;
-  deps: OwnerDeps;
+  deps: SalonDeps;
   handlers: MachineHandlers;
   logs: OwnerLogEvent[];
   /** How many times each Demo_Retention step of the repository was reached. */
@@ -48,7 +49,7 @@ export async function seedShops(t: TestDb): Promise<void> {
   await repo.setOwnerPin(REAL, hash, PIN_SET_AT);
 }
 
-export function createMachineEnv(t: TestDb, over: Partial<OwnerDeps> = {}): MachineEnv {
+export function createMachineEnv(t: TestDb, over: Partial<SalonDeps> = {}): MachineEnv {
   let at = CLOCK0;
   let secret: string | undefined = SECRET;
   let n = 0;
@@ -66,8 +67,9 @@ export function createMachineEnv(t: TestDb, over: Partial<OwnerDeps> = {}): Mach
       return base.applyDemoCutoffs(c);
     },
   };
-  const deps: OwnerDeps = {
+  const deps: SalonDeps = {
     repo,
+    salon: createSalonRepository(t.handle),
     core: t.repo,
     clock: () => at,
     newId: () => `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`,
@@ -173,6 +175,21 @@ export function client(h: MachineHandlers, seen: string[] = []) {
       run(h.clients(mreq("GET", `/api/machine/${shopId}/clients`, o), { shopId })),
     clientAction: (shopId: string, clientId: string, body: unknown, o: ReqOptions = {}) =>
       run(h.client(mreq("POST", `/api/machine/${shopId}/clients/${clientId}`, { body, ...o }), { shopId, clientId })),
+    createBooking: (shopId: string, body: unknown, o: ReqOptions = {}) =>
+      run(h.createBooking(mreq("POST", `/api/machine/${shopId}/bookings`, { body, ...o }), { shopId })),
+    blocks: (shopId: string, o: ReqOptions = {}) => run(h.blocks(mreq("GET", `/api/machine/${shopId}/blocks`, o), { shopId })),
+    createBlock: (shopId: string, body: unknown, o: ReqOptions = {}) =>
+      run(h.createBlock(mreq("POST", `/api/machine/${shopId}/blocks`, { body, ...o }), { shopId })),
+    deleteBlock: (shopId: string, blockId: string, o: ReqOptions = {}) =>
+      run(h.deleteBlock(mreq("DELETE", `/api/machine/${shopId}/blocks/${blockId}`, o), { shopId, blockId })),
+    pay: (shopId: string, bookingId: string, body: unknown, o: ReqOptions = {}) =>
+      run(h.pay(mreq("POST", `/api/machine/${shopId}/bookings/${bookingId}/pay`, { body, ...o }), { shopId, bookingId })),
+    note: (shopId: string, bookingId: string, body: unknown, o: ReqOptions = {}) =>
+      run(h.note(mreq("POST", `/api/machine/${shopId}/bookings/${bookingId}/note`, { body, ...o }), { shopId, bookingId })),
+    sale: (shopId: string, body: unknown, o: ReqOptions = {}) =>
+      run(h.sale(mreq("POST", `/api/machine/${shopId}/payments`, { body, ...o }), { shopId })),
+    payments: (shopId: string, day: string, o: ReqOptions = {}) =>
+      run(h.payments(mreq("GET", `/api/machine/${shopId}/payments`, { ...o, query: `?day=${day}` }), { shopId })),
     slots: (shopId: string, bookingId: string, date: string, o: ReqOptions = {}) =>
       run(
         h.slots(mreq("GET", `/api/machine/${shopId}/bookings/${bookingId}/slots`, { ...o, query: `?date=${date}` }), {

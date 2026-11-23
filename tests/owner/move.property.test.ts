@@ -92,7 +92,7 @@ describe("M9: owner moves never double-book", () => {
               callsApplied++;
               agenda.push({
                 id: `b${n}`, revision: 1, resourceId: v.resourceId, serviceId: service.id, start: v.start, end: v.end,
-                status: "confirmed", ownerConfirmedAt: null, cancelledBy: null, customerName: `C${n}`, channel: "voice",
+                status: "confirmed", ownerConfirmedAt: null, cancelledBy: null, customerName: `C${n}`, channel: "voice", noShowAt: null, paidCents: null, priceCents: null, visitNote: "",
                 lastOwnerAction: null,
               });
             }

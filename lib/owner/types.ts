@@ -27,6 +27,9 @@ export interface AuditValues {
   heard?: boolean;
   /** "No vino" on a past booking (clients 14). */
   noShow?: boolean;
+  /** A payment (salon 5): the amount in cents and the method. */
+  paidCents?: number;
+  method?: string;
 }
 
 export interface ShopAccess {

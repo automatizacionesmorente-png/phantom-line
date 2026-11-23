@@ -24,7 +24,7 @@ function booking(o: Partial<AgendaBooking> = {}): AgendaBooking {
     ownerConfirmedAt: null,
     cancelledBy: null,
     customerName: "Ana",
-    channel: "voice",
+    channel: "voice", noShowAt: null, paidCents: null, priceCents: null, visitNote: "",
     lastOwnerAction: null,
     ...o,
     start,

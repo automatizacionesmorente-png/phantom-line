@@ -11,6 +11,9 @@ import type { ShopProfile } from "@/lib/conversation/shopProfile";
 import type { Channel } from "@/lib/conversation/types";
 import type { Lang, SectorPack } from "@/lib/sectors";
 
+/** A booking's channel: the receptionist's three, or `manual` (the Owner wrote it by hand). */
+export type BookingChannel = Channel | "manual";
+
 export type AgendaStatus = "booked" | "confirmed" | "cancelled";
 export type OwnerBookingAction = "confirm" | "move" | "cancel";
 
@@ -26,7 +29,13 @@ export interface AgendaBooking {
   ownerConfirmedAt: Temporal.Instant | null;
   cancelledBy: "caller" | "owner" | null;
   customerName: string;
-  channel: Channel;
+  channel: BookingChannel;
+  noShowAt: Temporal.Instant | null;
+  /** The amount of its payment in cents; null when unpaid. */
+  paidCents: number | null;
+  /** Price snapshot in cents; null on rows that predate it. */
+  priceCents: number | null;
+  visitNote: string;
   lastOwnerAction: { action: OwnerBookingAction; label: string; at: Temporal.Instant } | null;
 }
 

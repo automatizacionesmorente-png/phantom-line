@@ -47,7 +47,7 @@ export async function setOwnerPin(db: Db, shopId: string, hash: string, at: Temp
 type BookingRow = typeof bookings.$inferSelect;
 type LastAction = AgendaBooking["lastOwnerAction"];
 
-function toAgendaBooking(r: BookingRow, last: LastAction): AgendaBooking {
+function toAgendaBooking(r: BookingRow, last: LastAction, paidCents: number | null): AgendaBooking {
   return {
     id: r.id,
     revision: r.revision,
@@ -59,7 +59,11 @@ function toAgendaBooking(r: BookingRow, last: LastAction): AgendaBooking {
     ownerConfirmedAt: toInstantOrNull(r.ownerConfirmedAt),
     cancelledBy: (r.cancelledBy as AgendaBooking["cancelledBy"]) ?? null,
     customerName: r.customerName,
-    channel: r.channel as Channel,
+    channel: r.channel as AgendaBooking["channel"],
+    noShowAt: toInstantOrNull(r.noShowAt),
+    paidCents,
+    priceCents: r.priceCents,
+    visitNote: r.visitNote,
     lastOwnerAction: last,
   };
 }
@@ -377,24 +381,26 @@ export function createOwnerRepository(handle: DbHandle): OwnerRepository {
 
     async listAgenda(shopId, from, to) {
       const rows = await db
-        .select()
+        .select({ b: bookings, paid: payments.amountCents })
         .from(bookings)
+        .leftJoin(payments, eq(payments.bookingId, bookings.id))
         .where(and(eq(bookings.shopId, shopId), gte(bookings.startsAt, toDate(from)), lt(bookings.startsAt, toDate(to))))
         .orderBy(asc(bookings.startsAt), asc(bookings.id));
-      const last = await lastActions(rows.map((r) => r.id));
-      return rows.map((r) => toAgendaBooking(r, last.get(r.id) ?? null));
+      const last = await lastActions(rows.map((r) => r.b.id));
+      return rows.map((r) => toAgendaBooking(r.b, last.get(r.b.id) ?? null, r.paid));
     },
 
     async getBooking(shopId, bookingId) {
       if (!isUuid(bookingId)) return null;
       const rows = await db
-        .select()
+        .select({ b: bookings, paid: payments.amountCents })
         .from(bookings)
+        .leftJoin(payments, eq(payments.bookingId, bookings.id))
         .where(and(eq(bookings.id, bookingId), eq(bookings.shopId, shopId)))
         .limit(1);
       if (!rows[0]) return null;
       const last = await lastActions([bookingId]);
-      return toAgendaBooking(rows[0], last.get(bookingId) ?? null);
+      return toAgendaBooking(rows[0].b, last.get(bookingId) ?? null, rows[0].paid);
     },
 
     applyOwnerCommand(cmd) {

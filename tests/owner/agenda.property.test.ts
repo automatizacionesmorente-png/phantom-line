@@ -73,7 +73,7 @@ const arbActionCase = arbNow.chain((now) =>
           ownerConfirmedAt: confirmed ? now.subtract({ hours: 1 }) : null,
           cancelledBy: cancelled ? "owner" : null,
           customerName: "Ana",
-          channel: "voice",
+          channel: "voice", noShowAt: null, paidCents: null, priceCents: null, visitNote: "",
           lastOwnerAction: null,
         }),
       ),

@@ -477,7 +477,7 @@ export function arbAgendaBookings(sc: ShopCase, now: Temporal.Instant): fc.Arbit
           ownerConfirmedAt: f.confirmed ? bookedAt : null,
           cancelledBy: f.cancelled ? f.cancelledBy : null,
           customerName: `Customer ${k}`,
-          channel: "voice",
+          channel: "voice", noShowAt: null, paidCents: null, priceCents: null, visitNote: "",
           lastOwnerAction: null,
         };
       });
@@ -693,7 +693,7 @@ export const arbAgendaCase: fc.Arbitrary<AgendaCase> = fc
             ownerConfirmedAt: g.confirmed ? now : null,
             cancelledBy: g.cancelled ? "caller" : null,
             customerName: `Customer ${k}`,
-            channel: "voice",
+            channel: "voice", noShowAt: null, paidCents: null, priceCents: null, visitNote: "",
             lastOwnerAction: null,
           }),
         ),

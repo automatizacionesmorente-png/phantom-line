@@ -66,7 +66,7 @@ describe("toAgendaItem", () => {
     ownerConfirmedAt: null,
     cancelledBy: null,
     customerName: "Ana",
-    channel: "voice",
+    channel: "voice", noShowAt: null, paidCents: null, priceCents: null, visitNote: "",
     lastOwnerAction: { action: "move", label: "Lola", at: at("2026-11-12T09:00:00Z") },
   };
 
@@ -82,6 +82,11 @@ describe("toAgendaItem", () => {
       cancelledBy: null,
       customerName: "Ana",
       channel: "voice",
+      source: "receptionist",
+      state: "pending",
+      paidCents: null,
+      priceCents: null,
+      visitNote: "",
       actions: ["confirm", "move", "cancel"],
       lastOwnerAction: { action: "move", label: "Lola", at: "2026-11-12T09:00:00Z" },
     });

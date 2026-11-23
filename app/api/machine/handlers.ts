@@ -12,6 +12,25 @@ import {
 } from "@/lib/owner/api";
 import { handleWeek } from "@/lib/owner/handleWeek";
 import {
+  BlockSchema,
+  BlocksQuerySchema,
+  ManualBookingSchema,
+  PaySchema,
+  PaymentsQuerySchema,
+  VisitNoteSchema,
+} from "@/lib/salon/api";
+import {
+  handleCreateBlock,
+  handleCreateBooking,
+  handleDeleteBlock,
+  handleListBlocks,
+  handlePay,
+  handlePaymentsDay,
+  handleSale,
+  handleVisitNote,
+} from "@/lib/salon/handleSalon";
+import type { SalonDeps } from "@/lib/salon/types";
+import {
   handleBookingAction,
   handleClientAction,
   handleClients,
@@ -19,7 +38,6 @@ import {
   handleMessageAction,
   handlePoll,
   handleSlots,
-  type OwnerDeps,
   type OwnerResult,
 } from "@/lib/owner/handleOwner";
 import { SESSION_COOKIE } from "@/lib/owner/session";
@@ -37,7 +55,7 @@ import { visitorKeyOf } from "../visitorKey";
  */
 export interface MachineHandlerOptions {
   /** Builds the dependencies on first use, so `next build` needs no DATABASE_URL. */
-  owner: () => OwnerDeps;
+  owner: () => SalonDeps;
   /** RATE_LIMIT_SALT, read per request: the same Visitor key as the Turn_API. */
   salt: () => string;
 }
@@ -53,6 +71,9 @@ export interface BookingParams extends ShopParams {
 }
 export interface ClientParams extends ShopParams {
   clientId: string;
+}
+export interface BlockParams extends ShopParams {
+  blockId: string;
 }
 
 type Handler<P> = (request: Request, params: P) => Promise<Response>;
@@ -76,6 +97,22 @@ export interface MachineHandlers {
   clients: Handler<ShopParams>;
   /** POST /api/machine/[shopId]/clients/[clientId] */
   client: Handler<ClientParams>;
+  /** POST /api/machine/[shopId]/bookings: a manual booking */
+  createBooking: Handler<ShopParams>;
+  /** GET /api/machine/[shopId]/blocks */
+  blocks: Handler<ShopParams>;
+  /** POST /api/machine/[shopId]/blocks */
+  createBlock: Handler<ShopParams>;
+  /** DELETE /api/machine/[shopId]/blocks/[blockId] */
+  deleteBlock: Handler<BlockParams>;
+  /** POST /api/machine/[shopId]/bookings/[bookingId]/pay */
+  pay: Handler<BookingParams>;
+  /** POST /api/machine/[shopId]/bookings/[bookingId]/note */
+  note: Handler<BookingParams>;
+  /** POST /api/machine/[shopId]/payments: a product sale */
+  sale: Handler<ShopParams>;
+  /** GET /api/machine/[shopId]/payments?day=YYYY-MM-DD */
+  payments: Handler<ShopParams>;
 }
 
 const NO_STORE = "no-store";
@@ -182,10 +219,10 @@ export function makeMachineHandlers(opts: MachineHandlerOptions): MachineHandler
    * is down) becomes `503 unavailable` and one `owner_error` line with the error's summary
    * only: no name, phone, reason, Transcript or token (14.4).
    */
-  async function guarded(route: string, rawShopId: string, run: (shopId: string, deps: OwnerDeps) => Promise<Response>) {
+  async function guarded(route: string, rawShopId: string, run: (shopId: string, deps: SalonDeps) => Promise<Response>) {
     const shopId = safeDecode(rawShopId);
     if (shopId === null) return json({ error: "shop_not_found" }, 404);
-    let deps: OwnerDeps | undefined;
+    let deps: SalonDeps | undefined;
     try {
       deps = opts.owner();
       return await run(shopId, deps);
@@ -344,6 +381,104 @@ export function makeMachineHandlers(opts: MachineHandlerOptions): MachineHandler
             },
             deps,
           ),
+          (b) => json(b, 200),
+        ),
+      );
+    },
+
+    async createBooking(request, params) {
+      const bad = checkOrigin(request);
+      if (bad) return bad;
+      const body = await readBody(request, ManualBookingSchema);
+      if (!body.ok) return body.response;
+      return guarded("create_booking", params.shopId, async (shopId, deps) =>
+        respond(
+          await handleCreateBooking(deps, shopId, readCookie(request.headers.get("cookie"), SESSION_COOKIE), body.data),
+          (b) => json(b, 201),
+        ),
+      );
+    },
+
+    async blocks(request, params) {
+      const query = readQuery(request, BlocksQuerySchema);
+      if (!query.ok) return query.response;
+      return guarded("blocks", params.shopId, async (shopId, deps) =>
+        respond(
+          await handleListBlocks(deps, shopId, readCookie(request.headers.get("cookie"), SESSION_COOKIE), query.data),
+          (b) => json(b, 200),
+        ),
+      );
+    },
+
+    async createBlock(request, params) {
+      const bad = checkOrigin(request);
+      if (bad) return bad;
+      const body = await readBody(request, BlockSchema);
+      if (!body.ok) return body.response;
+      return guarded("create_block", params.shopId, async (shopId, deps) =>
+        respond(
+          await handleCreateBlock(deps, shopId, readCookie(request.headers.get("cookie"), SESSION_COOKIE), body.data),
+          (b) => json(b, 201),
+        ),
+      );
+    },
+
+    async deleteBlock(request, params) {
+      const bad = checkOrigin(request);
+      if (bad) return bad;
+      return guarded("delete_block", params.shopId, async (shopId, deps) =>
+        respond(
+          await handleDeleteBlock(deps, shopId, readCookie(request.headers.get("cookie"), SESSION_COOKIE), params.blockId),
+          (b) => json(b, 200),
+        ),
+      );
+    },
+
+    async pay(request, params) {
+      const bad = checkOrigin(request);
+      if (bad) return bad;
+      const body = await readBody(request, PaySchema);
+      if (!body.ok) return body.response;
+      return guarded("pay", params.shopId, async (shopId, deps) =>
+        respond(
+          await handlePay(deps, shopId, readCookie(request.headers.get("cookie"), SESSION_COOKIE), params.bookingId, body.data),
+          (b) => json(b, 201),
+        ),
+      );
+    },
+
+    async note(request, params) {
+      const bad = checkOrigin(request);
+      if (bad) return bad;
+      const body = await readBody(request, VisitNoteSchema);
+      if (!body.ok) return body.response;
+      return guarded("note", params.shopId, async (shopId, deps) =>
+        respond(
+          await handleVisitNote(deps, shopId, readCookie(request.headers.get("cookie"), SESSION_COOKIE), params.bookingId, body.data.note),
+          (b) => json(b, 200),
+        ),
+      );
+    },
+
+    async sale(request, params) {
+      const bad = checkOrigin(request);
+      if (bad) return bad;
+      const body = await readBody(request, PaySchema);
+      if (!body.ok) return body.response;
+      return guarded("sale", params.shopId, async (shopId, deps) =>
+        respond(
+          await handleSale(deps, shopId, readCookie(request.headers.get("cookie"), SESSION_COOKIE), body.data),
+          (b) => json(b, 201),
+        ),
+      );
+    },
+
+    async payments(request, params) {
+      const query = readQuery(request, PaymentsQuerySchema);
+      if (!query.ok) return query.response;
+      return guarded("payments", params.shopId, async (shopId, deps) =>
+        respond(
+          await handlePaymentsDay(deps, shopId, readCookie(request.headers.get("cookie"), SESSION_COOKIE), query.data.day),
           (b) => json(b, 200),
         ),
       );

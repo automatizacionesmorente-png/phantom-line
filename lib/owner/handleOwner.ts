@@ -66,7 +66,7 @@ export const TAPE_LIMIT = 200;
 
 export type OwnerFailure = {
   ok: false;
-  status: 400 | 401 | 404 | 409 | 429 | 503;
+  status: 400 | 401 | 404 | 409 | 422 | 429 | 503;
   /** `null` is the empty `401 locked` body (1.8). */
   body: MachineErrorBody | null;
 };

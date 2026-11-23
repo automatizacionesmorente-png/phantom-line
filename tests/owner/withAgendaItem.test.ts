@@ -13,7 +13,7 @@ const row = (id: string, start: string, over: Partial<AgendaItem> = {}): AgendaI
   status: "booked",
   cancelledBy: null,
   customerName: id,
-  channel: "voice",
+  channel: "voice", source: "receptionist", state: "pending", paidCents: null, priceCents: null, visitNote: "",
   actions: [],
   lastOwnerAction: null,
   ...over,

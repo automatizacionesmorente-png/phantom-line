@@ -63,7 +63,7 @@ export function agendaItem(over: Partial<AgendaItem> & { id: string; start: stri
     status: "booked",
     cancelledBy: null,
     customerName: "Ana",
-    channel: "voice",
+    channel: "voice", source: "receptionist", state: "pending", paidCents: null, priceCents: null, visitNote: "",
     actions: ["confirm", "move", "cancel"],
     lastOwnerAction: null,
     ...over,

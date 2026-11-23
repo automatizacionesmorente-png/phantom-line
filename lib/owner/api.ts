@@ -10,7 +10,8 @@ import { z } from "zod";
 import type { Channel, Line, Outcome, Urgency } from "@/lib/conversation/types";
 import type { UrgencyBasis } from "@/lib/messages/urgency";
 import type { Lang } from "@/lib/sectors";
-import type { AgendaStatus, OwnerBookingAction } from "./agenda";
+import type { BookingState } from "@/lib/salon/state";
+import type { AgendaStatus, BookingChannel, OwnerBookingAction } from "./agenda";
 
 // ---------------------------------------------------------------------------
 // Requests
@@ -109,7 +110,15 @@ export interface AgendaItem {
   status: AgendaStatus;
   cancelledBy: "caller" | "owner" | null;
   customerName: string;
-  channel: Channel;
+  channel: BookingChannel;
+  /** `manual` when the Owner wrote it by hand, else `receptionist`. */
+  source: "receptionist" | "manual";
+  /** The state the Owner sees (salon spec 9.1). */
+  state: BookingState;
+  /** The amount paid in cents; null when unpaid. */
+  paidCents: number | null;
+  priceCents: number | null;
+  visitNote: string;
   /** What the Owner may do now, in button order (10.1, 10.2). */
   actions: OwnerBookingAction[];
   lastOwnerAction: { action: OwnerBookingAction; label: string; at: string } | null;
@@ -168,7 +177,10 @@ export interface SlotsResponse {
 /** Every error body: a stable code, plus what the dialog needs to refresh in place. */
 export type MachineErrorBody =
   | { error: "wrong_pin" | "too_many_tries" | "no_pin" | "machine_not_configured" }
-  | { error: "shop_not_found" | "message_not_found" | "booking_not_found" | "client_not_found" | "bad_origin" }
+  | { error: "shop_not_found" | "message_not_found" | "booking_not_found" | "client_not_found" | "block_not_found" | "bad_origin" }
+  /** A manual booking the rules refuse, or a payment the cash desk refuses (salon 4, 5). */
+  | { error: "closed" | "outside_hours" | "blocked"; reason?: string }
+  | { error: "cancelled" | "not_yet" | "already_paid" }
   | { error: "invalid_request"; issues: { path: (string | number)[]; message: string }[] }
   | { error: "not_allowed" }
   | { error: "unavailable" }

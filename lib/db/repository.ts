@@ -50,10 +50,11 @@ const MAX_CLIENT_NAME = 120;
  * Message that carried the name and the phone (BACKLOG 14). Nothing for a phone that is not E.164
  * or a blank name. A curated demo client is never overwritten. The language is the Call's.
  */
-function clientUpsert(q: Db, shopId: string, name: string | null, phone: string | null, callId: string): Query[] {
+export function clientUpsert(q: Db, shopId: string, name: string | null, phone: string | null, callId: string | null): Query[] {
   const clean = name?.trim().replace(/\s+/g, " ").slice(0, MAX_CLIENT_NAME) ?? "";
   if (!clean || !phone || !E164.test(phone)) return [];
-  const language = sql`COALESCE((SELECT c.language FROM calls c WHERE c.id = ${callId}::uuid), 'es')`;
+  // A manual booking has no Call: the default language.
+  const language = callId === null ? sql`'es'` : sql`COALESCE((SELECT c.language FROM calls c WHERE c.id = ${callId}::uuid), 'es')`;
   return [
     q
       .insert(clients)

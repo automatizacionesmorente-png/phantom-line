@@ -14,7 +14,22 @@ import { CLOCK0, DEMO, PIN, REAL, client, createMachineEnv, pinHash, seedShops, 
  * handler that read it before checking the session would show up.
  */
 
-const ROUTES = ["login", "logout", "poll", "message", "booking", "slots"] as const;
+const ROUTES = [
+  "login",
+  "logout",
+  "poll",
+  "message",
+  "booking",
+  "slots",
+  "createBooking",
+  "blocks",
+  "createBlock",
+  "deleteBlock",
+  "pay",
+  "note",
+  "sale",
+  "payments",
+] as const;
 const COOKIES = ["none", "malformed", "expired", "otherShop", "badSignature"] as const;
 type Route = (typeof ROUTES)[number];
 type CookieKind = (typeof COOKIES)[number];
@@ -132,6 +147,38 @@ describe("M17. Nothing personal without a session", () => {
           case "slots":
             answer = await api.slots(shopId, pick(booking), c.date, opts);
             break;
+          case "createBooking":
+            answer = await api.createBooking(
+              shopId,
+              json({ resourceId: "chair-1", serviceId: "haircut", start: start.toISOString(), name, phone }),
+              opts,
+            );
+            break;
+          case "blocks":
+            answer = await api.blocks(shopId, { ...opts, query: "?from=2026-11-01T00:00:00Z&to=2026-12-31T00:00:00Z" });
+            break;
+          case "createBlock":
+            answer = await api.createBlock(
+              shopId,
+              json({ resourceId: null, start: start.toISOString(), end: new Date(start.getTime() + 3_600_000).toISOString(), reason: reason }),
+              opts,
+            );
+            break;
+          case "deleteBlock":
+            answer = await api.deleteBlock(shopId, pick(booking), opts);
+            break;
+          case "pay":
+            answer = await api.pay(shopId, pick(booking), json({ amountCents: 1500, method: "cash" }), opts);
+            break;
+          case "note":
+            answer = await api.note(shopId, pick(booking), json({ note: line }), opts);
+            break;
+          case "sale":
+            answer = await api.sale(shopId, json({ amountCents: 900, method: "card", productLabel: reason }), opts);
+            break;
+          case "payments":
+            answer = await api.payments(shopId, c.date, opts);
+            break;
         }
 
         for (const s of seeded) expect(answer.text).not.toContain(s);
@@ -152,7 +199,9 @@ describe("M17. Nothing personal without a session", () => {
     // The property is only worth something if it got as far as the session check on every route
     // and with every kind of bad cookie, and also met the checks that come before it.
     expect([...reached.cookies].sort()).toEqual([...COOKIES].sort());
-    expect([...reached.routes].sort()).toEqual(["booking", "message", "poll", "slots"]);
+    expect([...reached.routes].sort()).toEqual(
+      ["blocks", "booking", "createBlock", "createBooking", "deleteBlock", "message", "note", "pay", "payments", "poll", "sale", "slots"].sort(),
+    );
     for (const status of [400, 401, 403, 404]) expect(reached.statuses.get(status) ?? 0).toBeGreaterThan(0);
   }, 300_000);
 

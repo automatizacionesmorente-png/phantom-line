@@ -27,7 +27,7 @@ function booking(o: Partial<AgendaBooking> & { start: Temporal.Instant }): Agend
     ownerConfirmedAt: null,
     cancelledBy: null,
     customerName: "Ana",
-    channel: "voice",
+    channel: "voice", noShowAt: null, paidCents: null, priceCents: null, visitNote: "",
     lastOwnerAction: null,
     ...o,
   };

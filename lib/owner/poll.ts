@@ -5,6 +5,7 @@
  */
 import { Temporal } from "temporal-polyfill";
 import { agendaStatus, allowedActions, type AgendaBooking, type AgendaDay } from "./agenda";
+import { bookingState } from "@/lib/salon/state";
 import type { AgendaDayDto, AgendaItem, PollCounts, PollResponse, TapeItem } from "./api";
 
 /** What `OwnerRepository.pollHead` returns: one row of `shops` plus two counts. */
@@ -60,6 +61,20 @@ export function toAgendaItem(b: AgendaBooking, now: Temporal.Instant): AgendaIte
     cancelledBy: b.cancelledBy,
     customerName: b.customerName,
     channel: b.channel,
+    source: b.channel === "manual" ? "manual" : "receptionist",
+    state: bookingState({
+      status: b.status,
+      ownerConfirmedAt: b.ownerConfirmedAt,
+      channel: b.channel,
+      noShowAt: b.noShowAt,
+      paid: b.paidCents !== null,
+      start: b.start,
+      end: b.end,
+      now,
+    }),
+    paidCents: b.paidCents,
+    priceCents: b.priceCents,
+    visitNote: b.visitNote,
     actions: allowedActions(b, now),
     lastOwnerAction: b.lastOwnerAction && {
       action: b.lastOwnerAction.action,
