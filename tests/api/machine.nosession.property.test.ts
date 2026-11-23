@@ -27,6 +27,7 @@ const ROUTES = [
   "deleteBlock",
   "pay",
   "note",
+  "getNote",
   "sale",
   "payments",
 ] as const;
@@ -173,6 +174,9 @@ describe("M17. Nothing personal without a session", () => {
           case "note":
             answer = await api.note(shopId, pick(booking), json({ note: line }), opts);
             break;
+          case "getNote":
+            answer = await api.getNote(shopId, pick(booking), opts);
+            break;
           case "sale":
             answer = await api.sale(shopId, json({ amountCents: 900, method: "card", productLabel: reason }), opts);
             break;
@@ -200,7 +204,7 @@ describe("M17. Nothing personal without a session", () => {
     // and with every kind of bad cookie, and also met the checks that come before it.
     expect([...reached.cookies].sort()).toEqual([...COOKIES].sort());
     expect([...reached.routes].sort()).toEqual(
-      ["blocks", "booking", "createBlock", "createBooking", "deleteBlock", "message", "note", "pay", "payments", "poll", "sale", "slots"].sort(),
+      ["blocks", "booking", "createBlock", "createBooking", "deleteBlock", "getNote", "message", "note", "pay", "payments", "poll", "sale", "slots"].sort(),
     );
     for (const status of [400, 401, 403, 404]) expect(reached.statuses.get(status) ?? 0).toBeGreaterThan(0);
   }, 300_000);

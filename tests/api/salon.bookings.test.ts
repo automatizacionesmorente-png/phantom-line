@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
+import { Temporal } from "temporal-polyfill";
 import { bookings, clients, ownerActions, timeBlocks } from "@/lib/db/schema";
 import type { SalonDeps } from "@/lib/salon/types";
 import { addBooking, addCall, auditRows, bookingRow } from "../db/ownerFixtures";
@@ -123,6 +124,20 @@ describe("POST /bookings (manual)", () => {
     expect([late.status, late.json!.error]).toEqual([422, "outside_hours"]);
   });
 
+  it("refuses a start before the shop-local today (in_the_past) and over a year ahead (too_far)", async () => {
+    const early = await api.createBooking(REAL, book({ start: "2026-11-09T22:59:00Z" }), open()); // 23:59 on Monday 9th in Madrid
+    expect([early.status, early.json!.error]).toEqual([422, "in_the_past"]);
+    // Today's midnight is allowed by this check (the opening hours then say no, with another code).
+    const midnight = await api.createBooking(REAL, book({ start: "2026-11-09T23:00:00Z" }), open());
+    expect(midnight.json!.error).not.toBe("in_the_past");
+    // Earlier today is allowed: the Owner writes down a visit that already happened (10:00 today, clock 13:00 Madrid).
+    env.setNow(Temporal.Instant.from("2026-11-10T12:00:00Z")); // 13:00 Madrid
+    expect((await api.createBooking(REAL, book({ start: "2026-11-10T09:00:00Z" }), open())).status).toBe(201); // 10:00 Madrid, earlier today
+    const far = await api.createBooking(REAL, book({ start: "2027-11-12T09:00:00Z" }), open());
+    expect([far.status, far.json!.error]).toEqual([422, "too_far"]);
+    expect(await t.handle.db.select().from(bookings)).toHaveLength(1);
+  });
+
   it("rejects unknown service or resource, bad phone, extra keys and a bad name", async () => {
     for (const body of [
       book({ serviceId: "nope" }),
@@ -220,6 +235,24 @@ describe("blocks", () => {
     // And the other shop's list never shows it.
     const list = await api.blocks(DEMO, { token: tokenFor(DEMO), query: "?from=2026-11-01T00:00:00Z&to=2026-12-01T00:00:00Z" });
     expect(list.json).toEqual({ blocks: [] });
+  });
+
+  it("a block starting over a year ahead is refused", async () => {
+    const r = await api.createBlock(REAL, block({ start: "2027-12-01T08:00:00Z", end: "2027-12-02T08:00:00Z" }), open());
+    expect(r.status).toBe(400);
+    expect((await api.createBlock(REAL, block({ start: "2027-11-09T08:00:00Z", end: "2027-11-10T08:00:00Z" }), open())).status).toBe(201);
+  });
+
+  it("the warning lists at most 50 bookings and says it was cut", async () => {
+    for (let k = 0; k < 51; k++) {
+      await addBooking(t, REAL, { start: Temporal.Instant.from("2026-11-12T08:00:00Z").add({ minutes: 30 * k }), resourceId: "chair-1" });
+    }
+    const r = await api.createBlock(REAL, block({ start: "2026-11-12T00:00:00Z", end: "2026-11-14T00:00:00Z" }), open());
+    expect(r.status).toBe(201);
+    expect((r.json!.overlapping as unknown[]).length).toBe(50);
+    expect(r.json!.truncated).toBe(true);
+    const few = await api.createBlock(REAL, block({ start: "2026-11-12T08:00:00Z", end: "2026-11-12T09:00:00Z" }), open());
+    expect(few.json!.truncated).toBe(false);
   });
 
   it("validates: unknown chair, end before start, too long, extra keys", async () => {

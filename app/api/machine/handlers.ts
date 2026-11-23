@@ -23,6 +23,7 @@ import {
   handleCreateBlock,
   handleCreateBooking,
   handleDeleteBlock,
+  handleGetVisitNote,
   handleListBlocks,
   handlePay,
   handlePaymentsDay,
@@ -109,6 +110,8 @@ export interface MachineHandlers {
   pay: Handler<BookingParams>;
   /** POST /api/machine/[shopId]/bookings/[bookingId]/note */
   note: Handler<BookingParams>;
+  /** GET /api/machine/[shopId]/bookings/[bookingId]/note */
+  getNote: Handler<BookingParams>;
   /** POST /api/machine/[shopId]/payments: a product sale */
   sale: Handler<ShopParams>;
   /** GET /api/machine/[shopId]/payments?day=YYYY-MM-DD */
@@ -455,6 +458,15 @@ export function makeMachineHandlers(opts: MachineHandlerOptions): MachineHandler
       return guarded("note", params.shopId, async (shopId, deps) =>
         respond(
           await handleVisitNote(deps, shopId, readCookie(request.headers.get("cookie"), SESSION_COOKIE), params.bookingId, body.data.note),
+          (b) => json(b, 200),
+        ),
+      );
+    },
+
+    async getNote(request, params) {
+      return guarded("get_note", params.shopId, async (shopId, deps) =>
+        respond(
+          await handleGetVisitNote(deps, shopId, readCookie(request.headers.get("cookie"), SESSION_COOKIE), params.bookingId),
           (b) => json(b, 200),
         ),
       );

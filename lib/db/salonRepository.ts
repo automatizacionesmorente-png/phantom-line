@@ -117,6 +117,7 @@ export function createSalonRepository(handle: DbHandle): SalonRepository {
     async insertPayment(p: NewPayment) {
       const now = p.now.toString();
       if (p.bookingId === null) {
+        // A product-only sale writes no audit row on purpose: owner_actions needs a booking or a message as its target.
         const [row] = await db
           .insert(payments)
           .values({
@@ -138,6 +139,7 @@ export function createSalonRepository(handle: DbHandle): SalonRepository {
           SELECT b.id FROM bookings b
            WHERE b.id = ${p.bookingId}::uuid AND b.shop_id = ${p.shopId}
              AND b.status = 'confirmed' AND b.starts_at <= ${limit}::timestamptz
+             FOR UPDATE
         ),
         paid AS (
           INSERT INTO payments (shop_id, booking_id, amount_cents, product_cents, product_label, method, paid_at)

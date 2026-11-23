@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { Temporal } from "temporal-polyfill";
-import { payments } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
+import { bookings, payments } from "@/lib/db/schema";
 import { addBooking, auditRows, bookingRow, versionOf } from "../db/ownerFixtures";
 import { createTestDb, type TestDb } from "../db/pglite";
 import { DEMO, REAL, client, createMachineEnv, mreq, seedShops, tokenFor, type MachineEnv } from "./machineHarness";
@@ -34,7 +35,7 @@ beforeEach(async () => {
 
 const open = () => ({ token });
 const pay = (o: object = {}) => ({ amountCents: 1500, method: "cash", ...o });
-type Item = { id: string; state: string; paidCents: number | null; visitNote: string; source: string };
+type Item = { id: string; state: string; paidCents: number | null; hasVisitNote: boolean; source: string };
 const items = async (): Promise<Item[]> => {
   const poll = await api.poll(REAL, null, open());
   return (poll.json!.agenda as { items: Item[] }[]).flatMap((d) => d.items);
@@ -83,6 +84,26 @@ describe("POST /bookings/[id]/pay", () => {
     const r = await api.pay(REAL, id, pay(), open());
     expect([r.status, r.json]).toEqual([409, { error: "cancelled" }]);
     expect(await rows()).toHaveLength(0);
+  });
+
+  it("a booking cancelled just before the payment is never paid (the repository guards it too)", async () => {
+    const id = await addBooking(t, REAL, { start: SOON });
+    await t.handle.db.update(bookings).set({ status: "cancelled", cancelledAt: new Date(), cancelledBy: "owner" }).where(eq(bookings.id, id));
+    const r = await api.pay(REAL, id, pay(), open());
+    expect([r.status, r.json]).toEqual([409, { error: "cancelled" }]);
+    // Even a caller that skipped the handler's read cannot pay it.
+    const direct = await env.deps.salon.insertPayment({
+      shopId: REAL, bookingId: id, amountCents: 1500, method: "cash", productCents: 0, productLabel: "", now: env.now(), actor: { sessionId: "s", label: "Lola" },
+    });
+    expect(direct).toEqual({ ok: false });
+    expect(await rows()).toHaveLength(0);
+    expect((await auditRows(t)).filter((a) => a.action === "pay")).toHaveLength(0);
+  });
+
+  it("paying a pending booking is allowed (the client came)", async () => {
+    const id = await addBooking(t, REAL, { start: SOON });
+    expect((await bookingRow(t, id)).ownerConfirmedAt).toBeNull();
+    expect((await api.pay(REAL, id, pay(), open())).status).toBe(201);
   });
 
   it("refuses a booking more than 12 h ahead (422 not_yet) and takes one inside 12 h", async () => {
@@ -189,7 +210,13 @@ describe("POST /bookings/[id]/note", () => {
     const ok = await api.note(REAL, id, { note: "  Tinte 6.3 + 20 vol, 35 min  " }, open());
     expect([ok.status, ok.json]).toEqual([200, { ok: true }]);
     expect((await bookingRow(t, id)).visitNote).toBe("Tinte 6.3 + 20 vol, 35 min");
-    expect((await items()).find((i) => i.id === id)?.visitNote).toBe("Tinte 6.3 + 20 vol, 35 min");
+    // The poll carries only whether there is a note; the text is read on its own route.
+    const polled = (await items()).find((i) => i.id === id)!;
+    expect(polled).toMatchObject({ hasVisitNote: true });
+    expect(polled).not.toHaveProperty("visitNote");
+    expect(JSON.stringify(await api.poll(REAL, null, open()))).not.toContain("Tinte");
+    const got = await api.getNote(REAL, id, open());
+    expect([got.status, got.json]).toEqual([200, { note: "Tinte 6.3 + 20 vol, 35 min" }]);
 
     expect((await api.note(REAL, id, { note: "x".repeat(500) }, open())).status).toBe(200);
     expect((await api.note(REAL, id, { note: "x".repeat(501) }, open())).status).toBe(400);
@@ -207,5 +234,17 @@ describe("POST /bookings/[id]/note", () => {
     expect((await api.note(REAL, "nope", { note: "hola" }, open())).status).toBe(404);
     expect((await api.note(REAL, id, { note: "hola" })).status).toBe(401);
     expect((await bookingRow(t, id)).visitNote).toBe("");
+  });
+
+  it("GET note: 404 cross-shop and unknown, 401 without a session; a note on a cancelled booking is allowed", async () => {
+    const id = await addBooking(t, REAL, { start: PAST, status: "cancelled" });
+    expect((await api.note(REAL, id, { note: "Secreto zq" }, open())).status).toBe(200);
+    expect((await api.getNote(REAL, id, open())).json).toEqual({ note: "Secreto zq" });
+    const other = await api.getNote(DEMO, id, { token: tokenFor(DEMO) });
+    expect([other.status, other.json]).toEqual([404, { error: "booking_not_found" }]);
+    expect((await api.getNote(REAL, "nope", open())).status).toBe(404);
+    const anon = await api.getNote(REAL, id);
+    expect(anon.status).toBe(401);
+    expect(anon.text).not.toContain("Secreto");
   });
 });

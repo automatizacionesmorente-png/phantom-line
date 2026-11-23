@@ -118,7 +118,8 @@ export interface AgendaItem {
   /** The amount paid in cents; null when unpaid. */
   paidCents: number | null;
   priceCents: number | null;
-  visitNote: string;
+  /** Whether the visit note is set; the text comes from GET .../bookings/[id]/note. */
+  hasVisitNote: boolean;
   /** What the Owner may do now, in button order (10.1, 10.2). */
   actions: OwnerBookingAction[];
   lastOwnerAction: { action: OwnerBookingAction; label: string; at: string } | null;
@@ -179,7 +180,7 @@ export type MachineErrorBody =
   | { error: "wrong_pin" | "too_many_tries" | "no_pin" | "machine_not_configured" }
   | { error: "shop_not_found" | "message_not_found" | "booking_not_found" | "client_not_found" | "block_not_found" | "bad_origin" }
   /** A manual booking the rules refuse, or a payment the cash desk refuses (salon 4, 5). */
-  | { error: "closed" | "outside_hours" | "blocked"; reason?: string }
+  | { error: "closed" | "outside_hours" | "blocked" | "in_the_past" | "too_far"; reason?: string }
   | { error: "cancelled" | "not_yet" | "already_paid" }
   | { error: "invalid_request"; issues: { path: (string | number)[]; message: string }[] }
   | { error: "not_allowed" }

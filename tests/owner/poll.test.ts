@@ -86,7 +86,7 @@ describe("toAgendaItem", () => {
       state: "pending",
       paidCents: null,
       priceCents: null,
-      visitNote: "",
+      hasVisitNote: false,
       actions: ["confirm", "move", "cancel"],
       lastOwnerAction: { action: "move", label: "Lola", at: "2026-11-12T09:00:00Z" },
     });

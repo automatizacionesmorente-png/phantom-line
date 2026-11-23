@@ -186,6 +186,8 @@ export function client(h: MachineHandlers, seen: string[] = []) {
       run(h.pay(mreq("POST", `/api/machine/${shopId}/bookings/${bookingId}/pay`, { body, ...o }), { shopId, bookingId })),
     note: (shopId: string, bookingId: string, body: unknown, o: ReqOptions = {}) =>
       run(h.note(mreq("POST", `/api/machine/${shopId}/bookings/${bookingId}/note`, { body, ...o }), { shopId, bookingId })),
+    getNote: (shopId: string, bookingId: string, o: ReqOptions = {}) =>
+      run(h.getNote(mreq("GET", `/api/machine/${shopId}/bookings/${bookingId}/note`, o), { shopId, bookingId })),
     sale: (shopId: string, body: unknown, o: ReqOptions = {}) =>
       run(h.sale(mreq("POST", `/api/machine/${shopId}/payments`, { body, ...o }), { shopId })),
     payments: (shopId: string, day: string, o: ReqOptions = {}) =>

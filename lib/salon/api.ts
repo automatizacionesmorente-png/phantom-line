@@ -81,11 +81,17 @@ export interface CreateBookingResponse {
 /** The block is created; `overlapping` are the active bookings under it, for the warning. */
 export interface CreateBlockResponse {
   block: BlockDto;
+  /** At most 50. */
   overlapping: AgendaItem[];
+  /** True when more than 50 bookings are under the block. */
+  truncated: boolean;
 }
 export interface PayResponse {
   id: string;
   booking: AgendaItem | null;
+}
+export interface VisitNoteTextResponse {
+  note: string;
 }
 export interface VisitNoteResponse {
   ok: true;

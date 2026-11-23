@@ -74,7 +74,8 @@ export function toAgendaItem(b: AgendaBooking, now: Temporal.Instant): AgendaIte
     }),
     paidCents: b.paidCents,
     priceCents: b.priceCents,
-    visitNote: b.visitNote,
+    // The note itself is read on demand (GET .../note), never carried by the poll.
+    hasVisitNote: b.visitNote !== "",
     actions: allowedActions(b, now),
     lastOwnerAction: b.lastOwnerAction && {
       action: b.lastOwnerAction.action,

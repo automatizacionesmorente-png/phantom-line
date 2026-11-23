@@ -25,6 +25,7 @@ import type {
   PayResponse,
   PaymentsDayResponse,
   VisitNoteResponse,
+  VisitNoteTextResponse,
 } from "./api";
 import type { SalonDeps, TimeBlock } from "./types";
 
@@ -35,6 +36,11 @@ const MARGIN = { hours: 48 };
 const MAX_BLOCK_DAYS = 400;
 /** A booking can be paid up to 12 h before it starts. */
 const PAY_AHEAD = { hours: 12 };
+/** A manual booking or a block starts at most this far ahead. */
+const MAX_AHEAD_DAYS = 365;
+/** The most bookings the warning of a new block lists. */
+const MAX_OVERLAPPING = 50;
+const addDays = (i: Temporal.Instant, days: number) => i.add({ hours: days * 24 });
 
 const actorOf = (s: SessionPayload): Actor => ({ sessionId: s.sid, label: s.label });
 const invalid = (message: string, path: (string | number)[] = []): OwnerFailure =>
@@ -81,6 +87,10 @@ export async function handleCreateBooking(
 
   const start = Temporal.Instant.from(req.start);
   const now = d.clock();
+  // Not before the shop's today (a visit can be written down later the same day), not over a year ahead.
+  const todayStart = toInstant(localDateOf(now, shop.timeZone), MIDNIGHT, shop.timeZone);
+  if (Temporal.Instant.compare(start, todayStart) < 0) return fail(422, { error: "in_the_past" });
+  if (Temporal.Instant.compare(start, addDays(now, MAX_AHEAD_DAYS)) > 0) return fail(422, { error: "too_far" });
   const rules = toShopRules(shop);
   const pack = getSectorPack(shop.sectorPackId);
   const existing = await d.core.listBookings(shopId, start.subtract(MARGIN), start.add(MARGIN));
@@ -102,9 +112,10 @@ export async function handleCreateBooking(
       case "closed_day":
         return fail(422, { error: "closed" });
       case "all_resources_busy": {
+        // Blocked or taken? Ask the blocks themselves, not the shape of the busy list ids.
         const end = start.add({ minutes: service.durationMin });
-        const touching = existing.filter((b) => b.resourceId === resource.id && overlaps(b, { start, end }));
-        return touching.some((b) => b.id.startsWith("block:"))
+        const blocks = await d.salon.listBlocks(shopId, start, end);
+        return blocks.some((b) => b.resourceId === null || b.resourceId === resource.id)
           ? fail(422, { error: "blocked" })
           : fail(409, { error: "taken", slots });
       }
@@ -166,6 +177,7 @@ export async function handleCreateBlock(
   const start = Temporal.Instant.from(req.start);
   const end = Temporal.Instant.from(req.end);
   if (Temporal.Instant.compare(end, start) <= 0) return invalid("The end must be after the start", ["end"]);
+  if (Temporal.Instant.compare(start, addDays(d.clock(), MAX_AHEAD_DAYS)) > 0) return invalid("The block starts too far ahead", ["start"]);
   if (end.epochMilliseconds - start.epochMilliseconds > MAX_BLOCK_DAYS * 86_400_000) return invalid("The block is too long", ["end"]);
 
   const block = await d.salon.insertBlock({ shopId, resourceId: req.resourceId, start, end, reason: req.reason });
@@ -178,7 +190,10 @@ export async function handleCreateBlock(
         b.status === "confirmed" && (req.resourceId === null || b.resourceId === req.resourceId) && overlaps(b, { start, end }),
     )
     .map((b) => toAgendaItem(b, now));
-  return { ok: true, body: { block: blockDto(block), overlapping } };
+  return {
+    ok: true,
+    body: { block: blockDto(block), overlapping: overlapping.slice(0, MAX_OVERLAPPING), truncated: overlapping.length > MAX_OVERLAPPING },
+  };
 }
 
 export async function handleDeleteBlock(
@@ -209,6 +224,7 @@ export async function handlePay(
   if (productCents > req.amountCents) return invalid("The product cannot be more than the total", ["productCents"]);
 
   const now = d.clock();
+  // Paying a pending (unconfirmed) booking is allowed on purpose: the client came.
   // Why a booking cannot be paid, from the row as it is now.
   const refusal = async (): Promise<OwnerFailure | null> => {
     const b = await d.repo.getBooking(shopId, bookingId);
@@ -274,8 +290,23 @@ export async function handleVisitNote(
 ): Promise<OwnerResult<VisitNoteResponse>> {
   const g = await open(shopId, token, d);
   if (!g.ok) return g;
+  // A note on a cancelled booking is allowed on purpose.
   if (!(await d.salon.setVisitNote(shopId, bookingId, note.trim()))) return fail(404, { error: "booking_not_found" });
   return { ok: true, body: { ok: true } };
+}
+
+/** The visit note text, read on demand because the poll only says whether there is one. */
+export async function handleGetVisitNote(
+  d: SalonDeps,
+  shopId: string,
+  token: string | undefined,
+  bookingId: string,
+): Promise<OwnerResult<VisitNoteTextResponse>> {
+  const g = await open(shopId, token, d);
+  if (!g.ok) return g;
+  const b = await d.repo.getBooking(shopId, bookingId);
+  if (!b) return fail(404, { error: "booking_not_found" });
+  return { ok: true, body: { note: b.visitNote } };
 }
 
 /** Today's totals by method: the cash strip (Task 10). `day` is a local date of the shop. */
