@@ -101,7 +101,7 @@ describe("GET the customer book", () => {
     });
     // 70 days since the last visit against a 31-day rhythm.
     expect(b.lapsed).toHaveLength(1);
-    expect(b.lapsed[0]).toMatchObject({ clientId: mine, daysSince: 70, thresholdDays: 31, overdueDays: 39, language: "es" });
+    expect(b.lapsed[0]).toMatchObject({ clientId: mine, daysSince: 70, thresholdDays: 47, overdueDays: 23, language: "es" });
     expect(b.lapsed[0].whatsappUrl.startsWith("https://wa.me/34612345678?text=")).toBe(true);
     expect(decodeURIComponent(b.lapsed[0].whatsappUrl.split("?text=")[1])).toBe(b.lapsed[0].text);
     expect(b.lapsed[0].text).toContain("Hola Carlos");

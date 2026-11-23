@@ -185,8 +185,10 @@ export function memoryRepository(opts: {
       const vk = `${visitorKey}@${ms - (ms % 60_000)}`;
       const gk = `global@${ms - (ms % 3_600_000)}`;
       store.rate.set(vk, (store.rate.get(vk) ?? 0) + 1);
+      const hk = `${visitorKey}:h@${ms - (ms % 3_600_000)}`;
       store.rate.set(gk, (store.rate.get(gk) ?? 0) + 1);
-      return { visitor: store.rate.get(vk)!, global: store.rate.get(gk)! };
+      store.rate.set(hk, (store.rate.get(hk) ?? 0) + 1);
+      return { visitor: store.rate.get(vk)!, visitorHour: store.rate.get(hk)!, global: store.rate.get(gk)! };
     },
 
     async pruneRateLimits(before) {

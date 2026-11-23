@@ -291,10 +291,10 @@ describe("commit: atomic, and an overlap is booking_overlap like the 23P01 const
     const { mem, pg } = await both(steps);
     expect(mem).toEqual(pg);
     expect(pg.slice(0, 4)).toEqual([
-      { visitor: 1, global: 1 },
-      { visitor: 2, global: 2 },
-      { visitor: 1, global: 3 },
-      { visitor: 1, global: 4 }, // 18:31:30 is a new minute for v1
+      { visitor: 1, visitorHour: 1, global: 1 },
+      { visitor: 2, visitorHour: 2, global: 2 },
+      { visitor: 1, visitorHour: 1, global: 3 },
+      { visitor: 1, visitorHour: 3, global: 4 }, // 18:31:30 is a new minute for v1, the same hour
     ]);
   });
 });

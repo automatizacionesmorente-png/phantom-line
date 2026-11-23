@@ -18,7 +18,7 @@ const I = (s: string) => Temporal.Instant.from(s);
 
 describe("checkTtsLimits", () => {
   it("the defaults: 12 per visitor per minute, 20 an hour, 30 a day, each count including this request", () => {
-    expect(DEFAULT_TTS_LIMITS).toEqual({ perVisitorPerMinute: 12, globalPerHour: 20, globalPerDay: 30 });
+    expect(DEFAULT_TTS_LIMITS).toEqual({ perVisitorPerMinute: 12, perVisitorPerDay: 10, globalPerHour: 20, globalPerDay: 30 });
     expect(checkTtsLimits({ visitor: 12, hour: 20, day: 30 }, DEFAULT_TTS_LIMITS)).toEqual({ blocked: false });
     expect(checkTtsLimits({ visitor: 13, hour: 1, day: 1 }, DEFAULT_TTS_LIMITS)).toEqual({ blocked: true, limit: "visitor" });
     expect(checkTtsLimits({ visitor: 1, hour: 21, day: 1 }, DEFAULT_TTS_LIMITS)).toEqual({ blocked: true, limit: "hour" });
@@ -28,7 +28,7 @@ describe("checkTtsLimits", () => {
   it("reads the caps from the environment, and ignores bad values", () => {
     expect(
       ttsLimitsFromEnv({ TTS_LIMIT_PER_VISITOR_PER_MINUTE: "5", TTS_LIMIT_GLOBAL_PER_HOUR: " 8 ", TTS_LIMIT_GLOBAL_PER_DAY: "16" }),
-    ).toEqual({ perVisitorPerMinute: 5, globalPerHour: 8, globalPerDay: 16 });
+    ).toEqual({ perVisitorPerMinute: 5, perVisitorPerDay: 10, globalPerHour: 8, globalPerDay: 16 });
     expect(ttsLimitsFromEnv({ TTS_LIMIT_PER_VISITOR_PER_MINUTE: "0", TTS_LIMIT_GLOBAL_PER_HOUR: "-3", TTS_LIMIT_GLOBAL_PER_DAY: "lots" })).toEqual(
       DEFAULT_TTS_LIMITS,
     );
