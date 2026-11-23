@@ -17,6 +17,8 @@ export interface PublicShop {
   /** Service names in both languages, for `SpeechRecognition.phrases`. */
   speechPhrases: readonly string[];
   notices: Record<Lang, { typeInstead: string; lineCut: string }>;
+  /** A trial shop from the /nacer wizard: the pages show the "Prueba" badge. */
+  trial?: boolean;
 }
 
 export function toPublicShop(shop: ShopProfile): PublicShop {

@@ -27,7 +27,7 @@ export async function loadMachineView(shopId: string, token: string | undefined,
   if (shopId.length === 0 || shopId.length > MAX_SHOP_ID) return { kind: "not_found" };
   const access = await d.repo.getShopAccess(shopId);
   if (!access) return { kind: "not_found" };
-  const gate = toGateShop(access.profile);
+  const gate = toGateShop(access.profile, access.trial === true);
   if (access.pinHash === null || access.pinSetAt === null) return { kind: "no_pin", shop: gate };
 
   const secret = d.secret();
@@ -40,7 +40,7 @@ export async function loadMachineView(shopId: string, token: string | undefined,
   if (!poll.ok || !poll.body.changed) return { kind: "gate", shop: gate };
   return {
     kind: "machine",
-    shop: toMachineShop(access.profile, getSectorPack(access.profile.sectorPackId)),
+    shop: toMachineShop(access.profile, getSectorPack(access.profile.sectorPackId), access.trial === true),
     initial: poll.body,
     label: check.session.label,
   };

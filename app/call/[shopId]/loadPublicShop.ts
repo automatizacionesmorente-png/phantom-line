@@ -1,6 +1,7 @@
 import "server-only";
 import { cacheTag } from "next/cache";
-import { getRepository } from "@/lib/db/client";
+import { getDb, getRepository } from "@/lib/db/client";
+import { createTrialStore } from "@/lib/db/trialRepository";
 import { toPublicShop, type PublicShop } from "@/lib/voice/publicShop";
 
 const MAX_SHOP_ID = 100;
@@ -15,5 +16,7 @@ export async function loadPublicShop(shopId: string): Promise<PublicShop | null>
   cacheTag(`shop:${shopId}`);
   if (shopId.length === 0 || shopId.length > MAX_SHOP_ID) return null;
   const shop = await getRepository().getShop(shopId);
-  return shop ? toPublicShop(shop) : null;
+  if (!shop) return null;
+  const trial = await createTrialStore(getDb()).isTrial(shopId);
+  return trial ? { ...toPublicShop(shop), trial } : toPublicShop(shop);
 }

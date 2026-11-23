@@ -1,6 +1,7 @@
 "use client";
 
 import { DemoNotice } from "@/components/machine/DemoNotice";
+import { TrialBadge } from "@/components/TrialBadge";
 import type { PublicShop } from "@/lib/voice/publicShop";
 import { canType, canTypeInstead, type NoticeKey } from "@/lib/voice/callLoop";
 import { CALL_COPY } from "./callCopy";
@@ -45,6 +46,7 @@ export function CallScreen({ shop, demo = false }: CallScreenProps) {
       </h1>
 
       {demo && <DemoNotice lang={state.lang} />}
+      {shop.trial === true && <TrialBadge lang={state.lang} />}
 
       <LanguageSwitch lang={state.lang} options={shop.languages} label={copy.languageLabel} onChange={call.switchLang} />
 

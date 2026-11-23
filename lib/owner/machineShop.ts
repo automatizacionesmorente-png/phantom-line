@@ -18,6 +18,8 @@ export interface GateShop {
   name: string;
   languages: Lang[];
   demo: boolean;
+  /** A trial shop from the /nacer wizard (shows the "Prueba" badge). */
+  trial?: boolean;
 }
 
 export interface MachineShop extends GateShop {
@@ -29,13 +31,13 @@ export interface MachineShop extends GateShop {
   resources: { id: string; name: Localized }[];
 }
 
-export function toGateShop(shop: ShopProfile): GateShop {
-  return { id: shop.id, name: shop.name, languages: [...shop.languages], demo: isDemoShop(shop.id) };
+export function toGateShop(shop: ShopProfile, trial = false): GateShop {
+  return { id: shop.id, name: shop.name, languages: [...shop.languages], demo: isDemoShop(shop.id), ...(trial ? { trial } : {}) };
 }
 
-export function toMachineShop(shop: ShopProfile, pack: SectorPack): MachineShop {
+export function toMachineShop(shop: ShopProfile, pack: SectorPack, trial = false): MachineShop {
   return {
-    ...toGateShop(shop),
+    ...toGateShop(shop, trial),
     ownerName: shop.ownerName,
     timeZone: shop.timeZone,
     unit: pack.unit,

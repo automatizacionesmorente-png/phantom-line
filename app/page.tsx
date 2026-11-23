@@ -77,6 +77,10 @@ export default function Home() {
           <Link href="/startup" className="focus-ring font-semibold text-gold-text underline">
             See Phantom Line for salons
           </Link>
+          {" · "}
+          <Link href="/nacer" className="focus-ring font-semibold text-gold-text underline">
+            Create your own receptionist
+          </Link>
         </p>
       </main>
     </div>

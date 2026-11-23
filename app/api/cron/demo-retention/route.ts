@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Temporal } from "temporal-polyfill";
 import { getDb } from "@/lib/db/client";
 import { createOwnerRepository } from "@/lib/db/ownerRepository";
+import { createTrialStore } from "@/lib/db/trialRepository";
 import type { DemoRetentionDeps } from "@/lib/owner/demoRetention";
 import { makeCronHandler } from "./handler";
 
@@ -16,4 +17,5 @@ export const GET = makeCronHandler({
     newId: () => randomUUID(),
   }),
   secret: () => process.env.CRON_SECRET,
+  sweepTrials: () => createTrialStore(getDb()).deleteExpired(Temporal.Now.instant()),
 });

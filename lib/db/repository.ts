@@ -9,6 +9,7 @@ import { ShopProfileSchema, type ShopProfile } from "@/lib/conversation/shopProf
 import type { CallerBooking, Channel, Lang, Repository, StoredCall, Write } from "@/lib/conversation/types";
 import { getSectorPack } from "@/lib/sectors";
 import * as schema from "./schema";
+import { shopIsLive } from "./shopLive";
 import { bookings, calls, messages, rateLimits, shops } from "./schema";
 
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
@@ -157,7 +158,7 @@ export function createRepository(handle: DbHandle): Repository {
   }
 
   async function getShop(id: string): Promise<ShopProfile | null> {
-    const rows = await db.select({ profile: shops.profile }).from(shops).where(eq(shops.id, id)).limit(1);
+    const rows = await db.select({ profile: shops.profile }).from(shops).where(and(eq(shops.id, id), shopIsLive())).limit(1);
     if (rows.length === 0) return null;
     // Validated on every read: a broken profile must never reach the receptionist.
     const parsed = ShopProfileSchema.safeParse(rows[0].profile);
