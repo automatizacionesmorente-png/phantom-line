@@ -31,7 +31,20 @@ export const ExtractionModelSchema = z.object({
     .max(12)
     .describe("Practical answers the document gives (parking, payment, cancellation, accessibility...). Answers are one or two short sentences, with numbers written in words."),
 });
-export const extractionJsonSchema = z.toJSONSchema(ExtractionModelSchema);
+/**
+ * What is sent to the model as the response schema: the same shape with no bounds, lengths or
+ * patterns, because Gemini refuses schemas whose constraints have "too many states" (a 400 on
+ * every call). The strict rules above still apply: parseExtraction checks every item with them.
+ */
+const ModelHourItem = z.object({ day: z.number(), open: z.string(), close: z.string() });
+const ModelServiceItem = z.object({ name: z.string(), durationMin: z.number().nullable(), priceEur: z.number().nullable(), from: z.boolean() });
+const ModelFaqItem = z.object({ question: z.string(), answer: z.string() });
+export const ExtractionWireSchema = z.object({
+  hours: z.array(ModelHourItem).describe(ExtractionModelSchema.shape.hours.description ?? ""),
+  services: z.array(ModelServiceItem).describe(ExtractionModelSchema.shape.services.description ?? ""),
+  faq: z.array(ModelFaqItem).describe(ExtractionModelSchema.shape.faq.description ?? ""),
+});
+export const extractionJsonSchema = z.toJSONSchema(ExtractionWireSchema);
 
 /** What arrives at the model's door: the top level only; each item is checked on its own. */
 const LooseOutput = z.object({ hours: z.array(z.unknown()).max(200), services: z.array(z.unknown()).max(200), faq: z.array(z.unknown()).max(100) });
