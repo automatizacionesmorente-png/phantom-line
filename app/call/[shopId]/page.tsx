@@ -12,6 +12,7 @@ export async function generateMetadata({ params }: PageProps<"/call/[shopId]">):
     const { shopId } = await params;
     const id = safeDecode(shopId);
     const shop = id === null ? null : await loadPublicShop(id);
+    if (shop?.trial) return { title: callTitle(shop.name, shop.languages[0] ?? "es"), robots: { index: false, follow: false } };
     return { title: shop ? callTitle(shop.name, shop.languages[0] ?? "es") : notFoundTitle() };
   } catch {
     return {};

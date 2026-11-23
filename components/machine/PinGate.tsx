@@ -8,6 +8,7 @@ import { LanguageSwitch } from "@/components/call/LanguageSwitch";
 import { TryItGuide } from "@/components/guide/TryItGuide";
 import { useBrowserLang } from "../useBrowserLang";
 import { GOLD_GRADIENT, PRIMARY_BUTTON, sessionUrl } from "./controlButton";
+import { TrialBadge } from "@/components/TrialBadge";
 import { DemoNotice } from "./DemoNotice";
 import { MACHINE_COPY } from "./machineCopy";
 
@@ -73,6 +74,7 @@ export function PinGate({ shop }: { shop: GateShop }) {
         {copy.headingBefore} <span className="text-gold">{shop.name}</span>
       </h1>
       {shop.demo && <DemoNotice lang={lang} />}
+      {shop.trial === true && <TrialBadge lang={lang} />}
       <LanguageSwitch lang={lang} options={shop.languages} label={MACHINE_COPY[lang].languageLabel} onChange={setLang} />
 
       <form

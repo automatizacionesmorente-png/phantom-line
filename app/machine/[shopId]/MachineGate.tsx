@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { DemoNotice } from "@/components/machine/DemoNotice";
+import { TrialBadge } from "@/components/TrialBadge";
 import { MACHINE_COPY } from "@/components/machine/machineCopy";
 import { MachineScreen } from "@/components/machine/MachineScreen";
 import { PinGate } from "@/components/machine/PinGate";
@@ -51,6 +52,7 @@ function NotSetUp({ shop }: { shop: GateShop }) {
         {copy.gate.headingBefore} <span className="text-gold">{shop.name}</span>
       </h1>
       {shop.demo && <DemoNotice lang={lang} />}
+      {shop.trial === true && <TrialBadge lang={lang} />}
       <p className="font-inter text-lg text-text">{copy.gate.notSetUp}</p>
       <p className="font-inter text-base text-muted">{copy.gate.notSetUpHint}</p>
     </section>

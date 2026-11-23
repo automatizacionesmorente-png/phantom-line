@@ -7,6 +7,7 @@ import type { Lang } from "@/lib/conversation/types";
  */
 export interface StartupCopy {
   nav: { back: string; langLabel: string };
+  cta: { label: string; hint: string };
   eyebrow: string;
   title: [string, string];
   lead: string;
@@ -38,6 +39,7 @@ export interface StartupCopy {
 export const COPY: Record<Lang, StartupCopy> = {
   en: {
     nav: { back: "Back to the demo", langLabel: "Language" },
+    cta: { label: "Create your own receptionist", hint: "Free trial in a few minutes. The trial shop is deleted after 7 days." },
     eyebrow: "Phantom Line for salons",
     title: ["The phone rings while your hands are ", "full of hair"],
     lead: "An AI receptionist that answers your calls, books the appointment with your real rules, and leaves you a message on a haunted ivory answering machine.",
@@ -72,10 +74,11 @@ export const COPY: Record<Lang, StartupCopy> = {
         "Bookings with real rules: hours, service duration, one booking per chair.",
         "The owner's answering-machine screen, protected by a PIN.",
         "Sector packs: the hair salon pack is the first.",
+        "Self-service trial setup: your own receptionist in a few minutes.",
       ],
       roadmapHeading: "Roadmap",
       roadmapTag: "Roadmap, not built yet",
-      roadmap: ["A real phone number for your shop.", "WhatsApp as a second channel.", "Self-service shop setup in 3 minutes.", "A customer book and win-back messages."],
+      roadmap: ["A real phone number for your shop.", "WhatsApp as a second channel.", "A customer book and win-back messages."],
     },
     pricing: {
       heading: "Planned pricing",
@@ -107,6 +110,7 @@ export const COPY: Record<Lang, StartupCopy> = {
   },
   es: {
     nav: { back: "Volver a la demo", langLabel: "Idioma" },
+    cta: { label: "Crea tu propia recepcionista", hint: "Prueba gratis en unos minutos. El negocio de prueba se borra a los 7 días." },
     eyebrow: "Phantom Line para peluquerías",
     title: ["Suena el teléfono y tienes las manos ", "llenas de pelo"],
     lead: "Una recepcionista con IA que contesta tus llamadas, reserva la cita con tus reglas reales y te deja un mensaje en un contestador de marfil y oro.",
@@ -141,10 +145,11 @@ export const COPY: Record<Lang, StartupCopy> = {
         "Reservas con reglas reales: horario, duración del servicio, una reserva por sillón.",
         "La pantalla del contestador del dueño, protegida con PIN.",
         "Paquetes por sector: el de peluquería es el primero.",
+        "Alta de prueba sin ayuda: tu propia recepcionista en pocos minutos.",
       ],
       roadmapHeading: "Hoja de ruta",
       roadmapTag: "Hoja de ruta, aún no existe",
-      roadmap: ["Un número de teléfono real para tu local.", "WhatsApp como segundo canal.", "Alta del local en 3 minutos, sin ayuda.", "Un libro de clientes y mensajes para recuperarlos."],
+      roadmap: ["Un número de teléfono real para tu local.", "WhatsApp como segundo canal.", "Un libro de clientes y mensajes para recuperarlos."],
     },
     pricing: {
       heading: "Precios previstos",

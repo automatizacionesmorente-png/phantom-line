@@ -46,8 +46,11 @@ export const shops = pgTable(
     machineVersion: bigint("machine_version", { mode: "number" }).notNull().default(0),
     /** Demo_Retention throttle; only ever set for the Demo_Shop (16.6). */
     demoSweptAt: tstz("demo_swept_at"),
+    /** Created by the /nacer wizard: a trial shop that the daily cron deletes at `expires_at`. */
+    trial: boolean().notNull().default(false),
+    expiresAt: tstz("expires_at"),
   },
-  (t) => [uniqueIndex("shops_name_uq").on(t.name)],
+  (t) => [uniqueIndex("shops_name_uq").on(t.name), index("shops_trial_expiry_idx").on(t.trial, t.expiresAt)],
 );
 
 export const calls = pgTable(

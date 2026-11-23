@@ -18,6 +18,7 @@ import { DEMO_RETENTION_EVERY_MIN, DEMO_SHOP_ID, type DemoCutoffs, type DemoSamp
 import type { ClientBooking } from "@/lib/clients/summary";
 import type { ClientRecord, OwnerCommand, OwnerCommandResult, OwnerRepository, TapeRow } from "@/lib/owner/types";
 import { isOverlapViolation, type Db, type DbHandle } from "./repository";
+import { shopIsLive } from "./shopLive";
 import { bookings, calls, clients, messages, ownerActions, rateLimits, shops } from "./schema";
 
 const toDate = (i: Temporal.Instant) => new Date(i.epochMilliseconds);
@@ -271,15 +272,15 @@ export function createOwnerRepository(handle: DbHandle): OwnerRepository {
   return {
     async getShopAccess(shopId) {
       const rows = await db
-        .select({ profile: shops.profile, pinHash: shops.ownerPinHash, pinSetAt: shops.ownerPinSetAt })
+        .select({ profile: shops.profile, pinHash: shops.ownerPinHash, pinSetAt: shops.ownerPinSetAt, trial: shops.trial })
         .from(shops)
-        .where(eq(shops.id, shopId))
+        .where(and(eq(shops.id, shopId), shopIsLive()))
         .limit(1);
       const r = rows[0];
       if (!r) return null;
       const parsed = ShopProfileSchema.safeParse(r.profile);
       if (!parsed.success) throw new Error(`Shop "${shopId}" has an invalid profile`);
-      return { profile: parsed.data, pinHash: r.pinHash, pinSetAt: toInstantOrNull(r.pinSetAt) };
+      return { profile: parsed.data, pinHash: r.pinHash, pinSetAt: toInstantOrNull(r.pinSetAt), trial: r.trial };
     },
 
     async hitCounters(keys) {

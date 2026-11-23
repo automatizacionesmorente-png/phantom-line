@@ -12,6 +12,7 @@ import { tapeItems } from "@/lib/owner/tapePlayer";
 import { useBrowserLang } from "../useBrowserLang";
 import { AgendaView } from "./AgendaView";
 import { ClientsView } from "./ClientsView";
+import { TrialBadge } from "@/components/TrialBadge";
 import { DemoNotice } from "./DemoNotice";
 import { LockButton } from "./LockButton";
 import { MachineBody } from "./MachineBody";
@@ -111,6 +112,7 @@ export function MachineScreen({ shop, initial, label }: MachineScreenProps) {
           </p>
           <p className="font-newsreader text-2xl font-medium tracking-tight text-ink break-words">{shop.name}</p>
           {shop.demo && <DemoNotice lang={lang} />}
+          {shop.trial === true && <TrialBadge lang={lang} />}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <LanguageSwitch lang={lang} options={shop.languages} label={copy.languageLabel} onChange={setLang} />

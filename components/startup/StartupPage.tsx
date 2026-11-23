@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { LanguageSwitch } from "@/components/call/LanguageSwitch";
+import { GOLD_GRADIENT, PRIMARY_BUTTON } from "@/components/machine/controlButton";
 import type { Lang } from "@/lib/conversation/types";
 import { COPY, langFromBrowser } from "./copy";
 import { WaitlistForm } from "./WaitlistForm";
@@ -40,6 +41,12 @@ export function StartupPage() {
           </h1>
           <p className="font-inter text-xl text-text">{t.lead}</p>
           <p className="font-inter text-base font-semibold text-ink">{t.founder}</p>
+          <div className="flex flex-col items-start gap-2">
+            <Link href="/nacer" className={PRIMARY_BUTTON} style={GOLD_GRADIENT}>
+              {t.cta.label}
+            </Link>
+            <p className="font-inter text-sm text-muted">{t.cta.hint}</p>
+          </div>
         </header>
 
         <section aria-labelledby="problem" className="flex flex-col gap-5">

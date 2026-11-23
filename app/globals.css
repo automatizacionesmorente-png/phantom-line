@@ -166,3 +166,9 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* The /nacer rebirth: the tape rewinds (the reels turn backwards, fast) before the light starts to blink. */
+.rewind-reels .reel-spin {
+  animation-duration: 0.5s;
+  animation-direction: reverse;
+}

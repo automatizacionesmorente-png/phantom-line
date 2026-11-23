@@ -15,6 +15,7 @@ export async function generateMetadata({ params }: PageProps<"/machine/[shopId]"
       return { title: notFoundTitle() };
     }
     const shop = await loadPublicShop(id);
+    if (shop?.trial) return { title: machineTitle(shop.languages[0] ?? "es"), robots: { index: false, follow: false } };
     return { title: shop ? machineTitle(shop.languages[0] ?? "es") : notFoundTitle() };
   } catch {
     return {};

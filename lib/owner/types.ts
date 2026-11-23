@@ -33,6 +33,8 @@ export interface ShopAccess {
   profile: ShopProfile;
   pinHash: string | null;
   pinSetAt: Temporal.Instant | null;
+  /** A shop created by the /nacer wizard: its pages show the "Prueba" badge. */
+  trial?: boolean;
 }
 
 /** Who did an Owner_Action: the Owner_Session's id and the label typed at login. */
