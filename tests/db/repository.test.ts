@@ -250,7 +250,7 @@ describe("closeStaleCalls", () => {
     expect(c.state.stage).toBe("done");
     const ms = await t.handle.db.select().from(messages);
     expect(ms).toHaveLength(1);
-    expect(ms[0]).toMatchObject({ callId: stale, outcome: "abandoned", callerName: "Ana", callerPhone: "+34612345678", reason: "Quiere cita" });
+    expect(ms[0]).toMatchObject({ callId: stale, outcome: "abandoned", callerName: "Ana", callerPhone: "+34612345678", reason: "Llamada sin terminar" });
     expect(ms[0].agreed).toBe("Nada acordado; colgó antes de terminar");
 
     expect(await t.repo.closeStaleCalls(SHOP, later)).toBe(0);

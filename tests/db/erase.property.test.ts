@@ -60,6 +60,8 @@ describe("M4: erase is permanent in the database", () => {
         const callIds: string[] = [];
         for (let k = 0; k < calls; k++) {
           const w = callWrite(SHOP);
+          // A name makes the Call actionable, so the sweep writes its Message (backlog 25).
+          w.call.state = { ...w.call.state, fields: { name: "Ana" } };
           await t.repo.commit([w]);
           callIds.push(w.call.id);
         }
