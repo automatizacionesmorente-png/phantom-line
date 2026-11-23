@@ -64,6 +64,13 @@
       "when": 1795428802793,
       "tag": "0008_trial_shops",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795449608951,
+      "tag": "0009_salon",
+      "breakpoints": true
     }
   ]
 }

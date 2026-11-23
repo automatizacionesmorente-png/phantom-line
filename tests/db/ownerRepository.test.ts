@@ -44,10 +44,10 @@ beforeEach(async () => {
   await insertShop(t, realProfile);
 });
 
-describe("migrations 0000–0008", () => {
+describe("migrations 0000–0009", () => {
   it("all apply, in order", async () => {
     const r = await t.pg.query<{ n: number }>("SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations");
-    expect(r.rows[0].n).toBe(9);
+    expect(r.rows[0].n).toBe(10);
   });
 
   it("create the deferred machine-version triggers, the revision trigger and the erase guard", async () => {

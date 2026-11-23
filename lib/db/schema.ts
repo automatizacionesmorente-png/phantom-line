@@ -1,9 +1,11 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   bigint,
   boolean,
   check,
   customType,
+  date,
   index,
   integer,
   jsonb,
@@ -114,12 +116,20 @@ export const bookings = pgTable(
     curated: boolean().notNull().default(false),
     /** The Owner marked "No vino" on a past booking (clients 14); null otherwise. */
     noShowAt: tstz("no_show_at"),
+    /** The Client card of this booking's phone (salon 0009); null for a walk-in without a phone. */
+    clientId: uuid("client_id").references((): AnyPgColumn => clients.id, { onDelete: "set null" }),
+    /** Price snapshot in cents at booking time; null on rows written before it existed. */
+    priceCents: integer("price_cents"),
+    /** The Owner's note about the visit (colour formula, work done), at most 500 characters. */
+    visitNote: text("visit_note").notNull().default(""),
   },
   (t) => [
     check("bookings_time_order", sql`${t.endsAt} > ${t.startsAt}`),
     check("bookings_status_ck", sql`${t.status} IN ('confirmed', 'cancelled')`),
     check("bookings_cancelled_by_ck", sql`${t.cancelledBy} IS NULL OR ${t.cancelledBy} IN ('caller', 'owner')`),
-    check("bookings_channel_ck", sql`${t.channel} IN ('voice', 'whatsapp', 'webchat')`),
+    check("bookings_channel_ck", sql`${t.channel} IN ('voice', 'whatsapp', 'webchat', 'manual')`),
+    check("bookings_price_ck", sql`${t.priceCents} IS NULL OR ${t.priceCents} >= 0`),
+    check("bookings_visit_note_ck", sql`char_length(${t.visitNote}) <= 500`),
     /** A Call creates at most one Booking (retry-safe). */
     uniqueIndex("bookings_call_uq").on(t.callId),
     index("bookings_shop_start_idx").on(t.shopId, t.startsAt),
@@ -211,7 +221,7 @@ export const ownerActions = pgTable(
     createdAt: tstz("created_at").notNull().defaultNow(),
   },
   (t) => [
-    check("owner_actions_action_ck", sql`${t.action} IN ('play', 'erase', 'confirm', 'move', 'cancel', 'no_show')`),
+    check("owner_actions_action_ck", sql`${t.action} IN ('play', 'erase', 'confirm', 'move', 'cancel', 'no_show', 'book', 'pay')`),
     check("owner_actions_target_ck", sql`(${t.bookingId} IS NULL) <> (${t.messageId} IS NULL)`),
     index("owner_actions_booking_idx").on(t.bookingId, t.createdAt.desc()),
     index("owner_actions_shop_idx").on(t.shopId, t.createdAt.desc()),
@@ -238,6 +248,12 @@ export const clients = pgTable(
     language: text().notNull().default("es"),
     /** The Owner's private note, at most 500 characters. */
     note: text().notNull().default(""),
+    /** "MM-DD", no year; null when unknown. */
+    birthday: text(),
+    /** When the client agreed to promotion messages; null = never message them. */
+    promoConsentAt: tstz("promo_consent_at"),
+    /** Sector fields (the pack's clientFields), validated in code. */
+    fields: jsonb().$type<Record<string, string>>().notNull().default({}),
     createdAt: tstz("created_at").notNull().defaultNow(),
     updatedAt: tstz("updated_at").notNull().defaultNow(),
     /** Curated demo row (npm run demo:reset): Demo_Retention never deletes it. */
@@ -248,6 +264,142 @@ export const clients = pgTable(
     check("clients_phone_ck", sql`${t.phone} ~ '^\\+[0-9]{6,15}$'`),
     check("clients_language_ck", sql`${t.language} IN ('es', 'en')`),
     check("clients_note_ck", sql`char_length(${t.note}) <= 500`),
+    check("clients_birthday_ck", sql`${t.birthday} IS NULL OR ${t.birthday} ~ '^\\d{2}-\\d{2}$'`),
+  ],
+);
+
+/** A one-off block of time (holiday, break) for one resource or the whole shop (salon 0009). */
+export const timeBlocks = pgTable(
+  "time_blocks",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    shopId: text("shop_id")
+      .notNull()
+      .references(() => shops.id),
+    /** An id from shop.profile.resources; null = the whole shop. */
+    resourceId: text("resource_id"),
+    startsAt: tstz("starts_at").notNull(),
+    endsAt: tstz("ends_at").notNull(),
+    reason: text().notNull().default(""),
+    createdAt: tstz("created_at").notNull().defaultNow(),
+    curated: boolean().notNull().default(false),
+  },
+  (t) => [
+    index("time_blocks_shop_start_idx").on(t.shopId, t.startsAt),
+    check("time_blocks_order_ck", sql`${t.endsAt} > ${t.startsAt}`),
+    check("time_blocks_reason_ck", sql`char_length(${t.reason}) <= 80`),
+  ],
+);
+
+/** The cash desk: at most one payment per booking; a product-only sale has no booking. */
+export const payments = pgTable(
+  "payments",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    shopId: text("shop_id")
+      .notNull()
+      .references(() => shops.id),
+    bookingId: uuid("booking_id")
+      .references(() => bookings.id)
+      .unique(),
+    /** Total charged, in cents. */
+    amountCents: integer("amount_cents").notNull(),
+    /** The part of the total that was a product, in cents. */
+    productCents: integer("product_cents").notNull().default(0),
+    productLabel: text("product_label").notNull().default(""),
+    method: text().notNull(),
+    paidAt: tstz("paid_at").notNull(),
+    createdAt: tstz("created_at").notNull().defaultNow(),
+    curated: boolean().notNull().default(false),
+  },
+  (t) => [
+    index("payments_shop_paid_idx").on(t.shopId, t.paidAt),
+    check("payments_amount_ck", sql`${t.amountCents} >= 0`),
+    check("payments_product_ck", sql`${t.productCents} >= 0`),
+    check("payments_label_ck", sql`char_length(${t.productLabel}) <= 60`),
+    check("payments_method_ck", sql`${t.method} IN ('cash', 'card', 'bizum', 'voucher')`),
+  ],
+);
+
+/**
+ * Expenses: a one-off row has a `day`; a fixed monthly one is a template with a start month and an
+ * optional end month (changing the amount ends the old template and starts a new one).
+ */
+export const expenses = pgTable(
+  "expenses",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    shopId: text("shop_id")
+      .notNull()
+      .references(() => shops.id),
+    concept: text().notNull(),
+    category: text().notNull(),
+    amountCents: integer("amount_cents").notNull(),
+    day: date({ mode: "string" }),
+    recurring: boolean().notNull().default(false),
+    /** "YYYY-MM". */
+    startMonth: text("start_month"),
+    endMonth: text("end_month"),
+    createdAt: tstz("created_at").notNull().defaultNow(),
+    curated: boolean().notNull().default(false),
+  },
+  (t) => [
+    index("expenses_shop_idx").on(t.shopId),
+    check("expenses_concept_ck", sql`char_length(${t.concept}) BETWEEN 1 AND 80`),
+    check("expenses_category_ck", sql`${t.category} IN ('rent', 'products', 'utilities', 'staff', 'other')`),
+    check("expenses_amount_ck", sql`${t.amountCents} > 0`),
+    check(
+      "expenses_shape_ck",
+      sql`(${t.recurring} AND ${t.startMonth} IS NOT NULL AND ${t.startMonth} ~ '^\\d{4}-\\d{2}$' AND ${t.day} IS NULL) OR (NOT ${t.recurring} AND ${t.day} IS NOT NULL)`,
+    ),
+    check("expenses_end_month_ck", sql`${t.endMonth} IS NULL OR ${t.endMonth} ~ '^\\d{4}-\\d{2}$'`),
+  ],
+);
+
+/** Per-shop switches (automations), the review link and the VAT rate. */
+export const shopSettings = pgTable(
+  "shop_settings",
+  {
+    shopId: text("shop_id")
+      .primaryKey()
+      .references(() => shops.id),
+    automations: jsonb().$type<Record<string, boolean>>().notNull().default({}),
+    googleReviewUrl: text("google_review_url"),
+    vatRatePct: integer("vat_rate_pct").notNull().default(21),
+    updatedAt: tstz("updated_at").notNull().defaultNow(),
+  },
+  (t) => [check("shop_settings_vat_ck", sql`${t.vatRatePct} BETWEEN 0 AND 30`)],
+);
+
+/** WhatsApp messages prepared for the Owner to send by hand (the app never sends them). */
+export const outbox = pgTable(
+  "outbox",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    shopId: text("shop_id")
+      .notNull()
+      .references(() => shops.id),
+    kind: text().notNull(),
+    /** Makes generation idempotent: one message per shop and key. */
+    dedupeKey: text("dedupe_key").notNull(),
+    clientId: uuid("client_id").references(() => clients.id),
+    bookingId: uuid("booking_id").references(() => bookings.id),
+    phone: text().notNull(),
+    language: text().notNull(),
+    body: text().notNull(),
+    status: text().notNull().default("prepared"),
+    createdAt: tstz("created_at").notNull().defaultNow(),
+    actedAt: tstz("acted_at"),
+    curated: boolean().notNull().default(false),
+  },
+  (t) => [
+    uniqueIndex("outbox_shop_dedupe_uq").on(t.shopId, t.dedupeKey),
+    index("outbox_shop_status_idx").on(t.shopId, t.status),
+    check("outbox_kind_ck", sql`${t.kind} IN ('reminder', 'review', 'gap', 'winback', 'birthday')`),
+    check("outbox_phone_ck", sql`${t.phone} ~ '^\\+[0-9]{6,15}$'`),
+    check("outbox_language_ck", sql`${t.language} IN ('es', 'en')`),
+    check("outbox_body_ck", sql`char_length(${t.body}) <= 700`),
+    check("outbox_status_ck", sql`${t.status} IN ('prepared', 'sent', 'dismissed')`),
   ],
 );
 
