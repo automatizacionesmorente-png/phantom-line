@@ -108,7 +108,8 @@ describe("matchServices on the Rich_Profile", () => {
     expect(ids("sin barba")).toEqual({ kind: "none" });
     expect(ids("no quiero barba, solo un corte de hombre")).toEqual(["corte-hombre"]);
     expect(ids("nada de mechas, un tinte")).toEqual(["tinte-completo"]);
-    expect(ids("a haircut for a man without a beard shave")).toMatchObject({ kind: "choice" });
+    // "a haircut for a man" names the men's cut (alias added 23 Nov); the beard is still dropped.
+    expect(ids("a haircut for a man without a beard shave")).toEqual(["corte-hombre"]);
     // "No," as an answer is not a negation of what follows.
     expect(ids("No, quiero un corte de hombre")).toEqual(["corte-hombre"]);
   });
