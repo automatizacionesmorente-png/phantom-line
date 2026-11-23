@@ -206,8 +206,8 @@ describe("checkResetTarget", () => {
   });
 });
 
-describe("the curated set's week (BACKLOG 17)", () => {
-  /** Mondays, mornings, Sunday nights, a DST week: the week so far always holds rows. */
+describe("the curated set's last 7 days (BACKLOG 17)", () => {
+  /** Mondays, mornings, Sunday nights, a DST week: the last 7 days always hold rows. */
   const AT = [
     "2026-12-21T00:30:00Z",
     "2026-12-21T11:00:00Z",
@@ -234,14 +234,14 @@ describe("the curated set's week (BACKLOG 17)", () => {
         createdAt: b.createdAt ?? now,
       })),
     });
-    expect(s.callsAnswered).toBeGreaterThanOrEqual(2);
-    expect(s.bookings).toBeGreaterThanOrEqual(1);
+        expect(s.bookings).toBeGreaterThanOrEqual(1);
     expect(s.revenueCents).toBeGreaterThan(0);
     expect(s.timeSavedSeconds).toBeGreaterThan(0);
     expect(s.lostCalls).toBeGreaterThanOrEqual(1);
     expect(s.lostCalls).toBeLessThanOrEqual(s.callsAnswered);
-    // The salon is open Tuesday to Saturday: once one of those days has opened, not every call is lost.
-    if (now.toZonedDateTimeISO("Europe/Madrid").dayOfWeek >= 3) expect(s.lostCalls).toBeLessThan(s.callsAnswered);
+    // Believable on any day: most calls are inside the hours, and a few are not.
+    expect(s.callsAnswered).toBeGreaterThanOrEqual(10);
+    expect(s.lostCalls).toBeLessThan(s.callsAnswered / 2);
     // Every call ended by now, and every booking came after its call began.
     for (const c of set.calls) expect(Temporal.Instant.compare(c.endedAt, now)).toBeLessThanOrEqual(0);
     for (const b of set.bookings.filter((x) => x.callId)) {

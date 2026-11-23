@@ -1,5 +1,5 @@
 /**
- * The week's rows for "Esta semana" (lib/owner/weekStats.ts): Calls and Bookings of one shop in
+ * The rows of the last 7 days for "Últimos 7 días" (lib/owner/weekStats.ts): Calls and Bookings of one shop in
  * a window. Read-only, no personal column is selected (no name, phone or Transcript).
  */
 import { and, eq, gte, lt } from "drizzle-orm";

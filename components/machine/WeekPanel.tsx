@@ -29,7 +29,7 @@ function Stat({ label, value, note }: { label: string; value: string; note?: str
 }
 
 /**
- * "Esta semana" (BACKLOG 17): the week's real numbers from the shop's own data. A number that
+ * "Últimos 7 días" (BACKLOG 17): the last 7 days' real numbers from the shop's own data. A number that
  * cannot be computed (no finished calls, a booked service gone from the catalogue) is not shown.
  */
 export function WeekPanel({ shopId, lang, refreshKey, onLocked }: WeekPanelProps) {
@@ -77,7 +77,7 @@ export function WeekPanel({ shopId, lang, refreshKey, onLocked }: WeekPanelProps
           {copy.title}
         </h2>
         <p className="font-inter text-xs text-muted">
-          {copy.range(dayLabel(stats.weekStart, lang), dayLabel(stats.weekEnd, lang))}
+          {copy.range(dayLabel(stats.from, lang), dayLabel(stats.to, lang))}
         </p>
       </div>
       <dl className="m-0 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">

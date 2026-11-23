@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import fc from "fast-check";
 import { Temporal } from "temporal-polyfill";
 import { serviceView } from "@/lib/conversation/catalog";
-import { computeWeekStats, weekBounds, type WeekBooking, type WeekCall } from "@/lib/owner/weekStats";
+import { computeWeekStats, windowBounds, type WeekBooking, type WeekCall } from "@/lib/owner/weekStats";
 import { arbNow, DST_DATES } from "../booking/arbitraries";
 import { lolaProfile } from "../fixtures/lola";
 import { NUM_RUNS } from "../messages/arbitraries";
@@ -100,23 +100,35 @@ describe("computeWeekStats properties", () => {
     );
   });
 
-  it("the week holds exactly the instants from Monday 00:00 to the next Monday 00:00 local, DST weeks included", () => {
+  it("the window is the 7 calendar days up to now in the shop's zone, DST weeks included", () => {
     fc.assert(
-      fc.property(fc.oneof(arbNow, fc.constantFrom(...DST_DATES).chain((d) => fc.integer({ min: 0, max: 7 * 24 }).map((h) => Temporal.Instant.from(`${d}T00:00:00Z`).add({ hours: h })))), (at) => {
-        const tz = shop.timeZone;
-        const b = weekBounds(at, tz);
-        const local = (i: Temporal.Instant) => i.toZonedDateTimeISO(tz);
-        expect(Temporal.Instant.compare(b.start, at)).toBeLessThanOrEqual(0);
-        expect(Temporal.Instant.compare(at, b.end)).toBeLessThan(0);
-        expect(local(b.start).dayOfWeek).toBe(1);
-        expect(local(b.start).toPlainTime().toString()).toBe("00:00:00");
-        expect(local(b.end).dayOfWeek).toBe(1);
-        expect(local(b.end).toPlainTime().toString()).toBe("00:00:00");
-        expect(local(b.end).toPlainDate().since(local(b.start).toPlainDate()).days).toBe(7);
-        // The instant just before the end is still in this week, and the end opens the next.
-        expect(weekBounds(b.end.subtract({ milliseconds: 1 }), tz).start.equals(b.start)).toBe(true);
-        expect(weekBounds(b.end, tz).start.equals(b.end)).toBe(true);
-      }),
+      fc.property(
+        fc.oneof(
+          arbNow,
+          fc.constantFrom(...DST_DATES).chain((d) =>
+            fc.integer({ min: 0, max: 9 * 24 }).map((h) => Temporal.Instant.from(`${d}T00:00:00Z`).add({ hours: h })),
+          ),
+        ),
+        (at) => {
+          const tz = shop.timeZone;
+          const b = windowBounds(at, tz);
+          const local = (i: Temporal.Instant) => i.toZonedDateTimeISO(tz);
+          expect(Temporal.Instant.compare(b.start, at)).toBeLessThan(0);
+          expect(b.end.since(at).total("milliseconds")).toBe(1);
+          // Seven calendar days, at the same wall time unless that time does not exist that day.
+          expect(local(at).toPlainDate().since(local(b.start).toPlainDate()).days).toBe(7);
+          const hours = at.since(b.start).total("hours");
+          expect([167, 168, 169]).toContain(hours);
+          if (hours === 168) expect(local(b.start).toPlainTime().toString()).toBe(local(at).toPlainTime().toString());
+          // A call on the first instant counts, one a millisecond earlier does not, and `now` itself counts.
+          const rows = (t: Temporal.Instant): WeekCall[] => [{ id: "a", status: "completed", startedAt: t, updatedAt: t, endedAt: t }];
+          const answered = (t: Temporal.Instant) => computeWeekStats({ now: at, shop, calls: rows(t), bookings: [] }).callsAnswered;
+          expect(answered(b.start)).toBe(1);
+          expect(answered(b.start.subtract({ milliseconds: 1 }))).toBe(0);
+          expect(answered(at)).toBe(1);
+          expect(answered(at.add({ milliseconds: 1 }))).toBe(0);
+        },
+      ),
       { numRuns: NUM_RUNS },
     );
   });

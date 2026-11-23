@@ -8,7 +8,7 @@ import { createTestDb, type TestDb } from "../db/pglite";
 import { DEMO, REAL, SECRET, answer, createMachineEnv, mreq, seedShops, tokenFor, type MachineEnv } from "./machineHarness";
 
 /**
- * "Esta semana" through the Machine_API (BACKLOG 17): the owner session is required, the numbers
+ * "Últimos 7 días" through the Machine_API (BACKLOG 17): the owner session is required, the numbers
  * are the shop's own, and another shop's rows never count. CLOCK0 is Tuesday 10 November 2026.
  */
 let t: TestDb;
@@ -49,21 +49,21 @@ describe("GET /api/machine/[shopId]/week", () => {
     expect((await answer(await get("nope", tokenFor("nope")))).status).toBe(404);
   });
 
-  it("reads the shop's own week and no other shop's rows", async () => {
-    // Week of Monday 9 November. Tuesday 10:00 and 10:07 Madrid: open, the second while the first runs.
-    const a = await callOf(DEMO, "2026-11-10T09:00:00Z", 10);
-    await callOf(DEMO, "2026-11-10T09:07:00Z", 3);
-    await callOf(DEMO, "2026-11-10T19:30:00Z", 2); // 20:30 Madrid: closed
-    await callOf(DEMO, "2026-11-03T09:00:00Z", 3); // last week
-    await bookedBy(DEMO, a, "2026-11-10T09:10:00Z");
-    const other = await callOf(REAL, "2026-11-10T09:00:00Z", 3);
-    await bookedBy(REAL, other, "2026-11-10T09:05:00Z");
+  it("reads the shop's own last 7 days and no other shop's rows", async () => {
+    // Now is Tuesday 10 November 09:00 Madrid. Friday 6th 10:00 and 10:07 are open, the second while the first runs.
+    const a = await callOf(DEMO, "2026-11-06T09:00:00Z", 10);
+    await callOf(DEMO, "2026-11-06T09:07:00Z", 3);
+    await callOf(DEMO, "2026-11-09T19:30:00Z", 2); // Monday 20:30 Madrid: closed
+    await callOf(DEMO, "2026-11-03T07:30:00Z", 3); // 08:30 Madrid, 7 days and 30 minutes ago: outside
+    await bookedBy(DEMO, a, "2026-11-06T09:10:00Z");
+    const other = await callOf(REAL, "2026-11-06T09:00:00Z", 3);
+    await bookedBy(REAL, other, "2026-11-06T09:05:00Z");
 
     const res = await answer(await get(DEMO, tokenFor(DEMO)));
     expect(res.status).toBe(200);
     expect(res.json).toMatchObject({
-      weekStart: "2026-11-09",
-      weekEnd: "2026-11-15",
+      from: "2026-11-03",
+      to: "2026-11-10",
       callsAnswered: 3,
       bookings: 1,
       lostCalls: 2,
@@ -74,20 +74,19 @@ describe("GET /api/machine/[shopId]/week", () => {
     expect(res.text).not.toMatch(/Ana|\+346/);
   });
 
-  it("answers an empty week with zeros and no time saved", async () => {
+  it("answers an empty window with zeros and no time saved", async () => {
     const res = await answer(await get(DEMO, tokenFor(DEMO)));
     expect(res.json).toMatchObject({ callsAnswered: 0, bookings: 0, revenueCents: 0, lostCalls: 0, timeSavedSeconds: null });
   });
 
-  it("sets the week in the shop's zone at the Sunday-Monday boundary", async () => {
-    // Sunday 15 November 23:30 Madrid (22:30Z) is still the week of the 9th.
-    await callOf(DEMO, "2026-11-15T22:30:00Z", 2);
-    await callOf(DEMO, "2026-11-15T23:30:00Z", 2); // Monday 16th 00:30 Madrid: next week
-    const res = await answer(await get(DEMO, tokenFor(DEMO)));
-    expect(res.json).toMatchObject({ weekStart: "2026-11-09", callsAnswered: 1 });
-    const later = Temporal.Instant.from("2026-11-16T08:00:00Z");
+  it("moves with the clock, in the shop's zone", async () => {
+    await callOf(DEMO, "2026-11-08T12:00:00Z", 2);
+    const later = Temporal.Instant.from("2026-11-15T11:30:00Z");
     env.setNow(later);
     const next = await answer(await get(DEMO, tokenFor(DEMO, {}, SECRET, later)));
-    expect(next.json).toMatchObject({ weekStart: "2026-11-16", callsAnswered: 1 });
+    expect(next.json).toMatchObject({ from: "2026-11-08", to: "2026-11-15", callsAnswered: 1 });
+    env.setNow(later.add({ hours: 1 }));
+    const gone = await answer(await get(DEMO, tokenFor(DEMO, {}, SECRET, later)));
+    expect(gone.json).toMatchObject({ callsAnswered: 0 });
   });
 });

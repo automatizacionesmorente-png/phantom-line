@@ -1,12 +1,12 @@
 /**
- * "Esta semana" on the machine (BACKLOG 17): the week's numbers from the shop's own rows.
+ * "Últimos 7 días" on the machine (BACKLOG 17): the numbers from the shop's own rows.
  * Pure: the rows, the profile and the clock come in, and no number is ever estimated.
  *
  * Definitions (the screen states the time formula; these are the exact rules):
- * - Week: Monday 00:00 to the next Monday 00:00 in the shop's time zone (so a DST week is 167 or
- *   169 hours long, never shifted).
- * - Calls answered: Calls that started in the week and did not fail.
- * - Bookings: Bookings the receptionist made in the week (created in the week, linked to a Call,
+ * - Window: the last 7 days ending now (seven calendar days back at the same local time, in the
+ *   shop's time zone; a DST change inside it makes it 167 or 169 hours, never shifted).
+ * - Calls answered: Calls that started in the window and did not fail.
+ * - Bookings: Bookings the receptionist made in the window (created in the window, linked to a Call,
  *   still confirmed, and not a reschedule of an earlier one), each counted once.
  * - Revenue booked: the sum of the catalogue price of each of those Bookings (a Service_Combo is the
  *   sum of its parts). Null when any of them is not in the catalogue any more. `revenueFrom` is true
@@ -53,9 +53,9 @@ export interface WeekShop {
 }
 
 export interface WeekStats {
-  /** Local dates (YYYY-MM-DD) of the Monday and the Sunday of the week. */
-  weekStart: string;
-  weekEnd: string;
+  /** Local dates (YYYY-MM-DD) of the first and the last day of the window. */
+  from: string;
+  to: string;
   callsAnswered: number;
   bookings: number;
   /** In cents; null when a booked service is not in the catalogue. */
@@ -69,19 +69,26 @@ export interface WeekStats {
 }
 
 export interface WeekBounds {
+  /** Seven calendar days before `now`, at the same local wall time. */
   start: Temporal.Instant;
+  /** One millisecond after `now`: the window is [start, end), so a call that began at `now` counts. */
   end: Temporal.Instant;
-  monday: Temporal.PlainDate;
+  fromDate: Temporal.PlainDate;
+  toDate: Temporal.PlainDate;
 }
 
-/** The Monday-to-Sunday week that contains `now`, in the shop's zone. `end` is exclusive. */
-export function weekBounds(now: Temporal.Instant, timeZone: string): WeekBounds {
-  const today = localDateOf(now, timeZone);
-  const monday = today.subtract({ days: today.dayOfWeek - 1 });
+/**
+ * The last 7 days ending now, in the shop's zone: the instant seven calendar days earlier at the
+ * same local wall time (a DST change inside it makes the window 167 or 169 hours, never shifted).
+ */
+export function windowBounds(now: Temporal.Instant, timeZone: string): WeekBounds {
+  const zoned = now.toZonedDateTimeISO(timeZone);
+  const from = zoned.subtract({ days: 7 });
   return {
-    monday,
-    start: monday.toZonedDateTime(timeZone).toInstant(),
-    end: monday.add({ days: 7 }).toZonedDateTime(timeZone).toInstant(),
+    start: from.toInstant(),
+    end: now.add({ milliseconds: 1 }),
+    fromDate: from.toPlainDate(),
+    toDate: zoned.toPlainDate(),
   };
 }
 
@@ -110,7 +117,7 @@ export function computeWeekStats(input: {
   bookings: readonly WeekBooking[];
 }): WeekStats {
   const { shop } = input;
-  const bounds = weekBounds(input.now, shop.timeZone);
+  const bounds = windowBounds(input.now, shop.timeZone);
 
   // A row listed twice counts once.
   const calls = [...new Map(input.calls.filter((c) => inWeek(c.startedAt, bounds)).map((c) => [c.id, c])).values()];
@@ -142,8 +149,8 @@ export function computeWeekStats(input: {
   const known = views.every((v) => v.known);
 
   return {
-    weekStart: bounds.monday.toString(),
-    weekEnd: bounds.monday.add({ days: 6 }).toString(),
+    from: bounds.fromDate.toString(),
+    to: bounds.toDate.toString(),
     callsAnswered: answered.length,
     bookings: made.length,
     revenueCents: known ? views.reduce((sum, v) => sum + (v.known ? v.priceCents : 0), 0) : null,

@@ -1,7 +1,7 @@
 import type { Lang } from "@/lib/sectors";
 import type { WeekStats } from "@/lib/owner/weekStats";
 
-/** The "Esta semana" panel's words and number formats (BACKLOG 17), pure so tests can read them. */
+/** The "Últimos 7 días" panel's words and number formats (BACKLOG 17), pure so tests can read them. */
 export interface WeekCopy {
   title: string;
   range: (from: string, to: string) => string;
@@ -22,8 +22,8 @@ export interface WeekCopy {
 
 export const WEEK_COPY: Record<Lang, WeekCopy> = {
   es: {
-    title: "Esta semana",
-    range: (a, b) => `de lunes ${a} a domingo ${b}`,
+    title: "Últimos 7 días",
+    range: (a, b) => `del ${a} al ${b}`,
     answered: "Llamadas atendidas",
     bookings: "Citas hechas",
     revenue: "Facturación reservada",
@@ -39,8 +39,8 @@ export const WEEK_COPY: Record<Lang, WeekCopy> = {
       `Tiempo ahorrado = suma de la duración (fin menos inicio) de ${n === 1 ? "la llamada terminada" : `las ${n} llamadas terminadas`}: ${total}, ${avg} de media.`,
   },
   en: {
-    title: "This week",
-    range: (a, b) => `Monday ${a} to Sunday ${b}`,
+    title: "Last 7 days",
+    range: (a, b) => `${a} to ${b}`,
     answered: "Calls answered",
     bookings: "Bookings made",
     revenue: "Revenue booked",

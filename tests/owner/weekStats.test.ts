@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Temporal } from "temporal-polyfill";
-import { computeWeekStats, weekBounds, type WeekBooking, type WeekCall } from "@/lib/owner/weekStats";
+import { computeWeekStats, windowBounds, type WeekBooking, type WeekCall } from "@/lib/owner/weekStats";
 import { lolaProfile } from "../fixtures/lola";
 
 const I = (s: string) => Temporal.Instant.from(s);
@@ -25,32 +25,29 @@ const booking = (serviceId: string, callId: string | null, createdAt: string, o:
 });
 const stats = (calls: WeekCall[], bookings: WeekBooking[] = [], now = NOW) => computeWeekStats({ now, shop, calls, bookings });
 
-describe("weekBounds", () => {
-  it("runs Monday 00:00 to the next Monday 00:00 in the shop's zone", () => {
-    const b = weekBounds(NOW, "Europe/Madrid");
-    expect(b.start.toString()).toBe("2026-11-22T23:00:00Z");
-    expect(b.end.toString()).toBe("2026-11-29T23:00:00Z");
+describe("windowBounds", () => {
+  it("is the last 7 days ending now, at the same local time", () => {
+    const b = windowBounds(NOW, "Europe/Madrid");
+    expect(b.start.toString()).toBe("2026-11-19T11:00:00Z");
+    expect(b.end.toString()).toBe("2026-11-26T11:00:00.001Z");
+    expect(b.fromDate.toString()).toBe("2026-11-19");
+    expect(b.toDate.toString()).toBe("2026-11-26");
   });
 
-  it("puts Sunday 23:59 local in the old week and Monday 00:00 local in the new one", () => {
-    const sunday = weekBounds(I("2026-11-29T22:59:00Z"), "Europe/Madrid");
-    const monday = weekBounds(I("2026-11-29T23:00:00Z"), "Europe/Madrid");
-    expect(sunday.monday.toString()).toBe("2026-11-23");
-    expect(monday.monday.toString()).toBe("2026-11-30");
+  it("uses the shop's zone: the same instant is another local day in Tokyo", () => {
+    const at = I("2026-11-29T20:00:00Z");
+    expect(windowBounds(at, "Asia/Tokyo").toDate.toString()).toBe("2026-11-30");
+    expect(windowBounds(at, "Europe/Madrid").toDate.toString()).toBe("2026-11-29");
   });
 
-  it("uses the shop's zone, not UTC: Sunday night in Madrid is already Monday in Tokyo", () => {
-    expect(weekBounds(I("2026-11-29T20:00:00Z"), "Asia/Tokyo").monday.toString()).toBe("2026-11-30");
-    expect(weekBounds(I("2026-11-29T20:00:00Z"), "Europe/Madrid").monday.toString()).toBe("2026-11-23");
-  });
-
-  it("lasts 167 hours over the spring change and 169 over the autumn one", () => {
+  it("lasts 167 hours over the spring change and 169 over the autumn one, 168 otherwise", () => {
     const hours = (at: string) => {
-      const b = weekBounds(I(at), "Europe/Madrid");
-      return b.end.since(b.start).total("hours");
+      const b = windowBounds(I(at), "Europe/Madrid");
+      return I(at).since(b.start).total("hours");
     };
-    expect(hours("2026-03-25T10:00:00Z")).toBe(167);
-    expect(hours("2026-10-22T10:00:00Z")).toBe(169);
+    expect(hours("2026-03-30T10:00:00Z")).toBe(167);
+    expect(hours("2026-10-26T10:00:00Z")).toBe(169);
+    expect(hours("2026-11-26T10:00:00Z")).toBe(168);
   });
 });
 
@@ -66,17 +63,19 @@ describe("computeWeekStats", () => {
     });
   });
 
-  it("counts the calls of this week only, and not the failed ones", () => {
+  it("counts the calls of the last 7 days only, and not the failed ones", () => {
     const s = stats([
       call("2026-11-24T09:00:00Z", 3),
       call("2026-11-25T09:00:00Z", 3, { status: "abandoned" }),
       call("2026-11-25T10:00:00Z", 3, { status: "failed" }),
-      call("2026-11-22T22:59:00Z", 3), // Sunday 23:59 in Madrid: last week
-      call("2026-11-29T23:00:00Z", 3), // Monday 00:00 in Madrid: next week
+      call("2026-11-19T10:59:00Z", 3), // 11:59 in Madrid on the 19th: a minute before the window
+      call("2026-11-19T11:00:00Z", 3), // 12:00 on the 19th: the first instant inside it
+      call("2026-11-26T11:00:00Z", 3), // now: inside
+      call("2026-11-26T11:01:00Z", 3), // a minute from now: not yet
     ]);
-    expect(s.callsAnswered).toBe(2);
-    expect(s.weekStart).toBe("2026-11-23");
-    expect(s.weekEnd).toBe("2026-11-29");
+    expect(s.callsAnswered).toBe(4);
+    expect(s.from).toBe("2026-11-19");
+    expect(s.to).toBe("2026-11-26");
   });
 
   it("adds the catalogue prices of the bookings, a combo as the sum of its parts", () => {
@@ -93,14 +92,14 @@ describe("computeWeekStats", () => {
     expect(s.revenueFrom).toBe(false);
   });
 
-  it("skips cancelled bookings, bookings of no call, reschedules and other weeks", () => {
+  it("skips cancelled bookings, bookings of no call, reschedules and older ones", () => {
     const s = stats(
       [],
       [
         booking("haircut", "c1", "2026-11-24T09:00:00Z", { status: "cancelled" }),
         booking("haircut", null, "2026-11-24T09:00:00Z"),
         booking("haircut", "c3", "2026-11-24T09:00:00Z", { rescheduledFrom: "b1" }),
-        booking("haircut", "c4", "2026-11-20T09:00:00Z"),
+        booking("haircut", "c4", "2026-11-19T10:00:00Z"),
         booking("haircut", "c5", "2026-11-24T09:00:00Z"),
       ],
     );

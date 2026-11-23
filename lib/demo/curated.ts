@@ -7,7 +7,7 @@
  */
 import { Temporal } from "temporal-polyfill";
 import { evaluateBooking, localDateOf, sessionsOn, toInstant, type RuleContext } from "@/lib/booking";
-import { weekBounds } from "@/lib/owner/weekStats";
+import { windowBounds } from "@/lib/owner/weekStats";
 import { toShopRules, type ShopProfile } from "@/lib/conversation/shopProfile";
 import type { Line, Outcome, Urgency } from "@/lib/conversation/types";
 import { callerLinesOf, decideUrgency, type FinalUrgency, type UrgencyBasis } from "@/lib/messages/urgency";
@@ -387,9 +387,9 @@ export function buildCuratedSet(ctx: CuratedContext): CuratedSet {
 }
 
 /**
- * "Esta semana" needs the week so far to hold real rows (BACKLOG 17): from Monday to now, a few
+ * "Últimos 7 días" needs the window to hold real rows (BACKLOG 17): over the previous 6 days and today, a few
  * short answered Calls inside the opening hours, one pair that overlaps, one late call outside
- * the hours, and some of the Calls ending in one of the week's Bookings (its `createdAt` is the
+ * the hours, and some of the Calls ending in one of the Bookings (its `createdAt` is the
  * end of that Call). Nothing is invented on screen: these are ordinary rows the numbers read.
  */
 function addWeekCalls(a: {
@@ -401,11 +401,13 @@ function addWeekCalls(a: {
   newId: () => string;
 }): void {
   const { now, tz } = a;
-  const bounds = weekBounds(now, tz);
+  const bounds = windowBounds(now, tz);
   const minutes = (n: number) => ({ minutes: n });
   const plan: { start: Temporal.Instant; length: number; books: boolean }[] = [];
   let n = 0;
-  for (let date = bounds.monday; Temporal.PlainDate.compare(date, localDateOf(now, tz)) <= 0; date = date.add({ days: 1 })) {
+  // The previous 6 days and today so far: open days get calls inside the hours, and two days one late call.
+  for (let k = -6; k <= 0; k++) {
+    const date = localDateOf(now, tz).add({ days: k });
     const sessions = sessionsOn(date, a.rules);
     if (sessions.length > 0) {
       const first = sessions[0].open;
@@ -417,21 +419,17 @@ function addWeekCalls(a: {
         [first.add(minutes(70)).add({ seconds: 90 }), 2],
         [last.add(minutes(20)), 3],
       ] as const) {
+        // The pair that overlaps (a caller finds the line busy) happens on every other day only.
+        if (at.equals(first.add(minutes(70)).add({ seconds: 90 })) && k % 2 !== 0) continue;
         plan.push({ start: at, length, books: n++ % 3 === 0 });
       }
     }
-    plan.push({ start: toInstant(date, Temporal.PlainTime.from("21:40"), tz), length: 2, books: false });
+    if (k === -5 || k === -2) plan.push({ start: toInstant(date, Temporal.PlainTime.from("21:40"), tz), length: 2, books: false });
   }
   const before = (t: Temporal.Instant) => Temporal.Instant.compare(t, now.subtract(minutes(1))) <= 0;
-  let rows = plan
+  const rows = plan
     .map((p) => ({ ...p, end: p.start.add(minutes(p.length)) }))
     .filter((p) => before(p.end) && Temporal.Instant.compare(p.start, bounds.start) >= 0);
-  if (rows.length === 0) {
-    // Monday before the first opening: still two Calls, spread over the hours the week has had.
-    const span = now.since(bounds.start);
-    const at = (f: number) => bounds.start.add({ milliseconds: Math.floor(span.total("milliseconds") * f) });
-    rows = [0.3, 0.6].map((f, i) => ({ start: at(f), end: at(f + 0.1), length: 0, books: i === 0 }));
-  }
   const open = a.bookings.filter((b) => b.callId === null);
   for (const r of rows) {
     const id = a.newId();

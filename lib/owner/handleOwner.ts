@@ -55,7 +55,7 @@ export interface OwnerDeps {
   secret: () => string | undefined;
   pinLimits: PinLimitConfig;
   log?: OwnerLogger;
-  /** The week's rows for "Esta semana" (lib/db/weekRepository.ts). */
+  /** The rows of the last 7 days for "Últimos 7 días" (lib/db/weekRepository.ts). */
   week?: WeekSource;
 }
 

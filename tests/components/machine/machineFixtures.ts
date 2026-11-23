@@ -112,8 +112,8 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 const WEEK = {
-  weekStart: "2026-11-09",
-  weekEnd: "2026-11-15",
+  from: "2026-11-03",
+  to: "2026-11-10",
   callsAnswered: 9,
   bookings: 3,
   revenueCents: 7500,
@@ -134,7 +134,7 @@ export function fakeMachineApi(polls: (PollChanged | PollUnchanged)[] = []) {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     const method = init?.method ?? "GET";
     const body = typeof init?.body === "string" ? JSON.parse(init.body) : null;
-    // "Esta semana" reads its own route; it is not a Poll and is not recorded with them.
+    // "Últimos 7 días" reads its own route; it is not a Poll and is not recorded with them.
     if (method === "GET" && /^\/api\/machine\/[^/]+\/week$/.test(url)) return json(WEEK);
     calls.push({ url, method, body });
     if (method === "GET" && /^\/api\/machine\/[^/]+\?since=/.test(url)) {

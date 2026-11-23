@@ -10,8 +10,8 @@ afterEach(() => {
 });
 
 const STATS: WeekStats = {
-  weekStart: "2026-11-09",
-  weekEnd: "2026-11-15",
+  from: "2026-11-03",
+  to: "2026-11-10",
   callsAnswered: 9,
   bookings: 3,
   revenueCents: 7500,
@@ -26,7 +26,7 @@ describe("WeekPanel", () => {
   it("shows the week's numbers and states the time formula, in Spanish", async () => {
     vi.stubGlobal("fetch", answer(STATS));
     render(<WeekPanel shopId="peluqueria-lola" lang="es" refreshKey={1} onLocked={() => {}} />);
-    expect(await screen.findByRole("heading", { name: "Esta semana" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Últimos 7 días" })).toBeTruthy();
     expect(screen.getByText("Llamadas atendidas").nextElementSibling?.textContent).toBe("9");
     expect(screen.getByText("Facturación reservada").nextElementSibling?.textContent).toMatch(/75/);
     expect(screen.getByText("Tiempo ahorrado").nextElementSibling?.textContent).toBe("27 min");
@@ -36,7 +36,7 @@ describe("WeekPanel", () => {
   it("speaks English and drops the numbers that cannot be computed", async () => {
     vi.stubGlobal("fetch", answer({ ...STATS, revenueCents: null, timeSavedSeconds: null, timedCalls: 0 }));
     render(<WeekPanel shopId="peluqueria-lola" lang="en" refreshKey={1} onLocked={() => {}} />);
-    expect(await screen.findByRole("heading", { name: "This week" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Last 7 days" })).toBeTruthy();
     expect(screen.queryByText("Revenue booked")).toBeNull();
     expect(screen.queryByText("Time saved")).toBeNull();
     expect(screen.queryByText(/Time saved =/)).toBeNull();
