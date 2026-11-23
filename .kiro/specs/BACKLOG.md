@@ -38,4 +38,4 @@ The owner and the reviewer add items here. They are processed in order after the
 
 - Suggested reply in the Call's language: assigned to jury-polish (ctx update of 2026-11-16).
 - Machine_Page prerender database error: assigned to front-desk-brain (ctx update of 2026-11-16 16:05).
-- Demo reset for judges (item 1): `npm run demo:reset` (`-- --allow-remote` for Neon), curated rows protected by a `curated` column; commit 1cfafed.
+- Demo reset for judges (item 1): `npm run demo:reset` (`-- --allow-remote` for Neon), curated rows protected by a `curated` column; commit caafb29.
