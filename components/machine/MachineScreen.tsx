@@ -11,6 +11,7 @@ import { withAgendaItem } from "@/lib/owner/poll";
 import { tapeItems } from "@/lib/owner/tapePlayer";
 import { useBrowserLang } from "../useBrowserLang";
 import { AgendaView } from "./AgendaView";
+import { ClientsView } from "./ClientsView";
 import { DemoNotice } from "./DemoNotice";
 import { LockButton } from "./LockButton";
 import { MachineBody } from "./MachineBody";
@@ -169,6 +170,14 @@ export function MachineScreen({ shop, initial, label }: MachineScreenProps) {
           hidden={view !== "agenda"}
         >
           <AgendaView days={agenda} now={now} shop={shop} lang={lang} copy={copy} onItem={onItem} onLocked={toGate} />
+        </div>
+        <div
+          role="tabpanel"
+          id={panelId(idBase, "clients")}
+          aria-labelledby={tabId(idBase, "clients")}
+          hidden={view !== "clients"}
+        >
+          <ClientsView active={view === "clients"} shop={shop} lang={lang} copy={copy} onLocked={toGate} />
         </div>
       </MachineBody>
     </div>

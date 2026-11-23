@@ -2,14 +2,14 @@
 
 import { useRef, type KeyboardEvent } from "react";
 
-export type MachineView = "tape" | "agenda";
-const VIEWS: readonly MachineView[] = ["tape", "agenda"];
+export type MachineView = "tape" | "agenda" | "clients";
+const VIEWS: readonly MachineView[] = ["tape", "agenda", "clients"];
 
 export const tabId = (base: string, v: MachineView) => `${base}-tab-${v}`;
 export const panelId = (base: string, v: MachineView) => `${base}-panel-${v}`;
 
 /**
- * The two views of the machine as ARIA tabs (owner-machine 6.6, 13.6): one tab stop, the
+ * The views of the machine as ARIA tabs (owner-machine 6.6, 13.6): one tab stop, the
  * selected tab; ArrowLeft / ArrowRight (and Home / End) move selection and focus.
  */
 export function ViewTabs({
@@ -25,7 +25,7 @@ export function ViewTabs({
   label: string;
   idBase: string;
 }) {
-  const refs = useRef<Record<MachineView, HTMLButtonElement | null>>({ tape: null, agenda: null });
+  const refs = useRef<Record<MachineView, HTMLButtonElement | null>>({ tape: null, agenda: null, clients: null });
 
   function onKeyDown(e: KeyboardEvent<HTMLButtonElement>) {
     const at = VIEWS.indexOf(view);

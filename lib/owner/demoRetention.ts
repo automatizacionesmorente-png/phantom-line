@@ -31,6 +31,7 @@ export async function runDemoRetention(deps: DemoRetentionDeps): Promise<boolean
     deletedMessages: 0,
     deletedBookings: 0,
     deletedAuditRecords: 0,
+    deletedClients: 0,
     samplesAdded: 0,
   };
   let step: "claim" | "cutoffs" | "samples" = "claim";

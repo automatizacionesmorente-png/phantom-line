@@ -51,10 +51,27 @@ export interface CuratedCall {
   endedAt: Temporal.Instant;
 }
 
+/** A finished booking of a curated client (clients tab history); `noShow` is the Owner's "No vino". */
+export interface CuratedVisit extends CuratedBooking {
+  noShow: boolean;
+}
+
+/** A client of the demo customer book, with a private note and a believable visit history. */
+export interface CuratedClient {
+  name: string;
+  phone: string;
+  language: Lang;
+  note: string;
+}
+
 export interface CuratedSet {
   calls: CuratedCall[];
   messages: CuratedMessage[];
   bookings: CuratedBooking[];
+  /** Five clients for the "Clientes" tab (BACKLOG 14), two of them overdue (BACKLOG 15). */
+  clients: CuratedClient[];
+  /** Their past bookings. Kept apart from `bookings`, which is the Agenda's week. */
+  history: CuratedVisit[];
 }
 
 export interface CuratedContext {
@@ -383,7 +400,112 @@ export function buildCuratedSet(ctx: CuratedContext): CuratedSet {
   }
   bookings.sort((a, b) => Temporal.Instant.compare(a.startsAt, b.startsAt));
   addWeekCalls({ now, tz, rules: rules.shop, calls, bookings, newId: ctx.newId });
-  return { calls, messages, bookings };
+  const { clients, history } = buildClients(ctx, rules);
+  return { calls, messages, bookings, clients, history };
+}
+
+/** One curated client: who, and when their visits were, in days before now (oldest first). */
+interface ClientPlan extends CuratedClient {
+  service: string;
+  visitsDaysAgo: number[];
+  /** Days ago of visits the Owner marked "No vino". */
+  noShowsDaysAgo?: number[];
+}
+
+/**
+ * Carlos is regular and not due; Marta (every ~5 weeks, last 58 days ago) and John (every 4 weeks,
+ * last 49 days ago) are overdue against their own interval; Elena has one old visit (60-day rule);
+ * Lucía has a no-show and is not due. All numbers are Spanish-looking ones nobody owns.
+ */
+const CLIENT_PLANS: readonly ClientPlan[] = [
+  {
+    name: "Carlos Vega",
+    phone: phone(101),
+    language: "es",
+    note: "Prefiere el sillón 2. Le gusta que le avisen si hay hueco antes.",
+    service: "corte-hombre+degradado",
+    visitsDaysAgo: [81, 60, 39, 18],
+  },
+  {
+    name: "Marta Ibáñez",
+    phone: phone(102),
+    language: "es",
+    note: "Alérgica a algunos tintes: usar siempre la prueba de alergia.",
+    service: "tinte-raiz",
+    visitsDaysAgo: [128, 93, 58],
+  },
+  {
+    name: "John Carter",
+    phone: phone(103),
+    language: "en",
+    note: "Visiting from the UK every few weeks. Prefers to chat in English.",
+    service: "corte-hombre",
+    visitsDaysAgo: [105, 77, 49],
+  },
+  {
+    name: "Elena Soto",
+    phone: phone(104),
+    language: "es",
+    note: "",
+    service: "tinte-completo",
+    visitsDaysAgo: [74],
+  },
+  {
+    name: "Lucía Pardo",
+    phone: phone(105),
+    language: "es",
+    note: "Faltó a una cita sin avisar; confirmar siempre el día antes.",
+    service: "corte-mujer",
+    visitsDaysAgo: [40, 19, 6],
+    noShowsDaysAgo: [27],
+  },
+];
+
+function buildClients(ctx: CuratedContext, rules: RuleContext): { clients: CuratedClient[]; history: CuratedVisit[] } {
+  const { now, shop } = ctx;
+  const tz = shop.timeZone;
+  const today = localDateOf(now, tz);
+  const history: CuratedVisit[] = [];
+  const taken = new Map<string, Temporal.Instant[]>();
+  const duration = (id: string) =>
+    id.split("+").reduce((sum, part) => sum + (shop.services.find((x) => x.id === part)?.durationMin ?? 30), 0);
+
+  CLIENT_PLANS.forEach((plan, index) => {
+    const chair = index % 2 === 0 ? "chair-1" : "chair-2";
+    const minutes = duration(plan.service);
+    const place = (daysAgo: number, noShow: boolean) => {
+      // The nearest open day on or before the target, so the history looks like a real week.
+      for (let back = 0; back < 7; back++) {
+        const date = today.subtract({ days: daysAgo + back });
+        const sessions = sessionsOn(date, rules.shop);
+        if (sessions.length === 0) continue;
+        const open = sessions[0].open;
+        const key = `${chair}:${date.toString()}`;
+        const busy = taken.get(key) ?? [];
+        // Clients of the same chair on the same day take turns, never overlap.
+        let start = open.add({ minutes: busy.length * 90 });
+        if (Temporal.Instant.compare(start.add({ minutes }), sessions[0].close) > 0) start = open;
+        taken.set(key, [...busy, start]);
+        history.push({
+          id: ctx.newId(),
+          resourceId: chair,
+          serviceId: plan.service,
+          startsAt: start,
+          endsAt: start.add({ minutes }),
+          customerName: plan.name,
+          customerPhone: plan.phone,
+          callId: null,
+          ownerConfirmed: true,
+          noShow,
+        });
+        return;
+      }
+    };
+    plan.visitsDaysAgo.forEach((d) => place(d, false));
+    (plan.noShowsDaysAgo ?? []).forEach((d) => place(d, true));
+  });
+  history.sort((a, b) => Temporal.Instant.compare(a.startsAt, b.startsAt));
+  return { clients: CLIENT_PLANS.map(({ name, phone: p, language, note }) => ({ name, phone: p, language, note })), history };
 }
 
 /**

@@ -96,9 +96,12 @@ describe("keyboard order", () => {
     expect(tape.getAttribute("aria-selected")).toBe("true");
     expect(document.activeElement).toBe(tape);
 
-    // Wraps around: ArrowLeft on the first tab goes to the last.
+    // Wraps around: ArrowLeft on the first tab goes to the last (Clientes), ArrowRight comes back.
     fireEvent.keyDown(tape, { key: "ArrowLeft" });
-    expect(document.activeElement).toBe(agenda);
+    const clients = screen.getByRole("tab", { name: "Clientes" });
+    expect(document.activeElement).toBe(clients);
+    fireEvent.keyDown(clients, { key: "ArrowRight" });
+    expect(document.activeElement).toBe(tape);
   });
 
   it("remembers the last view during the session (6.6)", () => {

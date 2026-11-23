@@ -7,7 +7,7 @@
 import { and, count, eq, inArray } from "drizzle-orm";
 import { Temporal } from "temporal-polyfill";
 import { initialCallState } from "@/lib/conversation/types";
-import { bookings, calls, messages, ownerActions, shops } from "@/lib/db/schema";
+import { bookings, calls, clients, messages, ownerActions, shops } from "@/lib/db/schema";
 import type { DbHandle } from "@/lib/db/repository";
 import { DEMO_SHOP_ID } from "@/lib/owner/demo";
 import { buildCuratedSet, TEST_BOOKING_NAMES, type CuratedSet } from "./curated";
@@ -46,6 +46,7 @@ export async function resetDemo(
     q.delete(ownerActions).where(eq(ownerActions.shopId, D)),
     q.delete(messages).where(eq(messages.shopId, D)),
     q.delete(bookings).where(eq(bookings.shopId, D)),
+    q.delete(clients).where(eq(clients.shopId, D)),
     q.delete(calls).where(eq(calls.shopId, D)),
     q.insert(calls).values(
       set.calls.map((c) => ({
@@ -78,6 +79,38 @@ export async function resetDemo(
         callId: b.callId,
         createdAt: b.createdAt ? toDate(b.createdAt) : at,
         ownerConfirmedAt: b.ownerConfirmed ? at : null,
+        curated: true,
+      })),
+    ),
+    // The clients tab: past bookings (with the Owner's "No vino" where it applies) and the clients.
+    q.insert(bookings).values(
+      set.history.map((b) => ({
+        id: b.id,
+        shopId: D,
+        resourceId: b.resourceId,
+        serviceId: b.serviceId,
+        startsAt: toDate(b.startsAt),
+        endsAt: toDate(b.endsAt),
+        status: "confirmed",
+        customerName: b.customerName,
+        customerPhone: b.customerPhone,
+        channel: "voice",
+        callId: null,
+        createdAt: toDate(b.startsAt.subtract({ hours: 48 })),
+        ownerConfirmedAt: toDate(b.startsAt.subtract({ hours: 24 })),
+        noShowAt: b.noShow ? toDate(b.endsAt) : null,
+        curated: true,
+      })),
+    ),
+    q.insert(clients).values(
+      set.clients.map((c) => ({
+        shopId: D,
+        phone: c.phone,
+        name: c.name,
+        language: c.language,
+        note: c.note,
+        createdAt: at,
+        updatedAt: at,
         curated: true,
       })),
     ),

@@ -12,6 +12,8 @@ import { Temporal } from "temporal-polyfill";
 import { daySlots, localDateOf, toInstant, type Slot } from "@/lib/booking";
 import type { ShopProfile } from "@/lib/conversation/shopProfile";
 import type { Clock, Repository } from "@/lib/conversation/types";
+import { buildClientBook } from "@/lib/clients/book";
+import type { ClientActionRequest, ClientsResponse } from "@/lib/clients/api";
 import { agreedText } from "@/lib/messages/agreedText";
 import { currentReply } from "@/lib/messages/currentReply";
 import { getSectorPack, type SectorPack } from "@/lib/sectors";
@@ -381,4 +383,63 @@ export async function handleSlots(
   }
   const slots = await slotsOn(booking, date, shop, getSectorPack(shop.sectorPackId), d);
   return { ok: true, body: { slots: slotDtos(slots) } };
+}
+
+// ---------------------------------------------------------------------------
+// Clients (BACKLOG 14, 15): the customer book. The session is checked first, and every read
+// and write below names the shop of that session's URL, so a client id of another shop is a 404.
+
+/** The most clients one response lists. */
+export const CLIENTS_LIMIT = 500;
+/** The bookings a win-back slot search sees: 7 days ahead and the longest service. */
+const BOOK_WINDOW_DAYS = 9;
+
+async function clientBook(shop: ShopProfile, d: OwnerDeps): Promise<ClientsResponse> {
+  const now = d.clock();
+  const [records, existing] = await Promise.all([
+    d.repo.listClients(shop.id, CLIENTS_LIMIT),
+    d.core.listBookings(shop.id, now, now.add({ hours: BOOK_WINDOW_DAYS * 24 })),
+  ]);
+  return buildClientBook(records, now, shop, getSectorPack(shop.sectorPackId), existing);
+}
+
+export async function handleClients(
+  i: { shopId: string; token: string | undefined },
+  d: OwnerDeps,
+): Promise<OwnerResult<ClientsResponse>> {
+  const access = await d.repo.getShopAccess(i.shopId);
+  if (!access) return fail(404, { error: "shop_not_found" });
+  if (!sessionFor(i.token, i.shopId, access.pinSetAt, d)) return LOCKED;
+  return { ok: true, body: await clientBook(access.profile, d) };
+}
+
+export async function handleClientAction(
+  i: { shopId: string; clientId: string; req: ClientActionRequest; token: string | undefined },
+  d: OwnerDeps,
+): Promise<OwnerResult<ClientsResponse>> {
+  const access = await d.repo.getShopAccess(i.shopId);
+  if (!access) return fail(404, { error: "shop_not_found" });
+  const session = sessionFor(i.token, i.shopId, access.pinSetAt, d);
+  if (!session) return LOCKED;
+
+  const client = await d.repo.getClient(i.shopId, i.clientId);
+  if (!client) return fail(404, { error: "client_not_found" });
+
+  const { req } = i;
+  if (req.action === "note") {
+    if (!(await d.repo.setClientNote(i.shopId, i.clientId, req.note.trim()))) return fail(404, { error: "client_not_found" });
+  } else {
+    const r = await d.repo.applyOwnerCommand({
+      kind: "no_show",
+      shopId: i.shopId,
+      bookingId: req.bookingId,
+      phone: client.phone,
+      noShow: req.noShow,
+      actor: actorOf(session),
+      now: d.clock(),
+    });
+    if (r.status === "not_found") return fail(404, { error: "booking_not_found" });
+    if (r.status === "stale" || r.status === "overlap") return fail(409, { error: "not_allowed" });
+  }
+  return { ok: true, body: await clientBook(access.profile, d) };
 }

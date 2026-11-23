@@ -14,6 +14,7 @@ import type { AgendaBooking } from "./agenda";
 import type { SampleKey } from "./api";
 import type { DemoCutoffs, DemoSample } from "./demo";
 import type { PollHead } from "./poll";
+import type { ClientBooking } from "@/lib/clients/summary";
 
 /** The before and after values of an Audit_Record. Never a name, a phone, a Transcript or the PIN (11.4). Instants are ISO strings in UTC. */
 export interface AuditValues {
@@ -24,6 +25,8 @@ export interface AuditValues {
   ownerConfirmed?: boolean;
   erased?: boolean;
   heard?: boolean;
+  /** "No vino" on a past booking (clients 14). */
+  noShow?: boolean;
 }
 
 export interface ShopAccess {
@@ -53,7 +56,9 @@ export type OwnerCommand =
       actor: Actor;
       now: Temporal.Instant;
       to: { start: Temporal.Instant; end: Temporal.Instant; resourceId: string };
-    };
+    }
+  /** "No vino" (or its undo) on a finished booking of the client with this phone (clients 14). */
+  | { kind: "no_show"; shopId: string; bookingId: string; phone: string; noShow: boolean; actor: Actor; now: Temporal.Instant };
 
 export type OwnerCommandStatus = "applied" | "noop" | "stale" | "not_found" | "overlap";
 
@@ -91,6 +96,18 @@ export interface DemoRetentionCounts {
   deletedMessages: number;
   deletedBookings: number;
   deletedAuditRecords: number;
+  deletedClients: number;
+}
+
+/** One Client of the customer book with the bookings that share their phone (same shop only). */
+export interface ClientRecord {
+  id: string;
+  name: string;
+  phone: string;
+  language: Lang;
+  note: string;
+  createdAt: Temporal.Instant;
+  bookings: ClientBooking[];
 }
 
 export interface OwnerRepository {
@@ -107,6 +124,12 @@ export interface OwnerRepository {
   listAgenda(shopId: string, from: Temporal.Instant, to: Temporal.Instant): Promise<AgendaBooking[]>;
   getBooking(shopId: string, bookingId: string): Promise<AgendaBooking | null>;
   applyOwnerCommand(cmd: OwnerCommand): Promise<OwnerCommandResult>;
+  /** The shop's Clients, most recently active first, at most `limit`, each with their bookings. Scoped to `shopId`. */
+  listClients(shopId: string, limit: number): Promise<ClientRecord[]>;
+  /** One Client of this shop, or null for an unknown id or one that belongs to another shop. */
+  getClient(shopId: string, clientId: string): Promise<ClientRecord | null>;
+  /** Sets the Owner's private note; false when no Client of this shop has that id. */
+  setClientNote(shopId: string, clientId: string, note: string): Promise<boolean>;
   /** Seed only. */
   setOwnerPin(shopId: string, hash: string, at: Temporal.Instant): Promise<void>;
   // Demo_Retention (16). None of these takes a shop id: they act on DEMO_SHOP_ID only.

@@ -26,7 +26,7 @@ export interface MachineCopy {
   counter: { youHave: string; noneBefore: string; noneGold: string };
   note: string;
   tabsLabel: string;
-  tabs: { tape: string; agenda: string };
+  tabs: { tape: string; agenda: string; clients: string };
   controls: { label: string; play: string; next: string; erase: string; copy: string };
   emptyTape: string;
   player: { idle: string; end: string; nowPlaying: string };
@@ -82,6 +82,36 @@ export interface MachineCopy {
     failed: string;
   };
   at: (day: string, time: string) => string;
+  clients: {
+    label: string;
+    loading: string;
+    empty: string;
+    failed: string;
+    visits: (n: number) => string;
+    lastVisit: (date: string) => string;
+    noVisitsYet: string;
+    noShows: (n: number) => string;
+    usual: string;
+    history: string;
+    noHistory: string;
+    state: { visit: string; no_show: string; cancelled: string; upcoming: string };
+    markNoShow: string;
+    undoNoShow: string;
+    note: string;
+    notePlaceholder: string;
+    noteHint: (left: number) => string;
+    save: string;
+    saving: string;
+    saved: string;
+    lapsedTitle: string;
+    lapsedHint: string;
+    lapsedNone: string;
+    lapsedLine: (days: number, interval: number) => string;
+    whatsapp: (name: string) => string;
+    suggested: string;
+    open: string;
+    close: string;
+  };
 }
 
 const lowerFirst = (s: string) => (s === "" ? s : s[0].toLowerCase() + s.slice(1));
@@ -108,7 +138,7 @@ export const MACHINE_COPY: Record<Lang, MachineCopy> = {
     counter: { youHave: "Tienes", noneBefore: "No tienes", noneGold: "mensajes nuevos" },
     note: "llamaron mientras atendías…",
     tabsLabel: "Vistas del contestador",
-    tabs: { tape: "Cinta", agenda: "Agenda" },
+    tabs: { tape: "Cinta", agenda: "Agenda", clients: "Clientes" },
     controls: { label: "Mandos de la cinta", play: "Escuchar", next: "Siguiente", erase: "Borrar", copy: "Copiar respuesta" },
     emptyTape: "No hay mensajes nuevos.",
     player: { idle: "Pulsa Escuchar para oír la cinta.", end: "Fin de la cinta.", nowPlaying: "Sonando" },
@@ -173,6 +203,36 @@ export const MACHINE_COPY: Record<Lang, MachineCopy> = {
       failed: "No se pudo guardar. Inténtalo de nuevo.",
     },
     at: (day, time) => `${day}, ${time}`,
+    clients: {
+      label: "Clientes del salón",
+      loading: "Cargando los clientes…",
+      empty: "Aún no hay clientes. Aparecen solos cuando alguien da su nombre y teléfono.",
+      failed: "No se pudieron cargar los clientes.",
+      visits: (n) => (n === 1 ? "1 visita" : `${n} visitas`),
+      lastVisit: (date) => `Última: ${date}`,
+      noVisitsYet: "Aún sin visitas",
+      noShows: (n) => (n === 1 ? "1 vez no vino" : `${n} veces no vino`),
+      usual: "Lo de siempre",
+      history: "Historial",
+      noHistory: "Sin citas todavía.",
+      state: { visit: "Vino", no_show: "No vino", cancelled: "Cancelada", upcoming: "Próxima" },
+      markNoShow: "No vino",
+      undoNoShow: "Quitar «No vino»",
+      note: "Nota privada",
+      notePlaceholder: "Solo la ves tú: alergias, manías, lo que quieras recordar.",
+      noteHint: (left) => `${left} caracteres restantes`,
+      save: "Guardar nota",
+      saving: "Guardando…",
+      saved: "Nota guardada",
+      lapsedTitle: "Clientes que no han vuelto",
+      lapsedHint: "Hace más de lo habitual que no vienen. Un toque y se abre WhatsApp con el mensaje listo.",
+      lapsedNone: "Nadie por recuperar ahora mismo.",
+      lapsedLine: (days, interval) => `Hace ${days} días (suele venir cada ${interval})`,
+      whatsapp: (name) => `Escribir a ${name} por WhatsApp`,
+      suggested: "Mensaje sugerido",
+      open: "Ver ficha",
+      close: "Cerrar ficha",
+    },
   },
   en: {
     eyebrow: "Answering machine",
@@ -195,7 +255,7 @@ export const MACHINE_COPY: Record<Lang, MachineCopy> = {
     counter: { youHave: "You have", noneBefore: "You have", noneGold: "no new messages" },
     note: "they called while you were busy…",
     tabsLabel: "Machine views",
-    tabs: { tape: "Tape", agenda: "Agenda" },
+    tabs: { tape: "Tape", agenda: "Agenda", clients: "Clients" },
     controls: { label: "Tape controls", play: "Play", next: "Next", erase: "Erase", copy: "Copy reply" },
     emptyTape: "No new messages.",
     player: { idle: "Press Play to hear the tape.", end: "End of the tape.", nowPlaying: "Now playing" },
@@ -260,6 +320,36 @@ export const MACHINE_COPY: Record<Lang, MachineCopy> = {
       failed: "Couldn't save. Try again.",
     },
     at: (day, time) => `${day}, ${time}`,
+    clients: {
+      label: "Salon clients",
+      loading: "Loading clients…",
+      empty: "No clients yet. They appear by themselves when someone gives a name and phone.",
+      failed: "Couldn't load the clients.",
+      visits: (n) => (n === 1 ? "1 visit" : `${n} visits`),
+      lastVisit: (date) => `Last: ${date}`,
+      noVisitsYet: "No visits yet",
+      noShows: (n) => (n === 1 ? "1 no-show" : `${n} no-shows`),
+      usual: "The usual",
+      history: "History",
+      noHistory: "No bookings yet.",
+      state: { visit: "Came", no_show: "Didn't come", cancelled: "Cancelled", upcoming: "Upcoming" },
+      markNoShow: "Didn't come",
+      undoNoShow: "Undo \"Didn't come\"",
+      note: "Private note",
+      notePlaceholder: "Only you see it: allergies, quirks, anything you want to remember.",
+      noteHint: (left) => `${left} characters left`,
+      save: "Save note",
+      saving: "Saving…",
+      saved: "Note saved",
+      lapsedTitle: "Clients who haven't come back",
+      lapsedHint: "It has been longer than usual. One tap opens WhatsApp with the message ready.",
+      lapsedNone: "Nobody to win back right now.",
+      lapsedLine: (days, interval) => `${days} days ago (usually every ${interval})`,
+      whatsapp: (name) => `Message ${name} on WhatsApp`,
+      suggested: "Suggested message",
+      open: "Open card",
+      close: "Close card",
+    },
   },
 };
 

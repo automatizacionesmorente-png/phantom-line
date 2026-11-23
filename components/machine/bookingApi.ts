@@ -10,7 +10,7 @@ export type ApiAnswer<T> = { status: number; ok: true; body: T } | { status: num
 const base = (shopId: string, bookingId: string) =>
   `/api/machine/${encodeURIComponent(shopId)}/bookings/${encodeURIComponent(bookingId)}`;
 
-async function read<T>(res: Response): Promise<ApiAnswer<T>> {
+export async function read<T>(res: Response): Promise<ApiAnswer<T>> {
   let body: unknown = null;
   try {
     body = await res.json();

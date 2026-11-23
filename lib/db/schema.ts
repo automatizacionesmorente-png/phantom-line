@@ -109,6 +109,8 @@ export const bookings = pgTable(
     revision: integer().notNull().default(0),
     /** Curated demo row (npm run demo:reset): Demo_Retention never erases or deletes it. */
     curated: boolean().notNull().default(false),
+    /** The Owner marked "No vino" on a past booking (clients 14); null otherwise. */
+    noShowAt: tstz("no_show_at"),
   },
   (t) => [
     check("bookings_time_order", sql`${t.endsAt} > ${t.startsAt}`),
@@ -206,10 +208,43 @@ export const ownerActions = pgTable(
     createdAt: tstz("created_at").notNull().defaultNow(),
   },
   (t) => [
-    check("owner_actions_action_ck", sql`${t.action} IN ('play', 'erase', 'confirm', 'move', 'cancel')`),
+    check("owner_actions_action_ck", sql`${t.action} IN ('play', 'erase', 'confirm', 'move', 'cancel', 'no_show')`),
     check("owner_actions_target_ck", sql`(${t.bookingId} IS NULL) <> (${t.messageId} IS NULL)`),
     index("owner_actions_booking_idx").on(t.bookingId, t.createdAt.desc()),
     index("owner_actions_shop_idx").on(t.shopId, t.createdAt.desc()),
+  ],
+);
+
+/**
+ * The salon's customer book (BACKLOG 14): one Client per shop per phone (E.164). Created and
+ * updated by the same batch that writes a Booking or a Message that carries a name and a phone.
+ * Visits, usual services and no-shows are never stored: they are read from `bookings` by phone.
+ * Private to the Owner: no caller-facing code reads `note`.
+ */
+export const clients = pgTable(
+  "clients",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    shopId: text("shop_id")
+      .notNull()
+      .references(() => shops.id),
+    /** E.164: "+" and 6 to 15 digits. */
+    phone: text().notNull(),
+    name: text().notNull(),
+    /** The language of the client's latest call, for the win-back text. */
+    language: text().notNull().default("es"),
+    /** The Owner's private note, at most 500 characters. */
+    note: text().notNull().default(""),
+    createdAt: tstz("created_at").notNull().defaultNow(),
+    updatedAt: tstz("updated_at").notNull().defaultNow(),
+    /** Curated demo row (npm run demo:reset): Demo_Retention never deletes it. */
+    curated: boolean().notNull().default(false),
+  },
+  (t) => [
+    uniqueIndex("clients_shop_phone_uq").on(t.shopId, t.phone),
+    check("clients_phone_ck", sql`${t.phone} ~ '^\\+[0-9]{6,15}$'`),
+    check("clients_language_ck", sql`${t.language} IN ('es', 'en')`),
+    check("clients_note_ck", sql`char_length(${t.note}) <= 500`),
   ],
 );
 

@@ -2,6 +2,7 @@ import type { Temporal } from "temporal-polyfill";
 import type { AcceptedVerdict, ExistingBooking } from "@/lib/booking";
 import type { Lang } from "@/lib/sectors";
 import type { FinalUrgency, UrgencyBasis } from "@/lib/messages/urgency";
+import type { ClientRecall } from "@/lib/clients/welcome";
 import type { ShopProfile } from "./shopProfile";
 import type { FallbackLogger } from "./fallbackLog";
 
@@ -136,6 +137,10 @@ export interface CallState {
   turnCount: number;
   /** The caller was already asked once more for a name that did not look like one (natural-voice 6.2). */
   nameReasked?: boolean;
+  /** A returning client was greeted in this Call; said once (BACKLOG 14). */
+  welcomed?: boolean;
+  /** The service id offered as "lo de siempre"; a "sí" on the next Turn takes it (BACKLOG 14). */
+  usualOffer?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -246,6 +251,12 @@ export interface Repository {
   getCall(id: string, shopId: string): Promise<StoredCall | null>;
   listBookings(shopId: string, from: Temporal.Instant, to: Temporal.Instant): Promise<ExistingBooking[]>;
   findCallerBookings(shopId: string, phone: string, now: Temporal.Instant): Promise<CallerBooking[]>;
+  /**
+   * The Client of this shop with this phone, as much as the call may know (BACKLOG 14): the stored
+   * name, to pass the name + phone rule, and the usual service. Optional: a repository without a
+   * customer book simply never recognises anyone.
+   */
+  findClient?(shopId: string, phone: string, now: Temporal.Instant): Promise<ClientRecall | null>;
   commit(writes: readonly Write[]): Promise<{ ok: true } | { ok: false; conflict: "booking_overlap" }>;
   /** Counts this Turn in the visitor's minute and the global hour that contain `now`; returns the new counts. */
   hitRateLimits(visitorKey: string, now: Temporal.Instant): Promise<{ visitor: number; global: number }>;
