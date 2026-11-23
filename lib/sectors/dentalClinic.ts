@@ -1,0 +1,153 @@
+import { arriveEarlyFaq, commonFaq } from "./starters/common";
+import { dentalClinicCatalogue } from "./starters/dentalClinic";
+import type { SectorPack } from "./types";
+
+/**
+ * Dental clinic (clínica dental): appointments in surgeries (gabinetes). The receptionist never
+ * gives clinical advice and never triages: pain, swelling, bleeding or a knock are flagged urgent
+ * for the owner by the code (owner-machine 5), and the turn becomes a note, never an answer.
+ */
+export const dentalClinic: SectorPack = {
+  id: "dental-clinic",
+  displayName: { es: "Clínica dental", en: "Dental clinic" },
+  unit: "appointment",
+  resourceKind: {
+    es: { one: "gabinete", many: "gabinetes" },
+    en: { one: "surgery", many: "surgeries" },
+  },
+  requiredFields: ["service", "requestedTime", "name", "phone"],
+  slotStepMin: 15,
+  // "The service must fit before the session closes" is a general rule in lib/booking.
+  rules: [],
+  vocabulary: {
+    // Bare "dolor" and "me duele" are left out on purpose: "me duele una muela, ¿tenéis hueco?"
+    // is a booking and the caller can say it the way they like. Strong pain, swelling, bleeding,
+    // a knock, fever and questions that ask for advice (medication, diagnosis) are urgent notes.
+    es: {
+      booking: "cita",
+      bookingVerb: "reservar",
+      service: "tratamiento",
+      place: "la clínica",
+      urgent: [
+        "urgente",
+        "urgentemente",
+        "urgencia",
+        "emergencia",
+        "dolor fuerte",
+        "dolor agudo",
+        "mucho dolor",
+        "dolor insoportable",
+        "me duele mucho",
+        "flemón",
+        "absceso",
+        "hinchazón",
+        "hinchada",
+        "hinchado",
+        "sangrado",
+        "sangrando",
+        "me sangra",
+        "me sangran",
+        "golpe",
+        "me he dado un golpe",
+        "se me ha roto",
+        "se me ha caído",
+        "se me ha salido",
+        "fiebre",
+        "infección",
+        "diagnóstico",
+        "qué me tomo",
+        "puedo tomar",
+        "antibiótico",
+        "antibióticos",
+        "medicación",
+        "ibuprofeno",
+        "paracetamol",
+      ],
+      today: ["hoy", "esta mañana", "esta tarde", "esta noche", "ahora mismo", "cuanto antes", "lo antes posible"],
+    },
+    en: {
+      booking: "appointment",
+      bookingVerb: "book",
+      service: "treatment",
+      place: "the clinic",
+      urgent: [
+        "urgent",
+        "urgently",
+        "emergency",
+        "severe pain",
+        "sharp pain",
+        "terrible pain",
+        "unbearable pain",
+        "a lot of pain",
+        "abscess",
+        "swollen",
+        "swelling",
+        "bleeding",
+        "bleeds",
+        "knock",
+        "knocked",
+        "blow",
+        "broke a tooth",
+        "broken tooth",
+        "chipped",
+        "fell out",
+        "fever",
+        "infection",
+        "diagnosis",
+        "what should i take",
+        "can i take",
+        "antibiotics",
+        "medication",
+        "ibuprofen",
+        "painkillers",
+      ],
+      today: ["today", "this morning", "this afternoon", "tonight", "right now", "asap", "as soon as possible"],
+    },
+  },
+  voice: {
+    es: {
+      voice: "es-es-commercial-3",
+      classicVoice: "Kore",
+      languageCode: "es-ES",
+      style: "Una recepcionista amable de Madrid en una clínica dental, serena y tranquilizadora, a ritmo natural.",
+    },
+    en: {
+      voice: "Callirrhoe",
+      classicVoice: "Callirrhoe",
+      languageCode: "en-US",
+      style: "A calm, reassuring receptionist at a Madrid dental clinic speaking English, natural pace.",
+    },
+  },
+  sensitiveTopics: {
+    es: [
+      "cualquier consejo clínico: diagnósticos, qué tiene el cliente, si es grave o si necesita un tratamiento",
+      "dolor, flemones, hinchazón, sangrado, golpes en los dientes o cualquier urgencia",
+      "medicación: antibióticos, analgésicos, antiinflamatorios, dosis o anestesia",
+      "embarazo, enfermedades, alergias y cualquier otra consulta clínica",
+    ],
+    en: [
+      "any clinical advice: diagnoses, what the client has, whether it is serious or whether they need a treatment",
+      "pain, abscesses, swelling, bleeding, knocks to the teeth or any emergency",
+      "medication: antibiotics, painkillers, anti-inflammatories, doses or anaesthetic",
+      "pregnancy, illnesses, allergies and any other clinical question",
+    ],
+  },
+  neverPromise: {
+    es: [
+      "que un tratamiento no vaya a doler o vaya a salir bien",
+      "cuántas sesiones o cuánto tiempo llevará un tratamiento",
+      "un resultado, como dientes más blancos o la fecha de alta de un tratamiento",
+      "que un dentista concreto vaya a atender",
+      "un precio que no esté en la lista",
+    ],
+    en: [
+      "that a treatment will not hurt or will succeed",
+      "how many visits or how long a treatment will take",
+      "a result, such as whiter teeth or when a treatment will be finished",
+      "that a specific dentist will see them",
+      "a price that is not on the list",
+    ],
+  },
+  starterCatalogue: dentalClinicCatalogue,
+  starterFaq: [...commonFaq, arriveEarlyFaq],
+};

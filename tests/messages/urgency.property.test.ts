@@ -292,6 +292,8 @@ describe("urgency properties (owner-machine)", () => {
         let withTerms = callerClean;
         const receptionist = callerClean.map(() => "");
         picks.forEach((p, k) => {
+          // The context holds the first pick's pack only: a term of another pack is not in it.
+          if (p.pick.pack !== picks[0].pick.pack) return;
           // A term inside a phrase would rightly not count (16.5), so it is kept outside.
           withTerms = placeOutside(withTerms, p.lineIdx, p.pos, [{ text: variants[k], keep: true }], phrases);
           const r = p.lineIdx % receptionist.length;
