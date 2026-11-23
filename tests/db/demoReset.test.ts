@@ -9,6 +9,7 @@ import { checkResetTarget } from "@/lib/demo/guard";
 import { resetDemo } from "@/lib/demo/reset";
 import { bookings, calls, messages, ownerActions } from "@/lib/db/schema";
 import { lolaSeedProfile } from "@/lib/db/seed";
+import { computeWeekStats } from "@/lib/owner/weekStats";
 import { DEMO_SHOP_ID } from "@/lib/owner/demo";
 import { runDemoRetention } from "@/lib/owner/demoRetention";
 import { ACTOR, addBooking, addCall, addMessage, fullSnapshot, ownerRepoOf, realProfile } from "./ownerFixtures";
@@ -160,12 +161,12 @@ describe("resetDemo", () => {
 
 describe("Demo_Retention keeps the curated set", () => {
   it("neither erases nor deletes curated rows, even long after the reset", async () => {
-    await run();
+    const loaded = (await run()).loaded;
     const later = NOW.add({ hours: 24 * 30 });
     const owner = ownerRepoOf(t);
     await runDemoRetention({ repo: owner, clock: () => later, newId: () => randomUUID(), log: () => {} });
     const after = await rowsOf(D);
-    expect(after.calls).toHaveLength(4);
+    expect(after.calls).toHaveLength(loaded.calls);
     expect(after.messages).toHaveLength(4);
     expect(after.messages.every((m) => m.erasedAt === null)).toBe(true);
     expect(after.bookings.length).toBeGreaterThanOrEqual(10);
@@ -174,12 +175,12 @@ describe("Demo_Retention keeps the curated set", () => {
   });
 
   it("still forgets an ordinary old row next to them", async () => {
-    await run();
+    const loaded = (await run()).loaded;
     const old = await addCall(t, D, { startedAt: NOW.subtract({ hours: 240 }) });
     await addMessage(t, D, old, { createdAt: NOW.subtract({ hours: 240 }) });
     await runDemoRetention({ repo: ownerRepoOf(t), clock: () => NOW, newId: () => randomUUID(), log: () => {} });
     const after = await rowsOf(D);
-    expect(after.calls).toHaveLength(4);
+    expect(after.calls).toHaveLength(loaded.calls);
     expect(after.messages).toHaveLength(4);
   });
 });
@@ -202,5 +203,50 @@ describe("checkResetTarget", () => {
     expect(checkResetTarget(undefined, ["--allow-remote"])).toEqual({ ok: false, reason: "no_url" });
     expect(checkResetTarget("not a url", ["--allow-remote"])).toEqual({ ok: false, reason: "bad_url" });
     expect(checkResetTarget("postgres://localhost.evil.com/d", [])).toEqual({ ok: false, reason: "remote_needs_flag" });
+  });
+});
+
+describe("the curated set's week (BACKLOG 17)", () => {
+  /** Mondays, mornings, Sunday nights, a DST week: the week so far always holds rows. */
+  const AT = [
+    "2026-12-21T00:30:00Z",
+    "2026-12-21T11:00:00Z",
+    "2026-12-22T00:05:00Z",
+    "2026-12-23T12:00:00Z",
+    "2026-12-26T18:00:00Z",
+    "2026-12-27T22:30:00Z",
+    "2027-03-29T09:00:00Z",
+    "2026-10-27T09:00:00Z",
+  ];
+  it.each(AT)("gives non-zero, consistent numbers at %s", (iso) => {
+    const now = Temporal.Instant.from(iso);
+    const set = buildCuratedSet({ now, shop: lolaSeedProfile, newId: () => randomUUID() });
+    const s = computeWeekStats({
+      now,
+      shop: lolaSeedProfile,
+      calls: set.calls.map((c) => ({ id: c.id, status: "completed", startedAt: c.startedAt, updatedAt: c.endedAt, endedAt: c.endedAt })),
+      bookings: set.bookings.map((b) => ({
+        id: b.id,
+        serviceId: b.serviceId,
+        callId: b.callId,
+        rescheduledFrom: null,
+        status: "confirmed",
+        createdAt: b.createdAt ?? now,
+      })),
+    });
+    expect(s.callsAnswered).toBeGreaterThanOrEqual(2);
+    expect(s.bookings).toBeGreaterThanOrEqual(1);
+    expect(s.revenueCents).toBeGreaterThan(0);
+    expect(s.timeSavedSeconds).toBeGreaterThan(0);
+    expect(s.lostCalls).toBeGreaterThanOrEqual(1);
+    expect(s.lostCalls).toBeLessThanOrEqual(s.callsAnswered);
+    // The salon is open Tuesday to Saturday: once one of those days has opened, not every call is lost.
+    if (now.toZonedDateTimeISO("Europe/Madrid").dayOfWeek >= 3) expect(s.lostCalls).toBeLessThan(s.callsAnswered);
+    // Every call ended by now, and every booking came after its call began.
+    for (const c of set.calls) expect(Temporal.Instant.compare(c.endedAt, now)).toBeLessThanOrEqual(0);
+    for (const b of set.bookings.filter((x) => x.callId)) {
+      expect(Temporal.Instant.compare(b.createdAt ?? now, now)).toBeLessThanOrEqual(0);
+      expect(set.calls.some((c) => c.id === b.callId)).toBe(true);
+    }
   });
 });

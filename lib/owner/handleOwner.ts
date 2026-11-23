@@ -42,6 +42,7 @@ import {
   verifySession,
   type SessionPayload,
 } from "./session";
+import type { WeekSource } from "./weekStats";
 import { consoleOwnerLogger, type Actor, type OwnerCommandResult, type OwnerLogger, type OwnerRepository, type TapeRow } from "./types";
 
 export interface OwnerDeps {
@@ -54,6 +55,8 @@ export interface OwnerDeps {
   secret: () => string | undefined;
   pinLimits: PinLimitConfig;
   log?: OwnerLogger;
+  /** The week's rows for "Esta semana" (lib/db/weekRepository.ts). */
+  week?: WeekSource;
 }
 
 /** The most Messages one Poll sends (design, "The Tape"). */
@@ -67,11 +70,11 @@ export type OwnerFailure = {
 };
 export type OwnerResult<T> = { ok: true; body: T } | OwnerFailure;
 
-const fail = (status: OwnerFailure["status"], body: MachineErrorBody | null): OwnerFailure => ({ ok: false, status, body });
-const LOCKED = fail(401, null);
+export const fail = (status: OwnerFailure["status"], body: MachineErrorBody | null): OwnerFailure => ({ ok: false, status, body });
+export const LOCKED = fail(401, null);
 
 /** The session in the cookie, if it is valid for this shop, this PIN version and this moment. */
-function sessionFor(
+export function sessionFor(
   token: string | undefined,
   shopId: string,
   pinSetAt: Temporal.Instant | null,

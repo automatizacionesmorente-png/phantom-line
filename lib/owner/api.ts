@@ -37,6 +37,9 @@ export const PollQuerySchema = z.strictObject({
 });
 export type PollQuery = z.infer<typeof PollQuerySchema>;
 
+/** GET /api/machine/[shopId]/week: no query. */
+export const WeekQuerySchema = z.strictObject({});
+
 /** POST /api/machine/[shopId]/messages/[messageId] */
 export const MessageActionSchema = z.strictObject({ action: z.enum(["play", "erase"]) });
 export type MessageActionRequest = z.infer<typeof MessageActionSchema>;

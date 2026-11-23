@@ -6,7 +6,8 @@
  * durations, one booking per chair at a time), never hand-placed.
  */
 import { Temporal } from "temporal-polyfill";
-import { evaluateBooking, localDateOf, sessionsOn, type RuleContext } from "@/lib/booking";
+import { evaluateBooking, localDateOf, sessionsOn, toInstant, type RuleContext } from "@/lib/booking";
+import { weekBounds } from "@/lib/owner/weekStats";
 import { toShopRules, type ShopProfile } from "@/lib/conversation/shopProfile";
 import type { Line, Outcome, Urgency } from "@/lib/conversation/types";
 import { callerLinesOf, decideUrgency, type FinalUrgency, type UrgencyBasis } from "@/lib/messages/urgency";
@@ -23,6 +24,8 @@ export interface CuratedBooking {
   customerPhone: string;
   callId: string | null;
   ownerConfirmed: boolean;
+  /** When the receptionist made it (the end of its Call); the reset's `now` when absent. */
+  createdAt?: Temporal.Instant;
 }
 
 export interface CuratedMessage {
@@ -379,5 +382,65 @@ export function buildCuratedSet(ctx: CuratedContext): CuratedSet {
     }
   }
   bookings.sort((a, b) => Temporal.Instant.compare(a.startsAt, b.startsAt));
+  addWeekCalls({ now, tz, rules: rules.shop, calls, bookings, newId: ctx.newId });
   return { calls, messages, bookings };
+}
+
+/**
+ * "Esta semana" needs the week so far to hold real rows (BACKLOG 17): from Monday to now, a few
+ * short answered Calls inside the opening hours, one pair that overlaps, one late call outside
+ * the hours, and some of the Calls ending in one of the week's Bookings (its `createdAt` is the
+ * end of that Call). Nothing is invented on screen: these are ordinary rows the numbers read.
+ */
+function addWeekCalls(a: {
+  now: Temporal.Instant;
+  tz: string;
+  rules: RuleContext["shop"];
+  calls: CuratedCall[];
+  bookings: CuratedBooking[];
+  newId: () => string;
+}): void {
+  const { now, tz } = a;
+  const bounds = weekBounds(now, tz);
+  const minutes = (n: number) => ({ minutes: n });
+  const plan: { start: Temporal.Instant; length: number; books: boolean }[] = [];
+  let n = 0;
+  for (let date = bounds.monday; Temporal.PlainDate.compare(date, localDateOf(now, tz)) <= 0; date = date.add({ days: 1 })) {
+    const sessions = sessionsOn(date, a.rules);
+    if (sessions.length > 0) {
+      const first = sessions[0].open;
+      const last = sessions[sessions.length - 1].open;
+      for (const [at, length] of [
+        [first.add(minutes(12)), 3],
+        [first.add(minutes(47)), 2],
+        [first.add(minutes(70)), 4],
+        [first.add(minutes(70)).add({ seconds: 90 }), 2],
+        [last.add(minutes(20)), 3],
+      ] as const) {
+        plan.push({ start: at, length, books: n++ % 3 === 0 });
+      }
+    }
+    plan.push({ start: toInstant(date, Temporal.PlainTime.from("21:40"), tz), length: 2, books: false });
+  }
+  const before = (t: Temporal.Instant) => Temporal.Instant.compare(t, now.subtract(minutes(1))) <= 0;
+  let rows = plan
+    .map((p) => ({ ...p, end: p.start.add(minutes(p.length)) }))
+    .filter((p) => before(p.end) && Temporal.Instant.compare(p.start, bounds.start) >= 0);
+  if (rows.length === 0) {
+    // Monday before the first opening: still two Calls, spread over the hours the week has had.
+    const span = now.since(bounds.start);
+    const at = (f: number) => bounds.start.add({ milliseconds: Math.floor(span.total("milliseconds") * f) });
+    rows = [0.3, 0.6].map((f, i) => ({ start: at(f), end: at(f + 0.1), length: 0, books: i === 0 }));
+  }
+  const open = a.bookings.filter((b) => b.callId === null);
+  for (const r of rows) {
+    const id = a.newId();
+    a.calls.push({ id, language: "es", transcript: [], startedAt: r.start, endedAt: r.end });
+    if (!r.books) continue;
+    const b = open.find((x) => Temporal.Instant.compare(x.startsAt, r.end) > 0);
+    if (!b) continue;
+    open.splice(open.indexOf(b), 1);
+    b.callId = id;
+    b.createdAt = r.end;
+  }
 }

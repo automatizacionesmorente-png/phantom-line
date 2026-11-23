@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { getDb, getRepository } from "@/lib/db/client";
 import { createOwnerRepository } from "@/lib/db/ownerRepository";
+import { createWeekSource } from "@/lib/db/weekRepository";
 import { pinLimitsFromEnv } from "@/lib/owner/limits";
 import type { OwnerDeps } from "@/lib/owner/handleOwner";
 import { Temporal } from "temporal-polyfill";
@@ -16,6 +17,7 @@ let deps: OwnerDeps | undefined;
 export function productionOwnerDeps(): OwnerDeps {
   deps ??= {
     repo: createOwnerRepository(getDb()),
+    week: createWeekSource(getDb()),
     core: getRepository(),
     clock: () => Temporal.Now.instant(),
     newId: () => randomUUID(),

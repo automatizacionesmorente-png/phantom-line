@@ -6,8 +6,10 @@ import {
   MessageActionSchema,
   PollQuerySchema,
   SlotsQuerySchema,
+  WeekQuerySchema,
   type MachineErrorBody,
 } from "@/lib/owner/api";
+import { handleWeek } from "@/lib/owner/handleWeek";
 import {
   handleBookingAction,
   handleLogin,
@@ -56,6 +58,8 @@ export interface MachineHandlers {
   logout: Handler<ShopParams>;
   /** GET /api/machine/[shopId] */
   poll: Handler<ShopParams>;
+  /** GET /api/machine/[shopId]/week */
+  week: Handler<ShopParams>;
   /** POST /api/machine/[shopId]/messages/[messageId] */
   message: Handler<MessageParams>;
   /** POST /api/machine/[shopId]/bookings/[bookingId] */
@@ -228,6 +232,17 @@ export function makeMachineHandlers(opts: MachineHandlerOptions): MachineHandler
             { shopId, since: query.data.since ?? null, token: readCookie(request.headers.get("cookie"), SESSION_COOKIE) },
             deps,
           ),
+          (b) => json(b, 200),
+        ),
+      );
+    },
+
+    async week(request, params) {
+      const query = readQuery(request, WeekQuerySchema);
+      if (!query.ok) return query.response;
+      return guarded("week", params.shopId, async (shopId, deps) =>
+        respond(
+          await handleWeek({ shopId, token: readCookie(request.headers.get("cookie"), SESSION_COOKIE) }, deps),
           (b) => json(b, 200),
         ),
       );

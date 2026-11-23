@@ -19,6 +19,7 @@ import { MessageCounter } from "./MessageCounter";
 import { MessageLight } from "./MessageLight";
 import { TapeReels } from "./TapeReels";
 import { TapeView } from "./TapeView";
+import { WeekPanel } from "./WeekPanel";
 import { useMachinePoll } from "./useMachinePoll";
 import { useReducedMotion } from "./useReducedMotion";
 import { useStoredView } from "./useStoredView";
@@ -142,6 +143,8 @@ export function MachineScreen({ shop, initial, label }: MachineScreenProps) {
           </p>
         )}
         {(offline || failed) && <p className="font-inter text-sm font-semibold text-muted">{copy.offline}</p>}
+
+        <WeekPanel shopId={shop.id} lang={lang} refreshKey={tape.state.version} onLocked={toGate} />
 
         <ViewTabs view={view} onChange={setView} labels={copy.tabs} label={copy.tabsLabel} idBase={idBase} />
 
