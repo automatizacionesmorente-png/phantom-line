@@ -4,7 +4,6 @@ The owner and the reviewer add items here. They are processed in order after the
 
 ## Open
 
-1. **Demo reset for judges.** A script `npm run demo:reset` (PGlite-tested, runs against Neon only with `--allow-remote`) that deletes every Call, Message and Booking of the demo shop and loads a curated set: 4 believable Messages (one urgent, one in English, one booking confirmed, one question answered by the Code_Brain), and a week of realistic Bookings across both chairs. Run before recording the video and before submission. The demo retention job keeps the curated set from ever looking empty or dirty.
 2. **Guided path for a judge.** On the landing, the call page and the machine: "Try it in 30 seconds": 1 call and book, 2 open the machine with PIN 198000, 3 watch it blink with your message. A small, dismissible step indicator on each page, in ES and EN, Marfil & Oro.
 3. **English is first class.** Run the same real-call regression set in English end to end (booking, two services, FAQ, price, reschedule, cancel, nonsense, insult), fix every wording that sounds translated, and add the English cases as tests.
 4. **Live blink across tabs.** A booking made on the call page appears on the machine in another tab within the Poll interval, with the red light blinking and the counter rising. Test it with two pages in a DOM or browser test, and record the measured delay.
@@ -39,3 +38,4 @@ The owner and the reviewer add items here. They are processed in order after the
 
 - Suggested reply in the Call's language: assigned to jury-polish (ctx update of 2026-11-16).
 - Machine_Page prerender database error: assigned to front-desk-brain (ctx update of 2026-11-16 16:05).
+- Demo reset for judges (item 1): `npm run demo:reset` (`-- --allow-remote` for Neon), curated rows protected by a `curated` column; commit 1cfafed.
