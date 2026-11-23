@@ -35,7 +35,7 @@ The owner and the reviewer add items here. They are processed in order after the
 
 - Suggested reply in the Call's language: assigned to jury-polish (ctx update of 2026-11-16).
 - Machine_Page prerender database error: assigned to front-desk-brain (ctx update of 2026-11-16 16:05).
-- 2. Guided path for a judge ("Try it in 30 seconds" strip, ES/EN, dismissible): a806d7f.
-- 26. Machine and PIN_Gate in the browser language, ES/EN switch on the gate: a806d7f.
-- 27. Page titles per route through `generateMetadata`: a806d7f.
-- 28. Unknown shop answers HTTP 404 (proxy rewrite plus `not-found.tsx`): a806d7f.
+- 2. Guided path for a judge ("Try it in 30 seconds" strip, ES/EN, dismissible): 6de4fed.
+- 26. Machine and PIN_Gate in the browser language, ES/EN switch on the gate: 6de4fed.
+- 27. Page titles per route through `generateMetadata`: 6de4fed.
+- 28. Unknown shop answers HTTP 404 (proxy rewrite plus `not-found.tsx`): 6de4fed.
