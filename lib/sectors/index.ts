@@ -4,4 +4,8 @@ export { barberShop } from "./barberShop";
 export { beautyCentre } from "./beautyCentre";
 export { physioClinic } from "./physioClinic";
 export { dentalClinic } from "./dentalClinic";
+export { carWorkshop } from "./carWorkshop";
+export { psychologyPractice } from "./psychologyPractice";
+export { tutoringAcademy } from "./tutoringAcademy";
+export { drivingSchool } from "./drivingSchool";
 export { getSectorPack, allSectorPacks, listSectorPacks, term, type SectorPackListing } from "./registry";

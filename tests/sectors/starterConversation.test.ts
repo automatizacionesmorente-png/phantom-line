@@ -15,6 +15,14 @@ const CALLS = [
   { pack: "physio-clinic", lang: "en", line: "Hi, I'd like a sports massage", service: "masaje-deportivo", minutes: 45 },
   { pack: "dental-clinic", lang: "es", line: "Hola, quería una limpieza dental", service: "limpieza", minutes: 45 },
   { pack: "dental-clinic", lang: "en", line: "Hi, I'd like a dental check-up", service: "revision", minutes: 30 },
+  { pack: "car-workshop", lang: "es", line: "Hola, quería cambiar el aceite", service: "cambio-aceite", minutes: 45 },
+  { pack: "car-workshop", lang: "en", line: "Hi, I would like an oil change", service: "cambio-aceite", minutes: 45 },
+  { pack: "psychology-practice", lang: "es", line: "Hola, quería una primera consulta", service: "primera-consulta", minutes: 50 },
+  { pack: "psychology-practice", lang: "en", line: "Hi, I'd like an online session", service: "sesion-online", minutes: 50 },
+  { pack: "tutoring-academy", lang: "es", line: "Hola, quería una clase de mates", service: "matematicas", minutes: 60 },
+  { pack: "tutoring-academy", lang: "en", line: "Hi, I'd like a trial class", service: "clase-prueba", minutes: 60 },
+  { pack: "driving-school", lang: "es", line: "Hola, quería una clase práctica", service: "clase-practica", minutes: 45 },
+  { pack: "driving-school", lang: "en", line: "Hi, I'd like a double lesson", service: "clase-practica-doble", minutes: 90 },
 ] as const;
 
 describe.each(CALLS)("$pack ($lang): $line", ({ pack, lang, line, service, minutes }) => {

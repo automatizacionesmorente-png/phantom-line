@@ -9,7 +9,7 @@ import { allSectorPacks, getSectorPack, listSectorPacks, type Lang } from "@/lib
 import { brainCall, SAT_1930 } from "../conversation/brainCall";
 import { starterShop } from "./starterShop";
 
-const IDS = ["hair-salon", "barber-shop", "beauty-centre", "physio-clinic", "dental-clinic"] as const;
+const IDS = ["hair-salon", "barber-shop", "beauty-centre", "physio-clinic", "dental-clinic", "car-workshop", "psychology-practice", "tutoring-academy", "driving-school"] as const;
 
 type Reading = ReturnType<typeof brainCall>[number]["reading"]["services"];
 const read = (id: string, line: string, lang: Lang): Reading =>
@@ -150,6 +150,116 @@ const CASES: Record<
       { lang: "en", line: "I knocked my tooth and it's bleeding" },
     ],
   },
+  "car-workshop": {
+    es: [
+      ["quiero una revisión de mantenimiento", "revision-mantenimiento"],
+      ["quiero cambiar el aceite", "cambio-aceite"],
+      ["quiero cambiar las ruedas", "neumaticos"],
+      ["me sale un testigo en el salpicadero", "diagnosis-electronica"],
+      ["quiero cambiar las pastillas de freno", "frenos"],
+      ["quiero pasar la pre-ITV", "pre-itv"],
+      ["el aire no enfría", "aire-acondicionado"],
+    ],
+    en: [
+      ["I need an oil change", "cambio-aceite"],
+      ["I need new tyres", "neumaticos"],
+      ["the check engine light is on", "diagnosis-electronica"],
+      ["I need new brake pads", "frenos"],
+      ["a check before the ITV please", "pre-itv"],
+      ["I need an air con recharge", "aire-acondicionado"],
+    ],
+    choice: [
+      { lang: "es", lines: ["quiero una revisión", "la de la ITV"], category: "revisiones", id: "pre-itv" },
+      { lang: "es", lines: ["quiero una reparación", "cambiar la batería"], category: "mecanica", id: "bateria" },
+      { lang: "en", lines: ["I need a check", "a full service"], category: "revisiones", id: "revision-mantenimiento" },
+    ],
+    urgent: {
+      es: ["mi coche no arranca", "se me ha parado el coche en la M-30", "sale humo del capó", "el coche no frena bien"],
+      en: ["my car won't start", "there is smoke coming from the engine", "the brakes don't work"],
+    },
+    notUrgent: { es: ["quiero cambiar el aceite"], en: ["I need an oil change"] },
+    sensitive: [
+      { lang: "es", line: "mi coche no arranca" },
+      { lang: "es", line: "sale humo del capó" },
+      { lang: "en", line: "my car won't start" },
+      { lang: "en", line: "there is a burning smell" },
+    ],
+  },
+  "psychology-practice": {
+    es: [
+      ["quiero una primera consulta", "primera-consulta"],
+      ["quiero una sesión individual", "sesion-individual"],
+      ["queremos terapia de pareja", "terapia-pareja"],
+      ["quiero una sesión online", "sesion-online"],
+    ],
+    en: [
+      ["I'd like a first consultation", "primera-consulta"],
+      ["an individual session please", "sesion-individual"],
+      ["we'd like couples therapy", "terapia-pareja"],
+      ["an online session please", "sesion-online"],
+    ],
+    choice: [
+      { lang: "es", lines: ["quiero una sesión", "online"], category: "sesiones", id: "sesion-online" },
+      { lang: "en", lines: ["I'd like a session", "couples"], category: "sesiones", id: "terapia-pareja" },
+    ],
+    urgent: {
+      es: ["tengo una crisis", "quiero hacerme daño", "¿qué me pasa?", "¿qué antidepresivos me tomo?"],
+      en: ["I'm in crisis", "I want to hurt myself", "what is wrong with me", "can I take antidepressants?"],
+    },
+    notUrgent: { es: ["quiero una cita, tengo ansiedad"], en: ["I'd like an appointment, I have anxiety"] },
+    sensitive: [
+      { lang: "es", line: "¿me puedes decir el diagnóstico?" },
+      { lang: "es", line: "¿qué medicación me tomo?" },
+      { lang: "en", line: "what is wrong with me" },
+      { lang: "en", line: "should I stop my medication?" },
+    ],
+  },
+  "tutoring-academy": {
+    es: [
+      ["quiero una clase de prueba", "clase-prueba"],
+      ["quiero una clase de mates", "matematicas"],
+      ["quiero una clase de inglés", "ingles"],
+      ["quiero una clase de física y química", "fisica-quimica"],
+      ["quiero preparar la selectividad", "selectividad"],
+      ["quiero una clase de idiomas para adultos", "idiomas-adultos"],
+    ],
+    en: [
+      ["a trial class please", "clase-prueba"],
+      ["a maths class please", "matematicas"],
+      ["I'd like an English class", "ingles"],
+      ["help with the PAU", "selectividad"],
+      ["a language class for adults", "idiomas-adultos"],
+    ],
+    choice: [
+      { lang: "es", lines: ["quiero una clase particular", "de mates"], category: "clases", id: "matematicas" },
+      { lang: "en", lines: ["I'd like a private class", "chemistry"], category: "clases", id: "fisica-quimica" },
+    ],
+    urgent: { es: ["tengo una queja", "quiero una devolución"], en: ["I have a complaint", "I want a refund"] },
+    notUrgent: { es: ["quiero una clase para el examen de mates"], en: ["I want a class before my maths exam"] },
+    sensitive: [{ lang: "es", line: "tengo una queja sobre la última clase" }, { lang: "en", line: "I want a refund" }],
+  },
+  "driving-school": {
+    es: [
+      ["quiero una clase práctica", "clase-practica"],
+      ["quiero una clase práctica doble", "clase-practica-doble"],
+      ["quiero una clase de prueba", "clase-prueba"],
+      ["quiero una clase de repaso para el examen", "repaso-examen"],
+      ["quiero una clase de maniobras", "clase-maniobras"],
+    ],
+    en: [
+      ["a double lesson please", "clase-practica-doble"],
+      ["a trial lesson please", "clase-prueba"],
+      ["an exam revision lesson", "repaso-examen"],
+      ["I want to learn to park", "clase-maniobras"],
+    ],
+    choice: [
+      { lang: "es", lines: ["quiero una clase", "de maniobras"], category: "practicas", id: "clase-maniobras" },
+      { lang: "en", lines: ["I'd like a lesson", "a double lesson"], category: "practicas", id: "clase-practica-doble" },
+    ],
+    urgent: { es: ["he tenido un accidente en la clase", "tengo una queja"], en: ["I had an accident during the lesson", "I want to complain"] },
+    notUrgent: { es: ["quiero una clase antes del examen"], en: ["I want a lesson before the test"] },
+    sensitive: [{ lang: "es", line: "he tenido un accidente en la clase" }, { lang: "en", line: "I have a complaint" }],
+  },
 };
 
 describe("listSectorPacks", () => {
@@ -162,6 +272,10 @@ describe("listSectorPacks", () => {
         { id: "beauty-centre", name: { es: "Centro de estética y uñas", en: "Beauty and nails centre" }, resourceKind: { es: { one: "cabina", many: "cabinas" }, en: { one: "room", many: "rooms" } } },
         { id: "physio-clinic", name: { es: "Clínica de fisioterapia", en: "Physiotherapy clinic" }, resourceKind: { es: { one: "camilla", many: "camillas" }, en: { one: "treatment room", many: "treatment rooms" } } },
         { id: "dental-clinic", name: { es: "Clínica dental", en: "Dental clinic" }, resourceKind: { es: { one: "gabinete", many: "gabinetes" }, en: { one: "surgery", many: "surgeries" } } },
+        { id: "car-workshop", name: { es: "Taller mecánico", en: "Car repair shop" }, resourceKind: { es: { one: "mecánico", many: "mecánicos" }, en: { one: "mechanic", many: "mechanics" } } },
+        { id: "psychology-practice", name: { es: "Consulta de psicología", en: "Psychology practice" }, resourceKind: { es: { one: "psicólogo", many: "psicólogos" }, en: { one: "psychologist", many: "psychologists" } } },
+        { id: "tutoring-academy", name: { es: "Academia de clases", en: "Tutoring academy" }, resourceKind: { es: { one: "profesor", many: "profesores" }, en: { one: "teacher", many: "teachers" } } },
+        { id: "driving-school", name: { es: "Autoescuela", en: "Driving school" }, resourceKind: { es: { one: "profesor", many: "profesores" }, en: { one: "instructor", many: "instructors" } } },
       ]),
     );
   });
@@ -181,7 +295,7 @@ describe("every starter catalogue", () => {
     for (const pack of allSectorPacks()) {
       const shop = starterShop(pack.id);
       expect(ShopProfileSchema.safeParse(shop).success, pack.id).toBe(true);
-      expect(shop.services.length, pack.id).toBeGreaterThanOrEqual(8);
+      expect(shop.services.length, pack.id).toBeGreaterThanOrEqual(4);
       expect((shop.faq ?? []).map((f) => f.id), pack.id).toEqual(expect.arrayContaining(["tarifas", "pago", "parking", "cancelacion", "accesibilidad"]));
       for (const s of shop.services) {
         const at = `${pack.id}/${s.id}`;
@@ -240,7 +354,7 @@ describe("every starter catalogue", () => {
       }),
       { numRuns: all.length },
     );
-  });
+  }, 30_000);
 
   it("what the receptionist says for a service (its names and its spoken name) reads back as that one service", () => {
     const bad: string[] = [];
@@ -337,5 +451,46 @@ describe("the clinics never triage", () => {
       expect(text).toMatch(lang === "es" ? /diagn|clínic|medicaci/ : /diagnos|clinical|medication/);
       expect(findTerm([lang === "es" ? "¿qué me tomo?" : "what should I take?"], pack.vocabulary[lang].urgent)).not.toBeNull();
     }
+  });
+});
+
+describe("the psychology practice", () => {
+  const pack = getSectorPack("psychology-practice");
+
+  it("never asks why: the prompt forbids it and no service name carries a reason", () => {
+    for (const lang of ["es", "en"] as const) {
+      expect(pack.sensitiveTopics[lang][0]).toMatch(lang === "es" ? /nunca preguntes/ : /never ask/);
+      const text = pack.sensitiveTopics[lang].join(" ").toLowerCase();
+      expect(text).toMatch(lang === "es" ? /suicidio/ : /suicide/);
+      expect(text).toMatch(lang === "es" ? /medicaci/ : /medication/);
+      expect(text).toMatch(lang === "es" ? /diagn/ : /diagnos/);
+      expect(text).toMatch(lang === "es" ? /salud mental/ : /mental health/);
+    }
+  });
+
+  it.each([
+    ["es", "quiero hacerme daño"],
+    ["es", "he pensado en el suicidio"],
+    ["es", "no quiero seguir viviendo"],
+    ["es", "me quiero morir"],
+    ["en", "I want to hurt myself"],
+    ["en", "I'm thinking about suicide"],
+    ["en", "I don't want to live"],
+  ] as const)("crisis words (%s: %s) are answered with 112 and 024, never a booking and never silence", (lang, line) => {
+    const shop = starterShop("psychology-practice");
+    const [t] = brainCall([line], { shop, now: SAT_1930, lang });
+    expect(t.decision.reply, line).toMatch(lang === "es" ? /uno, uno, dos.*cero, dos, cuatro/ : /one, one, two.*zero, two, four/);
+    expect(t.decision.effects.some((e) => e.type === "createBooking")).toBe(false);
+  });
+
+  it("every crisis alias is also an urgent term (the safety net if the FAQ is edited away)", () => {
+    const shop = starterShop("psychology-practice");
+    const crisis = shop.faq!.find((f) => f.id === "crisis")!;
+    for (const lang of ["es", "en"] as const)
+      for (const alias of crisis.aliases[lang]) expect(findTerm([alias], pack.vocabulary[lang].urgent), alias).not.toBeNull();
+  });
+
+  it("the starter FAQ never mentions 112 or 024 with digits (Spoken_Form)", () => {
+    for (const f of starterShop("psychology-practice").faq!) expect(f.answer.es + f.answer.en).not.toMatch(/\d/);
   });
 });

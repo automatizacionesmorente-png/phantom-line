@@ -244,7 +244,8 @@ export function readUtterance(input: ReadInput): Reading {
   // 9. Intent words.
   const free = (i: number) => !faq.has(i);
   const cancel = anyPhrase(toks, both("cancel"), free);
-  const reschedule = anyPhrase(toks, both("reschedule"), free);
+  // A word that is part of a service the caller named is the service's, not an intent: "cambio de aceite", "oil change".
+  const reschedule = anyPhrase(toks, both("reschedule"), (i) => free(i) && !svc.placed.has(i));
   const bookingWord = anyPhrase(toks, both("booking"), free);
   const wanting = anyPhrase(toks, both("wanting"), free);
   for (const s of [cancel, reschedule, bookingWord, wanting]) if (s) for (let k = s.start; k < s.end; k++) placed.add(k);

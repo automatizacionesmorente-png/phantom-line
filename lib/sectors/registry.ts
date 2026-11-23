@@ -3,11 +3,15 @@ import { barberShop } from "./barberShop";
 import { beautyCentre } from "./beautyCentre";
 import { dentalClinic } from "./dentalClinic";
 import { hairSalon } from "./hairSalon";
+import { carWorkshop } from "./carWorkshop";
+import { drivingSchool } from "./drivingSchool";
 import { physioClinic } from "./physioClinic";
+import { psychologyPractice } from "./psychologyPractice";
+import { tutoringAcademy } from "./tutoringAcademy";
 import { SectorPackDataSchema, type Lang, type SectorPack, type VocabularyKey } from "./types";
 
 /** Every pack. A new sector is a new file plus one line here. */
-const PACKS: readonly SectorPack[] = [hairSalon, barberShop, beautyCentre, physioClinic, dentalClinic];
+const PACKS: readonly SectorPack[] = [hairSalon, barberShop, beautyCentre, physioClinic, dentalClinic, carWorkshop, psychologyPractice, tutoringAcademy, drivingSchool];
 
 const OPEN_DAY = [{ open: "09:00", close: "20:00" }];
 

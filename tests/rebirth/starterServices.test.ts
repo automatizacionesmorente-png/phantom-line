@@ -21,13 +21,13 @@ const draftFor = (sectorId: string) => {
 };
 
 describe("the wizard and the sector packs", () => {
-  it("offers all five appointment sectors, each with a starter catalogue", () => {
+  it("offers all nine appointment sectors, each with a starter catalogue", () => {
     const ids = availableSectors().map((s) => s.id);
-    expect(ids).toEqual(["hair-salon", "barber-shop", "beauty-centre", "physio-clinic", "dental-clinic"]);
+    expect(ids).toEqual(["hair-salon", "barber-shop", "beauty-centre", "physio-clinic", "dental-clinic", "car-workshop", "psychology-practice", "tutoring-academy", "driving-school"]);
     for (const s of availableSectors()) expect(s.starterCatalogue.length).toBeGreaterThan(3);
   });
 
-  it.each(["hair-salon", "barber-shop", "beauty-centre", "physio-clinic", "dental-clinic"])(
+  it.each(["hair-salon", "barber-shop", "beauty-centre", "physio-clinic", "dental-clinic", "car-workshop", "psychology-practice", "tutoring-academy", "driving-school"])(
     "%s: the built profile is valid and keeps the starter aliases",
     (id) => {
       const profile = buildProfile(draftFor(id) as never, "prueba-uno");

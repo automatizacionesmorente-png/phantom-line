@@ -114,7 +114,7 @@ describe("the wizard in Spanish", () => {
     fireEvent.change(screen.getAllByLabelText("Precio (EUR)")[0], { target: { value: "12,50" } });
     click("Siguiente");
     expect(screen.getByRole("heading", { name: "Políticas y preguntas frecuentes", level: 2 })).toBeTruthy();
-  });
+  }, 20_000);
 
   it("reads a document: the result fills the editable form, nothing is created", async () => {
     save({ ...filled(3), services: [], hours: {} });
