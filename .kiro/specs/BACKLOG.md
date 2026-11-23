@@ -37,3 +37,5 @@ The owner and the reviewer add items here. They are processed in order after the
 
 - Suggested reply in the Call's language: assigned to jury-polish (ctx update of 2026-11-16).
 - Machine_Page prerender database error: assigned to front-desk-brain (ctx update of 2026-11-16 16:05).
+- 11. Impact story (`docs/impact.md`): done in d98397b.
+- 12. Startup page (`/startup`, `waitlist` table, migration `0005_waitlist`): done in d98397b.
