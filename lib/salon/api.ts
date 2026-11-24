@@ -4,6 +4,8 @@
  */
 import { z } from "zod";
 import type { AgendaItem } from "@/lib/owner/api";
+import type { OutboxKind } from "./settings";
+import { isReviewUrl, REVIEW_URL_MAX } from "./settings";
 import { EXPENSE_CATEGORIES, MONTH_RE, type ExpenseItem, type MonthReport } from "./month";
 
 const Instant = z.iso.datetime({ offset: true });
@@ -92,8 +94,48 @@ export type ExpenseRequest = z.infer<typeof ExpenseSchema>;
 /** POST /api/machine/[shopId]/expenses/[expenseId]: stop a monthly expense after `lastMonth`. */
 export const EndExpenseSchema = z.strictObject({ action: z.literal("end"), lastMonth: Month });
 
+/**
+ * POST /api/machine/[shopId]/settings. The review link is a Google link only (3 hosts, https, at
+ * most 300 characters); a request to turn `review` on without one is answered 422 `review_needs_link`.
+ */
+export const SettingsSchema = z.strictObject({
+  automations: z.strictObject({
+    reminder: z.boolean(),
+    review: z.boolean(),
+    gap: z.boolean(),
+    winback: z.boolean(),
+    birthday: z.boolean(),
+  }),
+  googleReviewUrl: z.string().max(REVIEW_URL_MAX).refine(isReviewUrl, "Use a Google review link").nullable(),
+  vatRatePct: z.number().int().min(0).max(30),
+});
+export type SettingsRequest = z.infer<typeof SettingsSchema>;
+
+/** POST /api/machine/[shopId]/outbox/[outboxId]: the Owner sent the message by hand, or does not want it. */
+export const OutboxActionSchema = z.strictObject({ action: z.enum(["sent", "dismissed"]) });
+
 // ---------------------------------------------------------------------------
 // Responses
+
+export type SettingsResponse = SettingsRequest;
+export interface OutboxItemDto {
+  id: string;
+  kind: OutboxKind;
+  clientId: string | null;
+  bookingId: string | null;
+  phone: string;
+  language: "es" | "en";
+  body: string;
+  status: "prepared" | "sent" | "dismissed";
+  createdAt: string;
+  actedAt: string | null;
+  /** wa.me link with the text ready. */
+  waUrl: string;
+}
+/** The prepared messages first, then the last 30 days of sent and dismissed ones. */
+export interface OutboxResponse {
+  items: OutboxItemDto[];
+}
 
 export type MonthResponse = MonthReport;
 export interface ExpensesResponse {

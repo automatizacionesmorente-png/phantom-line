@@ -202,6 +202,12 @@ export function client(h: MachineHandlers, seen: string[] = []) {
       run(h.deleteExpense(mreq("DELETE", `/api/machine/${shopId}/expenses/${expenseId}`, o), { shopId, expenseId })),
     endExpense: (shopId: string, expenseId: string, body: unknown, o: ReqOptions = {}) =>
       run(h.endExpense(mreq("POST", `/api/machine/${shopId}/expenses/${expenseId}`, { body, ...o }), { shopId, expenseId })),
+    settings: (shopId: string, o: ReqOptions = {}) => run(h.settings(mreq("GET", `/api/machine/${shopId}/settings`, o), { shopId })),
+    saveSettings: (shopId: string, body: unknown, o: ReqOptions = {}) =>
+      run(h.saveSettings(mreq("POST", `/api/machine/${shopId}/settings`, { body, ...o }), { shopId })),
+    outbox: (shopId: string, o: ReqOptions = {}) => run(h.outbox(mreq("GET", `/api/machine/${shopId}/outbox`, o), { shopId })),
+    outboxAction: (shopId: string, outboxId: string, body: unknown, o: ReqOptions = {}) =>
+      run(h.outboxAction(mreq("POST", `/api/machine/${shopId}/outbox/${outboxId}`, { body, ...o }), { shopId, outboxId })),
     exportMonth: (shopId: string, query: string, o: ReqOptions = {}) =>
       run(h.exportMonth(mreq("GET", `/api/machine/${shopId}/export`, { ...o, query }), { shopId })),
     slots: (shopId: string, bookingId: string, date: string, o: ReqOptions = {}) =>

@@ -184,6 +184,9 @@ export type MachineErrorBody =
   | { error: "cancelled" | "not_yet" | "already_paid" }
   /** A per-shop cap on expenses or time blocks (salon 7). */
   | { error: "limit_reached" }
+  | { error: "review_needs_link" }
+  | { error: "outbox_not_found" }
+  | { error: "not_prepared" }
   | { error: "invalid_request"; issues: { path: (string | number)[]; message: string }[] }
   | { error: "not_allowed" }
   | { error: "unavailable" }

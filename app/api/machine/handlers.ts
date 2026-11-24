@@ -19,6 +19,8 @@ import {
   ExportQuerySchema,
   MonthQuerySchema,
   ManualBookingSchema,
+  OutboxActionSchema,
+  SettingsSchema,
   PaySchema,
   PaymentsQuerySchema,
   VisitNoteSchema,
@@ -29,6 +31,10 @@ import {
   handleDeleteExpense,
   handleEndExpense,
   handleExport,
+  handleGetSettings,
+  handleOutbox,
+  handleOutboxAction,
+  handleSaveSettings,
   handleListExpenses,
   handleMonth,
   handleCreateBooking,
@@ -89,6 +95,9 @@ export interface BlockParams extends ShopParams {
 export interface ExpenseParams extends ShopParams {
   expenseId: string;
 }
+export interface OutboxParams extends ShopParams {
+  outboxId: string;
+}
 
 type Handler<P> = (request: Request, params: P) => Promise<Response>;
 
@@ -141,6 +150,14 @@ export interface MachineHandlers {
   endExpense: Handler<ExpenseParams>;
   /** GET /api/machine/[shopId]/export?month=&format=csv */
   exportMonth: Handler<ShopParams>;
+  /** GET /api/machine/[shopId]/settings */
+  settings: Handler<ShopParams>;
+  /** POST /api/machine/[shopId]/settings */
+  saveSettings: Handler<ShopParams>;
+  /** GET /api/machine/[shopId]/outbox: generates what is due, then lists */
+  outbox: Handler<ShopParams>;
+  /** POST /api/machine/[shopId]/outbox/[outboxId]: {action:'sent'|'dismissed'} */
+  outboxAction: Handler<OutboxParams>;
 }
 
 const NO_STORE = "no-store";
@@ -584,6 +601,41 @@ export function makeMachineHandlers(opts: MachineHandlerOptions): MachineHandler
                 "x-content-type-options": "nosniff",
               },
             }),
+        ),
+      );
+    },
+
+    async settings(request, params) {
+      return guarded("settings", params.shopId, async (shopId, deps) =>
+        respond(await handleGetSettings(deps, shopId, readCookie(request.headers.get("cookie"), SESSION_COOKIE)), (b) => json(b, 200)),
+      );
+    },
+
+    async saveSettings(request, params) {
+      const bad = checkOrigin(request);
+      if (bad) return bad;
+      const body = await readBody(request, SettingsSchema);
+      if (!body.ok) return body.response;
+      return guarded("save_settings", params.shopId, async (shopId, deps) =>
+        respond(await handleSaveSettings(deps, shopId, readCookie(request.headers.get("cookie"), SESSION_COOKIE), body.data), (b) => json(b, 200)),
+      );
+    },
+
+    async outbox(request, params) {
+      return guarded("outbox", params.shopId, async (shopId, deps) =>
+        respond(await handleOutbox(deps, shopId, readCookie(request.headers.get("cookie"), SESSION_COOKIE)), (b) => json(b, 200)),
+      );
+    },
+
+    async outboxAction(request, params) {
+      const bad = checkOrigin(request);
+      if (bad) return bad;
+      const body = await readBody(request, OutboxActionSchema);
+      if (!body.ok) return body.response;
+      return guarded("outbox_action", params.shopId, async (shopId, deps) =>
+        respond(
+          await handleOutboxAction(deps, shopId, readCookie(request.headers.get("cookie"), SESSION_COOKIE), params.outboxId, body.data.action),
+          (b) => json(b, 200),
         ),
       );
     },

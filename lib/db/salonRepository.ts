@@ -8,13 +8,15 @@
  *   already paid writes nothing. It also touches the booking row, so the Machine_Version
  *   moves and every open machine sees "done" at its next Poll.
  */
-import { and, asc, eq, gte, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { Temporal } from "temporal-polyfill";
 import type { ExpenseCategory, ExpenseRow } from "@/lib/salon/month";
-import type { ManualBooking, NewExpense, NewBlock, NewPayment, PaymentMethod, PaymentRow, SalonRepository, TimeBlock } from "@/lib/salon/types";
+import type { OutboxBooking } from "@/lib/salon/outbox";
+import { OUTBOX_KINDS, defaultSettings, readAutomations, type OutboxKind } from "@/lib/salon/settings";
+import type { ManualBooking, NewExpense, NewBlock, NewPayment, OutboxRow, PaymentMethod, PaymentRow, SalonRepository, TimeBlock } from "@/lib/salon/types";
 import { clientUpsert, isOverlapViolation, type DbHandle } from "./repository";
 import { isUuid } from "./ownerRepository";
-import { bookings, calls, expenses, outbox, ownerActions, payments, shopSettings, timeBlocks } from "./schema";
+import { bookings, calls, clients, expenses, outbox, ownerActions, payments, shopSettings, timeBlocks } from "./schema";
 
 const toDate = (i: Temporal.Instant) => new Date(i.epochMilliseconds);
 const toInstant = (d: Date) => Temporal.Instant.fromEpochMilliseconds(d.getTime());
@@ -37,6 +39,22 @@ function rowsOf(result: unknown): Record<string, unknown>[] {
   const rows = (result as { rows?: unknown } | null)?.rows;
   return Array.isArray(rows) ? (rows as Record<string, unknown>[]) : [];
 }
+
+type OutboxDbRow = typeof outbox.$inferSelect;
+const toOutboxRow = (r: OutboxDbRow): OutboxRow => ({
+  id: r.id,
+  kind: r.kind as OutboxKind,
+  clientId: r.clientId,
+  bookingId: r.bookingId,
+  phone: r.phone,
+  language: r.language === "en" ? "en" : "es",
+  body: r.body,
+  status: r.status as OutboxRow["status"],
+  createdAt: toInstant(r.createdAt),
+  actedAt: r.actedAt ? toInstant(r.actedAt) : null,
+});
+/** The most rows of the outbox a read returns of each part. */
+const KEYS_LIMIT = 20_000;
 
 export function createSalonRepository(handle: DbHandle): SalonRepository {
   const { db } = handle;
@@ -333,5 +351,136 @@ export function createSalonRepository(handle: DbHandle): SalonRepository {
       const rows = await db.select({ v: shopSettings.vatRatePct }).from(shopSettings).where(eq(shopSettings.shopId, shopId)).limit(1);
       return rows[0]?.v ?? 21;
     },
+
+    async getSettings(shopId) {
+      const rows = await db.select().from(shopSettings).where(eq(shopSettings.shopId, shopId)).limit(1);
+      const r = rows[0];
+      if (!r) return defaultSettings();
+      return { automations: readAutomations(r.automations), googleReviewUrl: r.googleReviewUrl, vatRatePct: r.vatRatePct };
+    },
+
+    async saveSettings(shopId, s, now) {
+      const off = OUTBOX_KINDS.filter((k) => !s.automations[k]);
+      await handle.atomic((q) => [
+        q
+          .insert(shopSettings)
+          .values({ shopId, automations: s.automations, googleReviewUrl: s.googleReviewUrl, vatRatePct: s.vatRatePct, updatedAt: toDate(now) })
+          .onConflictDoUpdate({
+            target: shopSettings.shopId,
+            set: { automations: s.automations, googleReviewUrl: s.googleReviewUrl, vatRatePct: s.vatRatePct, updatedAt: toDate(now) },
+          }),
+        ...dismissStatements(q, shopId, off, now),
+      ]);
+    },
+
+    async dismissPrepared(shopId, kind, now) {
+      const rows = await dismissStatement(db, shopId, [kind], now).returning({ id: outbox.id });
+      return rows.length;
+    },
+
+    async outboxKeys(shopId) {
+      const rows = await db.select({ k: outbox.dedupeKey }).from(outbox).where(eq(outbox.shopId, shopId)).limit(KEYS_LIMIT);
+      return new Set(rows.map((r) => r.k));
+    },
+
+    async listOutboxBookings(shopId, w, limit) {
+      const paidAt = sql<Date | null>`(SELECT max(p.paid_at) FROM payments p WHERE p.booking_id = ${bookings.id} AND p.shop_id = ${bookings.shopId})`;
+      const rows = await db
+        .select({
+          id: bookings.id,
+          clientId: bookings.clientId,
+          name: bookings.customerName,
+          phone: bookings.customerPhone,
+          language: clients.language,
+          start: bookings.startsAt,
+          status: bookings.status,
+          cancelledAt: bookings.cancelledAt,
+          paidAt,
+        })
+        .from(bookings)
+        .leftJoin(clients, and(eq(clients.shopId, bookings.shopId), eq(clients.phone, bookings.customerPhone)))
+        .where(
+          and(
+            eq(bookings.shopId, shopId),
+            or(
+              and(eq(bookings.status, "confirmed"), gte(bookings.startsAt, toDate(w.remindFrom)), lt(bookings.startsAt, toDate(w.remindTo))),
+              sql`EXISTS (SELECT 1 FROM payments p WHERE p.booking_id = ${bookings.id} AND p.shop_id = ${bookings.shopId} AND p.paid_at >= ${toDate(w.paidSince).toISOString()}::timestamptz)`,
+              and(
+                eq(bookings.status, "cancelled"),
+                gte(bookings.cancelledAt, toDate(w.cancelledSince)),
+                sql`${bookings.startsAt} > ${toDate(w.now).toISOString()}::timestamptz`,
+                sql`${bookings.startsAt} <= ${toDate(w.gapTo).toISOString()}::timestamptz`,
+              ),
+            ),
+          ),
+        )
+        .orderBy(asc(bookings.startsAt), asc(bookings.id))
+        .limit(limit);
+      return rows.map(
+        (r): OutboxBooking => ({
+          id: r.id,
+          clientId: r.clientId,
+          name: r.name,
+          phone: r.phone,
+          language: r.language === "en" ? "en" : "es",
+          start: toInstant(r.start),
+          status: r.status === "cancelled" ? "cancelled" : "confirmed",
+          cancelledAt: r.cancelledAt ? toInstant(r.cancelledAt) : null,
+          paidAt: r.paidAt ? toInstant(new Date(r.paidAt)) : null,
+        }),
+      );
+    },
+
+    async insertOutbox(rows) {
+      if (rows.length === 0) return;
+      await db
+        .insert(outbox)
+        .values(rows.map((r) => ({ ...r })))
+        .onConflictDoNothing({ target: [outbox.shopId, outbox.dedupeKey] });
+    },
+
+    async listOutbox(shopId, since, limit) {
+      const prepared = await db
+        .select()
+        .from(outbox)
+        .where(and(eq(outbox.shopId, shopId), eq(outbox.status, "prepared")))
+        .orderBy(desc(outbox.createdAt), asc(outbox.id))
+        .limit(limit);
+      const done = await db
+        .select()
+        .from(outbox)
+        .where(
+          and(
+            eq(outbox.shopId, shopId),
+            inArray(outbox.status, ["sent", "dismissed"]),
+            sql`coalesce(${outbox.actedAt}, ${outbox.createdAt}) >= ${toDate(since).toISOString()}::timestamptz`,
+          ),
+        )
+        .orderBy(desc(sql`coalesce(${outbox.actedAt}, ${outbox.createdAt})`), asc(outbox.id))
+        .limit(limit);
+      return [...prepared, ...done].map(toOutboxRow);
+    },
+
+    async setOutboxStatus(shopId, id, status, now) {
+      if (!isUuid(id)) return "not_found";
+      const rows = await db
+        .update(outbox)
+        .set({ status, actedAt: toDate(now) })
+        .where(and(eq(outbox.id, id), eq(outbox.shopId, shopId), eq(outbox.status, "prepared")))
+        .returning();
+      if (rows[0]) return toOutboxRow(rows[0]);
+      const there = await db.select({ id: outbox.id }).from(outbox).where(and(eq(outbox.id, id), eq(outbox.shopId, shopId))).limit(1);
+      return there.length > 0 ? "not_prepared" : "not_found";
+    },
   };
 }
+
+function dismissStatement(q: DbHandle["db"], shopId: string, kinds: readonly OutboxKind[], now: Temporal.Instant) {
+  return q
+    .update(outbox)
+    .set({ status: "dismissed", actedAt: toDate(now) })
+    .where(and(eq(outbox.shopId, shopId), eq(outbox.status, "prepared"), inArray(outbox.kind, [...kinds])));
+}
+
+const dismissStatements = (q: DbHandle["db"], shopId: string, kinds: readonly OutboxKind[], now: Temporal.Instant) =>
+  kinds.length === 0 ? [] : [dismissStatement(q, shopId, kinds, now)];

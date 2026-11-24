@@ -6,10 +6,12 @@
  */
 import { Temporal } from "temporal-polyfill";
 import { checkBooking, localDateOf, overlaps, toInstant } from "@/lib/booking";
+import { summarize } from "@/lib/clients/summary";
+import { whatsappUrl } from "@/lib/clients/winback";
 import { toShopRules, type ShopProfile } from "@/lib/conversation/shopProfile";
 import type { AgendaBooking } from "@/lib/owner/agenda";
 import type { MachineErrorBody } from "@/lib/owner/api";
-import { LOCKED, fail, sessionFor, type OwnerFailure, type OwnerResult } from "@/lib/owner/handleOwner";
+import { CLIENTS_LIMIT, LOCKED, fail, sessionFor, type OwnerFailure, type OwnerResult } from "@/lib/owner/handleOwner";
 import { toAgendaItem } from "@/lib/owner/poll";
 import type { SessionPayload } from "@/lib/owner/session";
 import type { Actor } from "@/lib/owner/types";
@@ -29,9 +31,15 @@ import type {
   PayRequest,
   PayResponse,
   PaymentsDayResponse,
+  OutboxItemDto,
+  OutboxResponse,
+  SettingsRequest,
+  SettingsResponse,
   VisitNoteResponse,
   VisitNoteTextResponse,
 } from "./api";
+import { MAX_DRAFTS, planOutbox, type OutboxClient } from "./outbox";
+import type { SalonSettings } from "./settings";
 import {
   GAP_WINDOW_HOURS,
   addMonths,
@@ -42,7 +50,7 @@ import {
   monthOf,
   monthReport,
 } from "./month";
-import type { SalonDeps, TimeBlock } from "./types";
+import type { OutboxRow, SalonDeps, TimeBlock } from "./types";
 
 const MIDNIGHT = Temporal.PlainTime.from("00:00");
 /** A service lasts at most 8 h and a day has 25: 48 h either side covers any booking that can touch a start. */
@@ -489,4 +497,128 @@ export async function handleExport(
   const names = Object.fromEntries(shop.services.map((s) => [s.id, s.name[lang]]));
   const safe = shopId.replace(/[^A-Za-z0-9_-]/g, "_");
   return { ok: true, body: { csv: exportCsv(report, payments, expenses, vat, lang, names), filename: `phantom-line-${safe}-${m.month}.csv` } };
+}
+
+// ---------------------------------------------------------------------------
+// Settings and the outbox (spec 2.4, 9.7, 9.8)
+
+const OUTBOX_HISTORY_DAYS = 30;
+/** The bookings one run of the outbox reads. */
+const OUTBOX_BOOKINGS_LIMIT = 500;
+
+const settingsDto = (s: SalonSettings): SettingsResponse => ({
+  automations: s.automations,
+  googleReviewUrl: s.googleReviewUrl,
+  vatRatePct: s.vatRatePct,
+});
+
+export async function handleGetSettings(
+  d: SalonDeps,
+  shopId: string,
+  token: string | undefined,
+): Promise<OwnerResult<SettingsResponse>> {
+  const g = await open(shopId, token, d);
+  if (!g.ok) return g;
+  return { ok: true, body: settingsDto(await d.salon.getSettings(shopId)) };
+}
+
+export async function handleSaveSettings(
+  d: SalonDeps,
+  shopId: string,
+  token: string | undefined,
+  req: SettingsRequest,
+): Promise<OwnerResult<SettingsResponse>> {
+  const g = await open(shopId, token, d);
+  if (!g.ok) return g;
+  if (req.automations.review && req.googleReviewUrl === null) return fail(422, { error: "review_needs_link" });
+  // The switches that are now off dismiss what was waiting, in the same transaction as the save.
+  await d.salon.saveSettings(shopId, req, d.clock());
+  return { ok: true, body: settingsDto(await d.salon.getSettings(shopId)) };
+}
+
+const outboxDto = (r: OutboxRow): OutboxItemDto => ({
+  id: r.id,
+  kind: r.kind,
+  clientId: r.clientId,
+  bookingId: r.bookingId,
+  phone: r.phone,
+  language: r.language,
+  body: r.body,
+  status: r.status,
+  createdAt: r.createdAt.toString(),
+  actedAt: r.actedAt?.toString() ?? null,
+  waUrl: whatsappUrl(r.phone, r.body),
+});
+
+/** Opening the outbox writes what is due (once per key), then lists it. */
+export async function handleOutbox(
+  d: SalonDeps,
+  shopId: string,
+  token: string | undefined,
+): Promise<OwnerResult<OutboxResponse>> {
+  const g = await open(shopId, token, d);
+  if (!g.ok) return g;
+  const { shop } = g;
+  const now = d.clock();
+  const tz = shop.timeZone;
+  const settings = await d.salon.getSettings(shopId);
+  const on = settings.automations;
+
+  if (Object.values(on).some(Boolean)) {
+    const today = localDateOf(now, tz);
+    const [bookingRows, existingKeys, records] = await Promise.all([
+      d.salon.listOutboxBookings(
+        shopId,
+        {
+          remindFrom: toInstant(today.add({ days: 1 }), MIDNIGHT, tz),
+          remindTo: toInstant(today.add({ days: 2 }), MIDNIGHT, tz),
+          paidSince: now.subtract({ hours: 48 }),
+          cancelledSince: now.subtract({ hours: 24 }),
+          now,
+          gapTo: now.add({ hours: 72 }),
+        },
+        OUTBOX_BOOKINGS_LIMIT,
+      ),
+      d.salon.outboxKeys(shopId),
+      on.gap || on.winback || on.birthday ? d.repo.listClients(shopId, CLIENTS_LIMIT) : Promise.resolve([]),
+    ]);
+    const clients: OutboxClient[] = records.map((r) => ({
+      id: r.id,
+      name: r.name,
+      phone: r.phone,
+      language: r.language,
+      birthday: r.birthday,
+      promoConsentAt: r.promoConsentAt,
+      summary: summarize(r.bookings, now),
+    }));
+    const drafts = planOutbox({
+      now,
+      tz,
+      shop: { name: shop.name },
+      settings,
+      bookings: bookingRows.filter((b) => b.status === "confirmed"),
+      cancellations: bookingRows.filter((b) => b.status === "cancelled"),
+      clients,
+      existingKeys,
+    }).slice(0, MAX_DRAFTS);
+    await d.salon.insertOutbox(drafts.map((x) => ({ shopId, ...x })));
+  }
+
+  const rows = await d.salon.listOutbox(shopId, now.subtract({ hours: OUTBOX_HISTORY_DAYS * 24 }), 200);
+  return { ok: true, body: { items: rows.map(outboxDto) } };
+}
+
+export async function handleOutboxAction(
+  d: SalonDeps,
+  shopId: string,
+  token: string | undefined,
+  outboxId: string,
+  action: "sent" | "dismissed",
+): Promise<OwnerResult<OutboxItemDto>> {
+  const g = await open(shopId, token, d);
+  if (!g.ok) return g;
+  const r = await d.salon.setOutboxStatus(shopId, outboxId, action, d.clock());
+  if (r === "not_found") return fail(404, { error: "outbox_not_found" });
+  if (r === "not_prepared") return fail(409, { error: "not_prepared" });
+  return { ok: true, body: outboxDto(r) };
 }

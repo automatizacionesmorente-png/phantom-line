@@ -1,6 +1,8 @@
 import type { Temporal } from "temporal-polyfill";
 import type { Actor } from "@/lib/owner/types";
 import type { OwnerDeps } from "@/lib/owner/handleOwner";
+import type { OutboxBooking } from "./outbox";
+import type { OutboxKind, SalonSettings } from "./settings";
 import type { ExpenseCategory, ExpenseRow, GapSend, MonthBooking, MonthCall } from "./month";
 
 /** Time nobody can book: a day off, a holiday, a break. `resourceId` null = the whole shop. */
@@ -101,6 +103,61 @@ export interface SalonRepository {
   listGapSends(shopId: string, from: Temporal.Instant, to: Temporal.Instant): Promise<GapSend[]>;
   /** The shop's VAT rate in percent (21 until the Owner sets another). */
   vatRatePct(shopId: string): Promise<number>;
+  /** The shop's settings; the defaults (every switch off, 21 % VAT) when it has saved none. */
+  getSettings(shopId: string): Promise<SalonSettings>;
+  /** Saves the settings; in the same transaction, the prepared messages of every kind now off are dismissed. */
+  saveSettings(shopId: string, s: SalonSettings, now: Temporal.Instant): Promise<void>;
+  /** Dismisses the prepared messages of one kind; returns how many. */
+  dismissPrepared(shopId: string, kind: OutboxKind, now: Temporal.Instant): Promise<number>;
+  /** Every dedupe key the shop's outbox holds. */
+  outboxKeys(shopId: string): Promise<Set<string>>;
+  /**
+   * The bookings the outbox rules read: starting in [from, to) or paid since `paidSince` or
+   * cancelled since `cancelledSince` (with a start after `cancelledSince`'s window), at most `limit`.
+   */
+  listOutboxBookings(shopId: string, w: OutboxWindow, limit: number): Promise<OutboxBooking[]>;
+  /** Inserts the drafts; a key the shop already has is skipped. */
+  insertOutbox(rows: readonly NewOutboxRow[]): Promise<void>;
+  /** The prepared messages (at most `limit`) and those sent or dismissed since `since`. */
+  listOutbox(shopId: string, since: Temporal.Instant, limit: number): Promise<OutboxRow[]>;
+  /** Moves a prepared message to sent or dismissed. */
+  setOutboxStatus(shopId: string, id: string, status: "sent" | "dismissed", now: Temporal.Instant): Promise<OutboxRow | "not_found" | "not_prepared">;
+}
+
+export interface OutboxWindow {
+  /** Bookings starting in [remindFrom, remindTo): tomorrow, shop time. */
+  remindFrom: Temporal.Instant;
+  remindTo: Temporal.Instant;
+  /** Bookings with a payment at or after this. */
+  paidSince: Temporal.Instant;
+  /** Cancelled bookings cancelled at or after this and starting in (now, gapTo]. */
+  cancelledSince: Temporal.Instant;
+  now: Temporal.Instant;
+  gapTo: Temporal.Instant;
+}
+
+export interface NewOutboxRow {
+  shopId: string;
+  kind: OutboxKind;
+  dedupeKey: string;
+  clientId: string | null;
+  bookingId: string | null;
+  phone: string;
+  language: "es" | "en";
+  body: string;
+}
+
+export interface OutboxRow {
+  id: string;
+  kind: OutboxKind;
+  clientId: string | null;
+  bookingId: string | null;
+  phone: string;
+  language: "es" | "en";
+  body: string;
+  status: "prepared" | "sent" | "dismissed";
+  createdAt: Temporal.Instant;
+  actedAt: Temporal.Instant | null;
 }
 
 export interface NewExpense {

@@ -36,6 +36,10 @@ const ROUTES = [
   "deleteExpense",
   "endExpense",
   "exportMonth",
+  "settings",
+  "saveSettings",
+  "outbox",
+  "outboxAction",
 ] as const;
 const COOKIES = ["none", "malformed", "expired", "otherShop", "badSignature"] as const;
 type Route = (typeof ROUTES)[number];
@@ -207,6 +211,22 @@ describe("M17. Nothing personal without a session", () => {
           case "exportMonth":
             answer = await api.exportMonth(shopId, `?month=${c.date === "not-a-date" ? "2026-1" : c.date.slice(0, 7)}&format=csv`, opts);
             break;
+          case "settings":
+            answer = await api.settings(shopId, opts);
+            break;
+          case "saveSettings":
+            answer = await api.saveSettings(
+              shopId,
+              json({ automations: { reminder: true, review: false, gap: false, winback: false, birthday: false }, googleReviewUrl: null, vatRatePct: 21 }),
+              opts,
+            );
+            break;
+          case "outbox":
+            answer = await api.outbox(shopId, opts);
+            break;
+          case "outboxAction":
+            answer = await api.outboxAction(shopId, pick(booking), json({ action: "sent" }), opts);
+            break;
         }
 
         for (const s of seeded) expect(answer.text).not.toContain(s);
@@ -267,6 +287,11 @@ describe("M17. Nothing personal without a session", () => {
           deleteExpense: () => api.deleteExpense(REAL, booking, o),
           endExpense: () => api.endExpense(REAL, booking, { action: "end", lastMonth: "2026-10" }, o),
           exportMonth: () => api.exportMonth(REAL, "?month=2026-11&format=csv", o),
+          settings: () => api.settings(REAL, o),
+          saveSettings: () =>
+            api.saveSettings(REAL, { automations: { reminder: true, review: false, gap: false, winback: false, birthday: false }, googleReviewUrl: null, vatRatePct: 21 }, o),
+          outbox: () => api.outbox(REAL, o),
+          outboxAction: () => api.outboxAction(REAL, booking, { action: "sent" }, o),
         };
         expect(Object.keys(calls).sort(), "the loop must cover every route").toEqual(ROUTES.filter((r) => r !== "login" && r !== "logout").sort());
         const a = await calls[route]();
