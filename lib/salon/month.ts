@@ -164,7 +164,10 @@ const sum = (xs: readonly number[]) => xs.reduce((n, x) => n + x, 0);
 
 /** Percent change from `prev` to `cur`, rounded; null when there is nothing to compare with. */
 function delta(cur: number, prev: number): number | null {
-  return prev === 0 ? null : Math.round(((cur - prev) / Math.abs(prev)) * 100);
+  if (prev === 0) return null;
+  const pct = ((cur - prev) / Math.abs(prev)) * 100;
+  // Half away from zero, so +12.5 and -12.5 round alike (Math.round would send -12.5 to -12).
+  return Math.sign(pct) * Math.round(Math.abs(pct));
 }
 
 export function monthReport(input: MonthInput): MonthReport {
@@ -191,9 +194,9 @@ export function monthReport(input: MonthInput): MonthReport {
     if (w) w.takenCents += p.amountCents;
   }
 
-  // By worker: what each resource's paid bookings took (a product-only sale has no worker).
+  // By worker: the full payment amount, product part included (the chair took it); what each resource's paid bookings took (a product-only sale has no worker).
   const worker = new Map<string, number>();
-  // Top services: what each service took, net of the product part of the payment.
+  // Top services: deliberately NET of the product part, so a service is not credited with a shampoo sold.
   const service = new Map<string, { count: number; takenCents: number }>();
   for (const p of payments) {
     if (p.resourceId !== null) worker.set(p.resourceId, (worker.get(p.resourceId) ?? 0) + p.amountCents);
@@ -208,23 +211,26 @@ export function monthReport(input: MonthInput): MonthReport {
   const byId = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
   // The receptionist: only its own, real rows.
+  // "Booked by the receptionist": deliberately leaves out manual bookings, cancelled ones and moves
+  // (a move is the same appointment, not a new one), so the figure is only real, attributable work.
   const made = [...new Map(input.bookings.map((b) => [b.id, b])).values()].filter(
     (b) => b.channel !== "manual" && b.status !== "cancelled" && b.rescheduledFrom === null && inMonth(b.createdAt),
   );
+  // "Calls answered": deliberately leaves out failed calls (nobody was answered), as the 7-day panel does.
   const calls = input.calls.filter((c) => c.status !== "failed" && inMonth(c.startedAt));
   const timed = calls.filter(
     (c) => c.status === "completed" && c.endedAt !== null && Temporal.Instant.compare(c.endedAt, c.startedAt) >= 0,
   );
   const phoneSeconds = sum(timed.map((c) => Math.floor(c.endedAt!.since(c.startedAt).total("seconds"))));
 
-  // A gap is refilled when a booking of that phone (not cancelled, not a move, made that month) was created
+  // A gap is refilled when a booking of that phone (not cancelled, not the Owner's own, not a move, made that month) was created
   // within 72 h after the gap message was marked sent; each booking counts once.
   const refilled = new Set<string>();
   for (const g of input.gapSends) {
     if (g.phone === "") continue;
     const until = g.sentAt.add({ hours: GAP_WINDOW_HOURS });
     for (const b of input.bookings) {
-      if (b.phone !== g.phone || b.status === "cancelled" || b.rescheduledFrom !== null || !inMonth(b.createdAt)) continue;
+      if (b.phone !== g.phone || b.status === "cancelled" || b.channel === "manual" || b.rescheduledFrom !== null || !inMonth(b.createdAt)) continue;
       if (Temporal.Instant.compare(b.createdAt, g.sentAt) >= 0 && Temporal.Instant.compare(b.createdAt, until) <= 0) refilled.add(b.id);
     }
   }

@@ -241,6 +241,16 @@ export function createSalonRepository(handle: DbHandle): SalonRepository {
       return row.id;
     },
 
+    async countExpenses(shopId) {
+      const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(expenses).where(eq(expenses.shopId, shopId));
+      return row.n;
+    },
+
+    async countBlocks(shopId) {
+      const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(timeBlocks).where(eq(timeBlocks.shopId, shopId));
+      return row.n;
+    },
+
     async endRecurring(shopId, id, lastMonth) {
       if (!isUuid(id)) return false;
       const mine = and(eq(expenses.id, id), eq(expenses.shopId, shopId), eq(expenses.recurring, true));

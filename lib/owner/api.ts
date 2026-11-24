@@ -182,6 +182,8 @@ export type MachineErrorBody =
   /** A manual booking the rules refuse, or a payment the cash desk refuses (salon 4, 5). */
   | { error: "closed" | "outside_hours" | "blocked" | "in_the_past" | "too_far"; reason?: string }
   | { error: "cancelled" | "not_yet" | "already_paid" }
+  /** A per-shop cap on expenses or time blocks (salon 7). */
+  | { error: "limit_reached" }
   | { error: "invalid_request"; issues: { path: (string | number)[]; message: string }[] }
   | { error: "not_allowed" }
   | { error: "unavailable" }

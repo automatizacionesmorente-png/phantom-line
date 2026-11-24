@@ -55,6 +55,9 @@ const PAY_AHEAD = { hours: 12 };
 const MAX_AHEAD_DAYS = 365;
 /** The most bookings the warning of a new block lists. */
 const MAX_OVERLAPPING = 50;
+/** Most rows of each kind a shop may keep: a cheap guard against a runaway client. */
+export const MAX_EXPENSES = 5000;
+export const MAX_BLOCKS = 2000;
 const addDays = (i: Temporal.Instant, days: number) => i.add({ hours: days * 24 });
 
 const actorOf = (s: SessionPayload): Actor => ({ sessionId: s.sid, label: s.label });
@@ -195,6 +198,7 @@ export async function handleCreateBlock(
   if (Temporal.Instant.compare(start, addDays(d.clock(), MAX_AHEAD_DAYS)) > 0) return invalid("The block starts too far ahead", ["start"]);
   if (end.epochMilliseconds - start.epochMilliseconds > MAX_BLOCK_DAYS * 86_400_000) return invalid("The block is too long", ["end"]);
 
+  if ((await d.salon.countBlocks(shopId)) >= MAX_BLOCKS) return fail(409, { error: "limit_reached" });
   const block = await d.salon.insertBlock({ shopId, resourceId: req.resourceId, start, end, reason: req.reason });
   // The block stands even over bookings: the dialog warns with the ones it covers (spec 9.4).
   const now = d.clock();
@@ -422,6 +426,7 @@ export async function handleCreateExpense(
   if (Temporal.PlainDate.compare(day, today.add({ years: 1 })) > 0) return invalid("The date is more than a year ahead", ["day"]);
   // The reports reach back 24 months, so an older expense could never be seen.
   if (!monthInWindow(req.day.slice(0, 7), now, tz, 24, 12)) return invalid("The date is too far back", ["day"]);
+  if ((await d.salon.countExpenses(shopId)) >= MAX_EXPENSES) return fail(409, { error: "limit_reached" });
   const id = await d.salon.insertExpense({
     shopId,
     concept: req.concept,

@@ -212,6 +212,18 @@ describe("richer client cards (salon 6)", () => {
     expect((await row()).promoConsentAt).toBeNull();
   });
 
+  it("consent on again keeps the date the client first agreed", async () => {
+    await post({ action: "consent", consent: true });
+    const first = (await row()).promoConsentAt!.getTime();
+    env.setNow(env.now().add({ hours: 6 }));
+    const again = await post({ action: "consent", consent: true });
+    expect(again.status).toBe(200);
+    expect((await row()).promoConsentAt!.getTime()).toBe(first);
+    await post({ action: "consent", consent: false });
+    await post({ action: "consent", consent: true });
+    expect((await row()).promoConsentAt!.getTime()).toBe(env.now().epochMilliseconds);
+  });
+
   it("birthday rejects 02-30 and stores a real day or null", async () => {
     for (const bad of ["02-30", "13-01", "00-10", "1-1", "2026-01-01", "04-31"]) {
       expect((await post({ action: "birthday", birthday: bad })).status).toBe(400);

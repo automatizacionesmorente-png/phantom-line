@@ -430,7 +430,7 @@ export async function handleClientAction(
     let patch: ClientPatch;
     if (req.action === "note") patch = { note: req.note.trim() };
     else if (req.action === "birthday") patch = { birthday: req.birthday };
-    else if (req.action === "consent") patch = { promoConsentAt: req.consent ? d.clock() : null };
+    else if (req.action === "consent") patch = req.consent ? (client.promoConsentAt ? {} : { promoConsentAt: d.clock() }) : { promoConsentAt: null }; // only off -> on stamps the date
     else {
       const defs = new Map((getSectorPack(access.profile.sectorPackId).clientFields ?? []).map((f) => [f.id, f]));
       const clean: Record<string, string> = {};

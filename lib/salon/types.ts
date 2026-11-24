@@ -82,6 +82,10 @@ export interface SalonRepository {
   /** The one-off expenses dated in `month` (YYYY-MM) and the monthly templates active in it. */
   listExpenses(shopId: string, month: string): Promise<ExpenseRow[]>;
   insertExpense(e: NewExpense): Promise<string>;
+  /** How many expense rows (one-offs and templates) the shop has. */
+  countExpenses(shopId: string): Promise<number>;
+  /** How many time blocks the shop has. */
+  countBlocks(shopId: string): Promise<number>;
   /**
    * Ends a monthly template after `lastMonth`; a template that never began by then is removed.
    * False when this shop has no such template.

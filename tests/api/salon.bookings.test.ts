@@ -175,6 +175,18 @@ describe("POST /bookings (manual)", () => {
 describe("blocks", () => {
   const block = (o: object = {}) => ({ resourceId: "chair-1", start: "2026-11-12T08:00:00Z", end: "2026-11-12T12:00:00Z", reason: "Vacaciones", ...o });
 
+  it("refuses the 2001st block of a shop with 409 limit_reached", async () => {
+    await t.pg.query(
+      `INSERT INTO time_blocks (shop_id, resource_id, starts_at, ends_at, reason) SELECT $1, NULL, '2026-12-01T08:00:00Z', '2026-12-01T09:00:00Z', 'x' FROM generate_series(1, 2000)`,
+      [REAL],
+    );
+    const r = await api.createBlock(REAL, block(), open());
+    expect(r.status).toBe(409);
+    expect(r.json).toEqual({ error: "limit_reached" });
+    expect((await api.blocks(DEMO, { token: tokenFor(DEMO) })).status).toBe(200);
+    expect((await api.createBlock(DEMO, block(), { token: tokenFor(DEMO) })).status).toBe(201);
+  });
+
   it("block over bookings is created and lists them", async () => {
     const under = await addBooking(t, REAL, { start: THU_10, resourceId: "chair-1" });
     const otherChair = await addBooking(t, REAL, { start: THU_10, resourceId: "chair-2" });

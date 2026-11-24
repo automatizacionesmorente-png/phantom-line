@@ -129,6 +129,12 @@ describe("the previous month", () => {
     expect(r.deltaPct).toEqual({ taken: 50, expenses: null, left: 0 });
   });
 
+  it("rounds a percentage half away from zero, both ways", () => {
+    const r = (cur: number, prev: number) => monthReport({ ...base, month: "2026-11", payments: [pay("2026-11-10T10:00:00Z", cur)], prev: { takenCents: prev, expensesCents: 0, leftCents: 0 } }).deltaPct!.taken;
+    expect(r(900, 800)).toBe(13); // +12.5
+    expect(r(700, 800)).toBe(-13); // -12.5
+  });
+
   it("the month window is 24 months back and 1 ahead, and only real months", () => {
     const now = at("2026-11-10T08:00:00Z");
     expect(monthInWindow("2026-11", now, TZ)).toBe(true);
@@ -166,6 +172,7 @@ describe("receptionist figures follow 9.6", () => {
       b("5", { createdAt: at("2026-10-31T22:59:00Z") }), // October (local): not this month
       b("6", { rescheduledFrom: "1" }), // a move, not a new appointment
       b("7", { noShow: true, start: at("2026-11-02T10:00:00Z"), channel: "manual", phone: "+34600000007" }), // a no-show, counted apart
+      b("9", { channel: "manual" }), // the Owner's own booking, same phone as the gap: not a refill
       b("8", { noShow: true, start: at("2026-12-02T10:00:00Z"), createdAt: at("2026-10-02T10:00:00Z"), phone: "+34600000008" }), // a December no-show
     ];
     const calls = [

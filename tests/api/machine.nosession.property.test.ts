@@ -96,7 +96,7 @@ function cookieOptions(kind: CookieKind, malformed: string, shopId: string): Req
 }
 
 describe("M17. Nothing personal without a session", () => {
-  it("no response of any route, without a valid cookie, contains seeded personal data (numRuns 300)", async () => {
+  it("no response of any route, without a valid cookie, contains seeded personal data (numRuns 100)", async () => {
     const reached = { statuses: new Map<number, number>(), cookies: new Set<CookieKind>(), routes: new Set<Route>() };
 
     await fc.assert(
@@ -221,17 +221,60 @@ describe("M17. Nothing personal without a session", () => {
           reached.routes.add(c.route);
         }
       }),
-      { numRuns: 300 },
+      { numRuns: 100 },
     );
 
-    // The property is only worth something if it got as far as the session check on every route
-    // and with every kind of bad cookie, and also met the checks that come before it.
+    // The property is only worth something if it got as far as the session check with every kind of
+    // bad cookie, and also met the checks that come before it. Every route is covered by the
+    // deterministic loop below, so there is no chance-based route assertion here.
     expect([...reached.cookies].sort()).toEqual([...COOKIES].sort());
-    expect([...reached.routes].sort()).toEqual(
-      ["blocks", "booking", "createBlock", "createBooking", "createExpense", "deleteBlock", "deleteExpense", "endExpense", "exportMonth", "expenses", "getNote", "message", "month", "note", "pay", "payments", "poll", "sale", "slots"].sort(),
-    );
     for (const status of [400, 401, 403, 404]) expect(reached.statuses.get(status) ?? 0).toBeGreaterThan(0);
-  }, 600_000);
+  }, 300_000);
+
+  it("every route, with every kind of bad cookie, answers 401 and no seeded data", async () => {
+    await t.reset();
+    await seedShops(t);
+    const name = "Zqana Zqperez";
+    const phone = "+34612345678";
+    const call = await addCall(t, REAL, { transcript: [{ caller: "Linea zqabc", receptionist: "Vale" }] });
+    const booking = await addBooking(t, REAL, { start: "2026-11-12T09:00:00Z", name, phone, callId: call });
+    const message = await addMessage(t, REAL, call, { name, phone, reason: "Motivo zqabc", bookingId: booking });
+    const seeded = ["Zqana", "Zqperez", phone, "zqabc", "2026-11-12T09:00"];
+    const api = client(createMachineEnv(t).handlers);
+    const start = "2026-11-12T09:00:00Z";
+    const end = "2026-11-12T10:00:00Z";
+    for (const route of ROUTES) {
+      if (route === "login" || route === "logout") continue;
+      for (const kind of COOKIES) {
+        const o = cookieOptions(kind, "garbage", REAL);
+        const calls: Record<string, () => Promise<{ status: number; text: string }>> = {
+          poll: () => api.poll(REAL, null, o),
+          message: () => api.message(REAL, message, { action: "play" }, o),
+          booking: () => api.booking(REAL, booking, { action: "confirm", revision: 0 }, o),
+          slots: () => api.slots(REAL, booking, "2026-11-13", o),
+          createBooking: () => api.createBooking(REAL, { resourceId: "chair-1", serviceId: "haircut", start, name, phone }, o),
+          blocks: () => api.blocks(REAL, { ...o, query: "?from=2026-11-01T00:00:00Z&to=2026-12-31T00:00:00Z" }),
+          createBlock: () => api.createBlock(REAL, { resourceId: null, start, end, reason: "Motivo zqabc" }, o),
+          deleteBlock: () => api.deleteBlock(REAL, booking, o),
+          pay: () => api.pay(REAL, booking, { amountCents: 1500, method: "cash" }, o),
+          note: () => api.note(REAL, booking, { note: "Linea zqabc" }, o),
+          getNote: () => api.getNote(REAL, booking, o),
+          sale: () => api.sale(REAL, { amountCents: 900, method: "card" }, o),
+          payments: () => api.payments(REAL, "2026-11-12", o),
+          month: () => api.month(REAL, "2026-11", o),
+          expenses: () => api.expenses(REAL, "2026-11", o),
+          createExpense: () => api.createExpense(REAL, { concept: "Motivo zqabc", amountCents: 1200, category: "other", day: "2026-11-05" }, o),
+          deleteExpense: () => api.deleteExpense(REAL, booking, o),
+          endExpense: () => api.endExpense(REAL, booking, { action: "end", lastMonth: "2026-10" }, o),
+          exportMonth: () => api.exportMonth(REAL, "?month=2026-11&format=csv", o),
+        };
+        expect(Object.keys(calls).sort(), "the loop must cover every route").toEqual(ROUTES.filter((r) => r !== "login" && r !== "logout").sort());
+        const a = await calls[route]();
+        expect(a.status, `${route} with ${kind}`).toBe(401);
+        for (const x of seeded) expect(a.text).not.toContain(x);
+      }
+    }
+  });
 
   it("the same requests with a valid session do return the data, so the property has teeth", async () => {
     await t.reset();

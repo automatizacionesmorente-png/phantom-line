@@ -117,6 +117,18 @@ describe("expenses", () => {
     expect((await api.endExpense(REAL, one, { action: "stop", lastMonth: "2026-10" }, open())).status).toBe(400);
   });
 
+  it("refuses the 5001st expense of a shop with 409 limit_reached, and another shop is unaffected", async () => {
+    await t.pg.query(
+      `INSERT INTO expenses (shop_id, concept, category, amount_cents, day) SELECT $1, 'x', 'other', 100, '2026-11-02' FROM generate_series(1, 5000)`,
+      [REAL],
+    );
+    const full = await api.createExpense(REAL, spend(), open());
+    expect(full.status).toBe(409);
+    expect(full.json).toEqual({ error: "limit_reached" });
+    expect(await t.handle.db.select().from(expenses).where(eq(expenses.shopId, REAL))).toHaveLength(5000);
+    expect((await api.createExpense(DEMO, spend(), { token: tokenFor(DEMO) })).status).toBe(201);
+  });
+
   it("deletes an expense of this shop", async () => {
     const id = (await api.createExpense(REAL, spend(), open())).json!.id as string;
     expect((await api.deleteExpense(REAL, id, open())).status).toBe(200);
