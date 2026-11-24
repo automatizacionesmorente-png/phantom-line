@@ -192,6 +192,18 @@ export function client(h: MachineHandlers, seen: string[] = []) {
       run(h.sale(mreq("POST", `/api/machine/${shopId}/payments`, { body, ...o }), { shopId })),
     payments: (shopId: string, day: string, o: ReqOptions = {}) =>
       run(h.payments(mreq("GET", `/api/machine/${shopId}/payments`, { ...o, query: `?day=${day}` }), { shopId })),
+    month: (shopId: string, month: string | null, o: ReqOptions = {}) =>
+      run(h.month(mreq("GET", `/api/machine/${shopId}/month`, { ...o, query: month === null ? "" : `?month=${month}` }), { shopId })),
+    expenses: (shopId: string, month: string | null, o: ReqOptions = {}) =>
+      run(h.expenses(mreq("GET", `/api/machine/${shopId}/expenses`, { ...o, query: month === null ? "" : `?month=${month}` }), { shopId })),
+    createExpense: (shopId: string, body: unknown, o: ReqOptions = {}) =>
+      run(h.createExpense(mreq("POST", `/api/machine/${shopId}/expenses`, { body, ...o }), { shopId })),
+    deleteExpense: (shopId: string, expenseId: string, o: ReqOptions = {}) =>
+      run(h.deleteExpense(mreq("DELETE", `/api/machine/${shopId}/expenses/${expenseId}`, o), { shopId, expenseId })),
+    endExpense: (shopId: string, expenseId: string, body: unknown, o: ReqOptions = {}) =>
+      run(h.endExpense(mreq("POST", `/api/machine/${shopId}/expenses/${expenseId}`, { body, ...o }), { shopId, expenseId })),
+    exportMonth: (shopId: string, query: string, o: ReqOptions = {}) =>
+      run(h.exportMonth(mreq("GET", `/api/machine/${shopId}/export`, { ...o, query }), { shopId })),
     slots: (shopId: string, bookingId: string, date: string, o: ReqOptions = {}) =>
       run(
         h.slots(mreq("GET", `/api/machine/${shopId}/bookings/${bookingId}/slots`, { ...o, query: `?date=${date}` }), {

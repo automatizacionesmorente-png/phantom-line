@@ -178,7 +178,7 @@ export interface SlotsResponse {
 /** Every error body: a stable code, plus what the dialog needs to refresh in place. */
 export type MachineErrorBody =
   | { error: "wrong_pin" | "too_many_tries" | "no_pin" | "machine_not_configured" }
-  | { error: "shop_not_found" | "message_not_found" | "booking_not_found" | "client_not_found" | "block_not_found" | "bad_origin" }
+  | { error: "shop_not_found" | "message_not_found" | "booking_not_found" | "client_not_found" | "block_not_found" | "expense_not_found" | "bad_origin" }
   /** A manual booking the rules refuse, or a payment the cash desk refuses (salon 4, 5). */
   | { error: "closed" | "outside_hours" | "blocked" | "in_the_past" | "too_far"; reason?: string }
   | { error: "cancelled" | "not_yet" | "already_paid" }

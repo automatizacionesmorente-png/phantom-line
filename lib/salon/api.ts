@@ -4,6 +4,7 @@
  */
 import { z } from "zod";
 import type { AgendaItem } from "@/lib/owner/api";
+import { EXPENSE_CATEGORIES, MONTH_RE, type ExpenseItem, type MonthReport } from "./month";
 
 const Instant = z.iso.datetime({ offset: true });
 
@@ -62,8 +63,52 @@ export type VisitNoteRequest = z.infer<typeof VisitNoteSchema>;
 /** GET /api/machine/[shopId]/payments?day=YYYY-MM-DD (the shop's local day). */
 export const PaymentsQuerySchema = z.strictObject({ day: z.iso.date() });
 
+/** ?month=YYYY-MM; the window (24 months back, 1 ahead) is checked by the handler, which has the clock. */
+const Month = z.string().regex(MONTH_RE, "Use YYYY-MM");
+
+/** GET /api/machine/[shopId]/month and .../expenses (month optional: the current one). */
+export const MonthQuerySchema = z.strictObject({ month: Month.optional() });
+
+/** GET /api/machine/[shopId]/export?month=&format=csv&lang=es|en */
+export const ExportQuerySchema = z.strictObject({
+  month: Month,
+  format: z.literal("csv").optional(),
+  lang: z.enum(["es", "en"]).optional(),
+});
+
+/**
+ * POST /api/machine/[shopId]/expenses. `day` is the date of a one-off expense or the first day of a
+ * monthly one (`recurring`); it may not be more than a year ahead.
+ */
+export const ExpenseSchema = z.strictObject({
+  concept: z.string().trim().min(1).max(80),
+  amountCents: z.number().int().min(1).max(10_000_000),
+  category: z.enum(EXPENSE_CATEGORIES),
+  day: z.iso.date(),
+  recurring: z.boolean().optional(),
+});
+export type ExpenseRequest = z.infer<typeof ExpenseSchema>;
+
+/** POST /api/machine/[shopId]/expenses/[expenseId]: stop a monthly expense after `lastMonth`. */
+export const EndExpenseSchema = z.strictObject({ action: z.literal("end"), lastMonth: Month });
+
 // ---------------------------------------------------------------------------
 // Responses
+
+export type MonthResponse = MonthReport;
+export interface ExpensesResponse {
+  month: string;
+  items: ExpenseItem[];
+  totalCents: number;
+}
+export interface CreateExpenseResponse {
+  id: string;
+}
+/** The CSV text and its file name (the route sends it as a download). */
+export interface ExportResult {
+  csv: string;
+  filename: string;
+}
 
 export interface BlockDto {
   id: string;

@@ -30,6 +30,12 @@ const ROUTES = [
   "getNote",
   "sale",
   "payments",
+  "month",
+  "expenses",
+  "createExpense",
+  "deleteExpense",
+  "endExpense",
+  "exportMonth",
 ] as const;
 const COOKIES = ["none", "malformed", "expired", "otherShop", "badSignature"] as const;
 type Route = (typeof ROUTES)[number];
@@ -90,7 +96,7 @@ function cookieOptions(kind: CookieKind, malformed: string, shopId: string): Req
 }
 
 describe("M17. Nothing personal without a session", () => {
-  it("no response of any route, without a valid cookie, contains seeded personal data (numRuns 100)", async () => {
+  it("no response of any route, without a valid cookie, contains seeded personal data (numRuns 300)", async () => {
     const reached = { statuses: new Map<number, number>(), cookies: new Set<CookieKind>(), routes: new Set<Route>() };
 
     await fc.assert(
@@ -183,6 +189,24 @@ describe("M17. Nothing personal without a session", () => {
           case "payments":
             answer = await api.payments(shopId, c.date, opts);
             break;
+          case "month":
+            answer = await api.month(shopId, c.date === "not-a-date" ? "2026-1" : c.date.slice(0, 7), opts);
+            break;
+          case "expenses":
+            answer = await api.expenses(shopId, c.date === "not-a-date" ? null : c.date.slice(0, 7), opts);
+            break;
+          case "createExpense":
+            answer = await api.createExpense(shopId, json({ concept: reason, amountCents: 1200, category: "other", day: "2026-11-05" }), opts);
+            break;
+          case "deleteExpense":
+            answer = await api.deleteExpense(shopId, pick(booking), opts);
+            break;
+          case "endExpense":
+            answer = await api.endExpense(shopId, pick(booking), json({ action: "end", lastMonth: "2026-10" }), opts);
+            break;
+          case "exportMonth":
+            answer = await api.exportMonth(shopId, `?month=${c.date === "not-a-date" ? "2026-1" : c.date.slice(0, 7)}&format=csv`, opts);
+            break;
         }
 
         for (const s of seeded) expect(answer.text).not.toContain(s);
@@ -197,17 +221,17 @@ describe("M17. Nothing personal without a session", () => {
           reached.routes.add(c.route);
         }
       }),
-      { numRuns: 100 },
+      { numRuns: 300 },
     );
 
     // The property is only worth something if it got as far as the session check on every route
     // and with every kind of bad cookie, and also met the checks that come before it.
     expect([...reached.cookies].sort()).toEqual([...COOKIES].sort());
     expect([...reached.routes].sort()).toEqual(
-      ["blocks", "booking", "createBlock", "createBooking", "deleteBlock", "getNote", "message", "note", "pay", "payments", "poll", "sale", "slots"].sort(),
+      ["blocks", "booking", "createBlock", "createBooking", "createExpense", "deleteBlock", "deleteExpense", "endExpense", "exportMonth", "expenses", "getNote", "message", "month", "note", "pay", "payments", "poll", "sale", "slots"].sort(),
     );
     for (const status of [400, 401, 403, 404]) expect(reached.statuses.get(status) ?? 0).toBeGreaterThan(0);
-  }, 300_000);
+  }, 600_000);
 
   it("the same requests with a valid session do return the data, so the property has teeth", async () => {
     await t.reset();

@@ -16,6 +16,11 @@ import type { Actor } from "@/lib/owner/types";
 import { getSectorPack } from "@/lib/sectors";
 import type {
   BlockDto,
+  CreateExpenseResponse,
+  ExpenseRequest,
+  ExpensesResponse,
+  ExportResult,
+  MonthResponse,
   BlockRequest,
   BlocksResponse,
   CreateBlockResponse,
@@ -27,6 +32,16 @@ import type {
   VisitNoteResponse,
   VisitNoteTextResponse,
 } from "./api";
+import {
+  GAP_WINDOW_HOURS,
+  addMonths,
+  exportCsv,
+  monthBounds,
+  monthExpenses,
+  monthInWindow,
+  monthOf,
+  monthReport,
+} from "./month";
 import type { SalonDeps, TimeBlock } from "./types";
 
 const MIDNIGHT = Temporal.PlainTime.from("00:00");
@@ -330,4 +345,143 @@ export async function handlePaymentsDay(
     ok: true,
     body: { day, totalCents: rows.reduce((n, p) => n + p.amountCents, 0), byMethod, count: rows.length },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Month report, expenses and the accountant's export (spec 2.3, 9.5, 9.6, 9.12)
+
+/** The month asked for (default: the current one), or the 400 for one outside 24 months back / 1 ahead. */
+function monthParam(month: string | undefined, shop: ShopProfile, d: SalonDeps): { ok: true; month: string } | OwnerFailure {
+  const now = d.clock();
+  const m = month ?? monthOf(now, shop.timeZone);
+  return monthInWindow(m, now, shop.timeZone) ? { ok: true, month: m } : invalid("The month is outside the last 24 months and the next one", ["month"]);
+}
+
+const expensesOf = async (d: SalonDeps, shopId: string, month: string) =>
+  monthExpenses(await d.salon.listExpenses(shopId, month), month);
+
+async function totalsOf(d: SalonDeps, shopId: string, month: string, tz: string) {
+  const { start, end } = monthBounds(month, tz);
+  const [payments, expenses] = await Promise.all([d.salon.listPayments(shopId, start, end), expensesOf(d, shopId, month)]);
+  const takenCents = payments.reduce((n, p) => n + p.amountCents, 0);
+  const expensesCents = expenses.reduce((n, e) => n + e.amountCents, 0);
+  return { takenCents, expensesCents, leftCents: takenCents - expensesCents };
+}
+
+export async function handleMonth(
+  d: SalonDeps,
+  shopId: string,
+  token: string | undefined,
+  q: { month?: string },
+): Promise<OwnerResult<MonthResponse>> {
+  const g = await open(shopId, token, d);
+  if (!g.ok) return g;
+  const { shop } = g;
+  const m = monthParam(q.month, shop, d);
+  if (!m.ok) return m;
+  const tz = shop.timeZone;
+  const { start, end } = monthBounds(m.month, tz);
+  const [payments, expenses, bookings, calls, gapSends, prev] = await Promise.all([
+    d.salon.listPayments(shopId, start, end),
+    expensesOf(d, shopId, m.month),
+    d.salon.listMonthBookings(shopId, start, end),
+    d.salon.listMonthCalls(shopId, start, end),
+    d.salon.listGapSends(shopId, start.subtract({ hours: GAP_WINDOW_HOURS }), end),
+    totalsOf(d, shopId, addMonths(m.month, -1), tz),
+  ]);
+  const catalogue = Object.fromEntries(shop.services.map((s) => [s.id, s.priceCents]));
+  return { ok: true, body: monthReport({ month: m.month, tz, payments, expenses, bookings, calls, gapSends, prev, catalogue }) };
+}
+
+export async function handleListExpenses(
+  d: SalonDeps,
+  shopId: string,
+  token: string | undefined,
+  q: { month?: string },
+): Promise<OwnerResult<ExpensesResponse>> {
+  const g = await open(shopId, token, d);
+  if (!g.ok) return g;
+  const m = monthParam(q.month, g.shop, d);
+  if (!m.ok) return m;
+  const items = await expensesOf(d, shopId, m.month);
+  return { ok: true, body: { month: m.month, items, totalCents: items.reduce((n, e) => n + e.amountCents, 0) } };
+}
+
+export async function handleCreateExpense(
+  d: SalonDeps,
+  shopId: string,
+  token: string | undefined,
+  req: ExpenseRequest,
+): Promise<OwnerResult<CreateExpenseResponse>> {
+  const g = await open(shopId, token, d);
+  if (!g.ok) return g;
+  const now = d.clock();
+  const tz = g.shop.timeZone;
+  const today = localDateOf(now, tz);
+  const day = Temporal.PlainDate.from(req.day);
+  if (Temporal.PlainDate.compare(day, today.add({ years: 1 })) > 0) return invalid("The date is more than a year ahead", ["day"]);
+  // The reports reach back 24 months, so an older expense could never be seen.
+  if (!monthInWindow(req.day.slice(0, 7), now, tz, 24, 12)) return invalid("The date is too far back", ["day"]);
+  const id = await d.salon.insertExpense({
+    shopId,
+    concept: req.concept,
+    category: req.category,
+    amountCents: req.amountCents,
+    day: req.day,
+    recurring: req.recurring ?? false,
+  });
+  return { ok: true, body: { id } };
+}
+
+export async function handleDeleteExpense(
+  d: SalonDeps,
+  shopId: string,
+  token: string | undefined,
+  expenseId: string,
+): Promise<OwnerResult<{ ok: true }>> {
+  const g = await open(shopId, token, d);
+  if (!g.ok) return g;
+  if (!(await d.salon.deleteExpense(shopId, expenseId))) return fail(404, { error: "expense_not_found" });
+  return { ok: true, body: { ok: true } };
+}
+
+/** Ends a monthly expense after `lastMonth`: the client then POSTs a new one from the current month to change its amount. */
+export async function handleEndExpense(
+  d: SalonDeps,
+  shopId: string,
+  token: string | undefined,
+  expenseId: string,
+  lastMonth: string,
+): Promise<OwnerResult<{ ok: true }>> {
+  const g = await open(shopId, token, d);
+  if (!g.ok) return g;
+  const m = monthParam(lastMonth, g.shop, d);
+  if (!m.ok) return invalid("The month is outside the last 24 months and the next one", ["lastMonth"]);
+  if (!(await d.salon.endRecurring(shopId, expenseId, lastMonth))) return fail(404, { error: "expense_not_found" });
+  return { ok: true, body: { ok: true } };
+}
+
+export async function handleExport(
+  d: SalonDeps,
+  shopId: string,
+  token: string | undefined,
+  q: { month: string; lang?: "es" | "en" },
+): Promise<OwnerResult<ExportResult>> {
+  const g = await open(shopId, token, d);
+  if (!g.ok) return g;
+  const { shop } = g;
+  const m = monthParam(q.month, shop, d);
+  if (!m.ok) return m;
+  const lang = q.lang ?? "es";
+  const { start, end } = monthBounds(m.month, shop.timeZone);
+  const [payments, rows, vat] = await Promise.all([
+    d.salon.listPayments(shopId, start, end),
+    d.salon.listExpenses(shopId, m.month),
+    d.salon.vatRatePct(shopId),
+  ]);
+  const expenses = monthExpenses(rows, m.month);
+  const report = monthReport({ month: m.month, tz: shop.timeZone, payments, expenses, bookings: [], calls: [], gapSends: [] });
+  const names = Object.fromEntries(shop.services.map((s) => [s.id, s.name[lang]]));
+  const safe = shopId.replace(/[^A-Za-z0-9_-]/g, "_");
+  return { ok: true, body: { csv: exportCsv(report, payments, expenses, vat, lang, names), filename: `phantom-line-${safe}-${m.month}.csv` } };
 }

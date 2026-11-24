@@ -14,6 +14,10 @@ import { handleWeek } from "@/lib/owner/handleWeek";
 import {
   BlockSchema,
   BlocksQuerySchema,
+  EndExpenseSchema,
+  ExpenseSchema,
+  ExportQuerySchema,
+  MonthQuerySchema,
   ManualBookingSchema,
   PaySchema,
   PaymentsQuerySchema,
@@ -21,6 +25,12 @@ import {
 } from "@/lib/salon/api";
 import {
   handleCreateBlock,
+  handleCreateExpense,
+  handleDeleteExpense,
+  handleEndExpense,
+  handleExport,
+  handleListExpenses,
+  handleMonth,
   handleCreateBooking,
   handleDeleteBlock,
   handleGetVisitNote,
@@ -76,6 +86,9 @@ export interface ClientParams extends ShopParams {
 export interface BlockParams extends ShopParams {
   blockId: string;
 }
+export interface ExpenseParams extends ShopParams {
+  expenseId: string;
+}
 
 type Handler<P> = (request: Request, params: P) => Promise<Response>;
 
@@ -116,6 +129,18 @@ export interface MachineHandlers {
   sale: Handler<ShopParams>;
   /** GET /api/machine/[shopId]/payments?day=YYYY-MM-DD */
   payments: Handler<ShopParams>;
+  /** GET /api/machine/[shopId]/month?month=YYYY-MM */
+  month: Handler<ShopParams>;
+  /** GET /api/machine/[shopId]/expenses?month=YYYY-MM */
+  expenses: Handler<ShopParams>;
+  /** POST /api/machine/[shopId]/expenses */
+  createExpense: Handler<ShopParams>;
+  /** DELETE /api/machine/[shopId]/expenses/[expenseId] */
+  deleteExpense: Handler<ExpenseParams>;
+  /** POST /api/machine/[shopId]/expenses/[expenseId]: {action:'end', lastMonth} */
+  endExpense: Handler<ExpenseParams>;
+  /** GET /api/machine/[shopId]/export?month=&format=csv */
+  exportMonth: Handler<ShopParams>;
 }
 
 const NO_STORE = "no-store";
@@ -492,6 +517,73 @@ export function makeMachineHandlers(opts: MachineHandlerOptions): MachineHandler
         respond(
           await handlePaymentsDay(deps, shopId, readCookie(request.headers.get("cookie"), SESSION_COOKIE), query.data.day),
           (b) => json(b, 200),
+        ),
+      );
+    },
+
+    async month(request, params) {
+      const query = readQuery(request, MonthQuerySchema);
+      if (!query.ok) return query.response;
+      return guarded("month", params.shopId, async (shopId, deps) =>
+        respond(await handleMonth(deps, shopId, readCookie(request.headers.get("cookie"), SESSION_COOKIE), query.data), (b) => json(b, 200)),
+      );
+    },
+
+    async expenses(request, params) {
+      const query = readQuery(request, MonthQuerySchema);
+      if (!query.ok) return query.response;
+      return guarded("expenses", params.shopId, async (shopId, deps) =>
+        respond(await handleListExpenses(deps, shopId, readCookie(request.headers.get("cookie"), SESSION_COOKIE), query.data), (b) => json(b, 200)),
+      );
+    },
+
+    async createExpense(request, params) {
+      const bad = checkOrigin(request);
+      if (bad) return bad;
+      const body = await readBody(request, ExpenseSchema);
+      if (!body.ok) return body.response;
+      return guarded("create_expense", params.shopId, async (shopId, deps) =>
+        respond(await handleCreateExpense(deps, shopId, readCookie(request.headers.get("cookie"), SESSION_COOKIE), body.data), (b) => json(b, 201)),
+      );
+    },
+
+    async deleteExpense(request, params) {
+      const bad = checkOrigin(request);
+      if (bad) return bad;
+      return guarded("delete_expense", params.shopId, async (shopId, deps) =>
+        respond(await handleDeleteExpense(deps, shopId, readCookie(request.headers.get("cookie"), SESSION_COOKIE), params.expenseId), (b) => json(b, 200)),
+      );
+    },
+
+    async endExpense(request, params) {
+      const bad = checkOrigin(request);
+      if (bad) return bad;
+      const body = await readBody(request, EndExpenseSchema);
+      if (!body.ok) return body.response;
+      return guarded("end_expense", params.shopId, async (shopId, deps) =>
+        respond(
+          await handleEndExpense(deps, shopId, readCookie(request.headers.get("cookie"), SESSION_COOKIE), params.expenseId, body.data.lastMonth),
+          (b) => json(b, 200),
+        ),
+      );
+    },
+
+    async exportMonth(request, params) {
+      const query = readQuery(request, ExportQuerySchema);
+      if (!query.ok) return query.response;
+      return guarded("export", params.shopId, async (shopId, deps) =>
+        respond(
+          await handleExport(deps, shopId, readCookie(request.headers.get("cookie"), SESSION_COOKIE), query.data),
+          (b) =>
+            new Response(b.csv, {
+              status: 200,
+              headers: {
+                "content-type": "text/csv; charset=utf-8",
+                "content-disposition": `attachment; filename="${b.filename}"`,
+                "cache-control": NO_STORE,
+                "x-content-type-options": "nosniff",
+              },
+            }),
         ),
       );
     },

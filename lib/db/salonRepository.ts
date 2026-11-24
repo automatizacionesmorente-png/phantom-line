@@ -8,12 +8,13 @@
  *   already paid writes nothing. It also touches the booking row, so the Machine_Version
  *   moves and every open machine sees "done" at its next Poll.
  */
-import { and, asc, eq, gte, lt, sql } from "drizzle-orm";
+import { and, asc, eq, gte, isNull, lt, or, sql } from "drizzle-orm";
 import { Temporal } from "temporal-polyfill";
-import type { ManualBooking, NewBlock, NewPayment, PaymentMethod, PaymentRow, SalonRepository, TimeBlock } from "@/lib/salon/types";
+import type { ExpenseCategory, ExpenseRow } from "@/lib/salon/month";
+import type { ManualBooking, NewExpense, NewBlock, NewPayment, PaymentMethod, PaymentRow, SalonRepository, TimeBlock } from "@/lib/salon/types";
 import { clientUpsert, isOverlapViolation, type DbHandle } from "./repository";
 import { isUuid } from "./ownerRepository";
-import { bookings, ownerActions, payments, timeBlocks } from "./schema";
+import { bookings, calls, expenses, outbox, ownerActions, payments, shopSettings, timeBlocks } from "./schema";
 
 const toDate = (i: Temporal.Instant) => new Date(i.epochMilliseconds);
 const toInstant = (d: Date) => Temporal.Instant.fromEpochMilliseconds(d.getTime());
@@ -176,12 +177,13 @@ export function createSalonRepository(handle: DbHandle): SalonRepository {
 
     async listPayments(shopId, from, to) {
       const rows = await db
-        .select()
+        .select({ p: payments, serviceId: bookings.serviceId, resourceId: bookings.resourceId })
         .from(payments)
+        .leftJoin(bookings, and(eq(bookings.id, payments.bookingId), eq(bookings.shopId, shopId)))
         .where(and(eq(payments.shopId, shopId), gte(payments.paidAt, toDate(from)), lt(payments.paidAt, toDate(to))))
         .orderBy(asc(payments.paidAt), asc(payments.id));
       return rows.map(
-        (r): PaymentRow => ({
+        ({ p: r, serviceId, resourceId }): PaymentRow => ({
           id: r.id,
           bookingId: r.bookingId,
           amountCents: r.amountCents,
@@ -189,8 +191,137 @@ export function createSalonRepository(handle: DbHandle): SalonRepository {
           productLabel: r.productLabel,
           method: r.method as PaymentMethod,
           paidAt: toInstant(r.paidAt),
+          serviceId,
+          resourceId,
         }),
       );
+    },
+
+    async listExpenses(shopId, month) {
+      const rows = await db
+        .select()
+        .from(expenses)
+        .where(
+          and(
+            eq(expenses.shopId, shopId),
+            or(
+              and(eq(expenses.recurring, false), sql`${expenses.day} >= ${`${month}-01`}::date`, sql`${expenses.day} < (${`${month}-01`}::date + interval '1 month')`),
+              and(eq(expenses.recurring, true), sql`${expenses.startMonth} <= ${month}`, or(isNull(expenses.endMonth), sql`${expenses.endMonth} >= ${month}`)),
+            ),
+          ),
+        )
+        .orderBy(asc(expenses.createdAt), asc(expenses.id));
+      return rows.map(
+        (r): ExpenseRow => ({
+          id: r.id,
+          concept: r.concept,
+          category: r.category as ExpenseCategory,
+          amountCents: r.amountCents,
+          day: r.day,
+          recurring: r.recurring,
+          startMonth: r.startMonth,
+          endMonth: r.endMonth,
+        }),
+      );
+    },
+
+    async insertExpense(e: NewExpense) {
+      const [row] = await db
+        .insert(expenses)
+        .values({
+          shopId: e.shopId,
+          concept: e.concept,
+          category: e.category,
+          amountCents: e.amountCents,
+          day: e.recurring ? null : e.day,
+          recurring: e.recurring,
+          startMonth: e.recurring ? e.day.slice(0, 7) : null,
+        })
+        .returning({ id: expenses.id });
+      return row.id;
+    },
+
+    async endRecurring(shopId, id, lastMonth) {
+      if (!isUuid(id)) return false;
+      const mine = and(eq(expenses.id, id), eq(expenses.shopId, shopId), eq(expenses.recurring, true));
+      const found = await db.select({ start: expenses.startMonth }).from(expenses).where(mine).limit(1);
+      if (found.length === 0) return false;
+      // Never active up to `lastMonth` (it began after it): nothing of it belongs to a past month, so it goes.
+      if ((found[0].start ?? "") > lastMonth) {
+        await db.delete(expenses).where(mine);
+        return true;
+      }
+      await db
+        .update(expenses)
+        .set({ endMonth: lastMonth })
+        .where(and(mine, or(isNull(expenses.endMonth), sql`${expenses.endMonth} > ${lastMonth}`)));
+      return true;
+    },
+
+    async deleteExpense(shopId, id) {
+      if (!isUuid(id)) return false;
+      const rows = await db
+        .delete(expenses)
+        .where(and(eq(expenses.id, id), eq(expenses.shopId, shopId)))
+        .returning({ id: expenses.id });
+      return rows.length > 0;
+    },
+
+    async listMonthBookings(shopId, from, to) {
+      const rows = await db
+        .select()
+        .from(bookings)
+        .where(
+          and(
+            eq(bookings.shopId, shopId),
+            or(
+              and(gte(bookings.createdAt, toDate(from)), lt(bookings.createdAt, toDate(to))),
+              and(gte(bookings.startsAt, toDate(from)), lt(bookings.startsAt, toDate(to)), sql`${bookings.noShowAt} IS NOT NULL`),
+            ),
+          ),
+        );
+      return rows.map((r) => ({
+        id: r.id,
+        serviceId: r.serviceId,
+        resourceId: r.resourceId,
+        channel: r.channel,
+        status: r.status,
+        createdAt: toInstant(r.createdAt),
+        start: toInstant(r.startsAt),
+        noShow: r.noShowAt !== null,
+        priceCents: r.priceCents,
+        rescheduledFrom: r.rescheduledFrom,
+        phone: r.customerPhone,
+      }));
+    },
+
+    async listMonthCalls(shopId, from, to) {
+      const rows = await db
+        .select({ status: calls.status, startedAt: calls.startedAt, endedAt: calls.endedAt })
+        .from(calls)
+        .where(and(eq(calls.shopId, shopId), gte(calls.startedAt, toDate(from)), lt(calls.startedAt, toDate(to))));
+      return rows.map((r) => ({ status: r.status, startedAt: toInstant(r.startedAt), endedAt: r.endedAt ? toInstant(r.endedAt) : null }));
+    },
+
+    async listGapSends(shopId, from, to) {
+      const rows = await db
+        .select({ phone: outbox.phone, actedAt: outbox.actedAt, createdAt: outbox.createdAt })
+        .from(outbox)
+        .where(
+          and(
+            eq(outbox.shopId, shopId),
+            eq(outbox.kind, "gap"),
+            eq(outbox.status, "sent"),
+            sql`coalesce(${outbox.actedAt}, ${outbox.createdAt}) >= ${toDate(from).toISOString()}::timestamptz`,
+            sql`coalesce(${outbox.actedAt}, ${outbox.createdAt}) < ${toDate(to).toISOString()}::timestamptz`,
+          ),
+        );
+      return rows.map((r) => ({ phone: r.phone, sentAt: toInstant(r.actedAt ?? r.createdAt) }));
+    },
+
+    async vatRatePct(shopId) {
+      const rows = await db.select({ v: shopSettings.vatRatePct }).from(shopSettings).where(eq(shopSettings.shopId, shopId)).limit(1);
+      return rows[0]?.v ?? 21;
     },
   };
 }
