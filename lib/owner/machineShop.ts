@@ -27,7 +27,7 @@ export interface MachineShop extends GateShop {
   timeZone: string;
   unit: SectorPack["unit"];
   vocabulary: SectorPack["vocabulary"];
-  services: { id: string; name: Localized; category?: string }[];
+  services: { id: string; name: Localized; category?: string; priceCents?: number }[];
   resources: { id: string; name: Localized }[];
   /** Opening hours by ISO weekday (1 Monday … 7 Sunday) and the pack's slot step, for the booking book's grid. */
   hours: Partial<Record<number, { open: string; close: string }[]>>;
@@ -49,6 +49,7 @@ export function toMachineShop(shop: ShopProfile, pack: SectorPack, trial = false
       id: s.id,
       name: { es: s.name.es, en: s.name.en },
       ...(s.category !== undefined ? { category: s.category } : {}),
+      ...(s.priceCents !== undefined ? { priceCents: s.priceCents } : {}),
     })),
     resources: shop.resources.map((r) => ({ id: r.id, name: { es: r.name.es, en: r.name.en } })),
     hours: Object.fromEntries(Object.entries(shop.hours).map(([d, v]) => [d, (v ?? []).map((x) => ({ open: x.open, close: x.close }))])),

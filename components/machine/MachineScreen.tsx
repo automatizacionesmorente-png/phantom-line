@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { TryItGuide } from "@/components/guide/TryItGuide";
 import { LanguageSwitch } from "@/components/call/LanguageSwitch";
 import { lightAnnouncement, lightState, tapeCounts } from "@/lib/messages/tape";
-import type { AgendaDayDto, AgendaItem, PollChanged } from "@/lib/owner/api";
+import type { AgendaDayDto, AgendaItem, PollChanged, PollResponse } from "@/lib/owner/api";
 import type { MachineShop } from "@/lib/owner/machineShop";
 import { withAgendaItem } from "@/lib/owner/poll";
 import { tapeItems } from "@/lib/owner/tapePlayer";
@@ -22,7 +22,7 @@ import { TapeReels } from "./TapeReels";
 import { TapeView } from "./TapeView";
 import { TodayView } from "./today/TodayView";
 import { WeekPanel } from "./WeekPanel";
-import { useMachinePoll } from "./useMachinePoll";
+import { pollUrl, useMachinePoll } from "./useMachinePoll";
 import { useReducedMotion } from "./useReducedMotion";
 import { useStoredView } from "./useStoredView";
 import { useTapePlayer } from "./useTapePlayer";
@@ -101,6 +101,19 @@ export function MachineScreen({ shop, initial, label }: MachineScreenProps) {
     [shop.timeZone],
   );
 
+  // After the Owner writes something: read the whole snapshot now instead of waiting for the next Poll.
+  const refresh = useCallback(async () => {
+    try {
+      const res = await fetch(pollUrl(shop.id, 0), { headers: { accept: "application/json" }, cache: "no-store", signal: AbortSignal.timeout(4000) });
+      if (res.status === 401) return toGate();
+      if (!res.ok) return;
+      const body = (await res.json()) as PollResponse;
+      if (body.changed) onApply(body);
+    } catch {
+      // The next Poll catches up.
+    }
+  }, [shop.id, toGate, onApply]);
+
   return (
     <div lang={lang} className="flex w-full flex-col gap-4">
       {shop.demo && <TryItGuide current={3} lang={lang} />}
@@ -168,6 +181,7 @@ export function MachineScreen({ shop, initial, label }: MachineScreenProps) {
             onOpenTape={() => setView("tape")}
             onItem={onItem}
             onLocked={toGate}
+            onRefresh={() => void refresh()}
             onOpenClient={() => setView("clients")}
           />
         </div>

@@ -23,7 +23,7 @@ describe("serviceName", () => {
     expect(serviceName(shop, "haircut+", "es")).toBe("haircut+");
   });
 
-  it("the Machine_Page's shop still carries names only, no durations or prices", () => {
-    expect(shop.services[0]).toEqual({ id: "haircut", name: { es: "corte", en: "haircut" } });
+  it("the Machine_Page's shop carries names and the price (the new-booking dialog shows it), no durations", () => {
+    expect(shop.services[0]).toEqual({ id: "haircut", name: { es: "corte", en: "haircut" }, priceCents: 1500 });
   });
 });

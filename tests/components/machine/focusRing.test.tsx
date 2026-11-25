@@ -47,7 +47,7 @@ describe("focus ring on every focusable control", () => {
     vi.stubGlobal("fetch", fakeMachineApi([]).fetchMock);
     render(<MachineScreen shop={demoShop} initial={initialPoll()} label="Lola" />);
     fireEvent.click(screen.getByRole("tab", { name: "Hoy" }));
-    expect(tabbables().length).toBe(16);
+    expect(tabbables().length).toBe(21);
     expect(withoutRing()).toEqual([]);
   });
 

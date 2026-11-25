@@ -82,6 +82,7 @@ function view(over: Partial<React.ComponentProps<typeof TodayView>> = {}) {
       onOpenTape={() => {}}
       onItem={() => {}}
       onLocked={() => {}}
+      onRefresh={() => {}}
       {...over}
     />,
   );
@@ -127,16 +128,16 @@ describe("Today, the booking book", () => {
 
   it("free gap opens the new booking dialog pre-filled", () => {
     stubApi();
-    const onFreeGap = vi.fn();
-    view({ onFreeGap });
+    view();
     const gap = document.querySelector<HTMLElement>('[data-column="chair-1"] [data-free]')!;
     expect(gap).not.toBeNull();
     fireEvent.click(gap);
-    expect(onFreeGap).toHaveBeenCalledTimes(1);
-    const arg = onFreeGap.mock.calls[0][0];
-    expect(arg.resourceId).toBe("chair-1");
-    expect(arg.start).toBe("2026-11-10T09:30:00Z");
+    const dialog = screen.getByRole("dialog");
+    expect((within(dialog).getByLabelText("Hora") as HTMLInputElement).value).toBe("10:30");
+    expect((within(dialog).getByLabelText("Día") as HTMLInputElement).value).toBe("2026-11-10");
+    expect((within(dialog).getByLabelText("Agenda de") as HTMLSelectElement).value).toBe("chair-1");
   });
+
 
   it("allergy icon on a client with a note", async () => {
     stubApi("Alergia al amoníaco");

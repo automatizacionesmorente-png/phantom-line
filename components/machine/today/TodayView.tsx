@@ -18,9 +18,14 @@ import { ROW_BUTTON } from "../controlButton";
 import type { MachineCopy } from "../machineCopy";
 import { MoveDialog, type DialogOutcome } from "../MoveDialog";
 import { formatRevenue } from "../weekCopy";
+import { ADD_COPY } from "./addCopy";
+import { AddButton } from "./AddButton";
+import { BlockDialog } from "./BlockDialog";
 import { BookingSheet, type BookingClient } from "./BookingSheet";
 import { DayBook, type FreeGap } from "./DayBook";
 import { KpiRow } from "./KpiRow";
+import { NewBookingDialog } from "./NewBookingDialog";
+import { PayDialog } from "./PayDialog";
 import { getBlocks, getPaymentsDay } from "./todayApi";
 import { TODAY_COPY } from "./todayCopy";
 import { WeekStrip } from "./WeekStrip";
@@ -41,7 +46,9 @@ function buildClients(book: ClientsResponse): Map<string, BookingClient> {
  * Today, the booking book (salon spec 2.1): the four numbers, the day (one column per worker) or
  * the week, a sheet for each appointment and the cash strip. The agenda comes from the Poll;
  * blocks, the day's payments and the clients' notes are read from their own routes, again each
- * time `refreshKey` changes (the Poll's version).
+ * time `refreshKey` changes (the Poll's version). The big + button (new appointment, block time),
+ * a tap on a free gap and Cobrar open their dialogs from here; whatever they change calls
+ * `onRefresh`, which reads the agenda again, and the reads above run again too.
  */
 export function TodayView({
   shop,
@@ -54,8 +61,7 @@ export function TodayView({
   onOpenTape,
   onItem,
   onLocked,
-  onFreeGap,
-  onPay,
+  onRefresh,
   onOpenClient,
 }: {
   shop: MachineShop;
@@ -68,13 +74,12 @@ export function TodayView({
   onOpenTape: () => void;
   onItem: (item: AgendaItem) => void;
   onLocked: () => void;
-  /** A tap on a free gap (the new-booking dialog); without it the gaps are not buttons. */
-  onFreeGap?: (gap: FreeGap) => void;
-  /** Cobrar on a booking (the pay dialog); without it the sheet has no Cobrar button. */
-  onPay?: (item: AgendaItem) => void;
+  /** Read the agenda again now (a booking or a block was written, or a slot was found taken). */
+  onRefresh: () => void;
   onOpenClient?: (clientId: string) => void;
 }) {
   const t = TODAY_COPY[lang];
+  const add = ADD_COPY[lang];
   const bookingWord = shop.vocabulary[lang].booking;
   const today = Temporal.Instant.from(now).toZonedDateTimeISO(shop.timeZone).toPlainDate().toString();
   const [picked, setPicked] = useState<string | null>(null);
@@ -86,6 +91,10 @@ export function TodayView({
   const [sheetId, setSheetId] = useState<string | null>(null);
   const [moving, setMoving] = useState<AgendaItem | null>(null);
   const [cancelling, setCancelling] = useState<AgendaItem | null>(null);
+  const [booking, setBooking] = useState<{ n: number; gap: FreeGap | null } | null>(null);
+  const [blocking, setBlocking] = useState(false);
+  const [paying, setPaying] = useState<AgendaItem | null>(null);
+  const [tick, setTick] = useState(0);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const touch = useRef<number | null>(null);
@@ -106,7 +115,7 @@ export function TodayView({
     return () => {
       live = false;
     };
-  }, [shop.id, shop.timeZone, today, refreshKey, onLocked]);
+  }, [shop.id, shop.timeZone, today, refreshKey, tick, onLocked]);
 
   useEffect(() => {
     let live = true;
@@ -121,7 +130,7 @@ export function TodayView({
     return () => {
       live = false;
     };
-  }, [shop.id, today, refreshKey, onLocked]);
+  }, [shop.id, today, refreshKey, tick, onLocked]);
 
   useEffect(() => {
     let live = true;
@@ -133,7 +142,7 @@ export function TodayView({
     return () => {
       live = false;
     };
-  }, [shop.id, refreshKey, onLocked]);
+  }, [shop.id, refreshKey, tick, onLocked]);
 
   const active = useCallback((d: AgendaDayDto | undefined) => (d?.items ?? []).filter((i) => i.status !== "cancelled"), []);
 
@@ -204,6 +213,18 @@ export function TodayView({
     if (a.ok) return setClients(buildClients(a.body));
     if (a.status === 401) return onLocked();
     setNotice(copy.errors.failed);
+  }
+
+  /** Something was written: read the agenda, the blocks, the cash and the clients again. */
+  const changed = useCallback(() => {
+    setTick((n) => n + 1);
+    onRefresh();
+  }, [onRefresh]);
+
+  function pay(item: AgendaItem) {
+    setNotice(null);
+    setSheetId(null);
+    setPaying(item);
   }
 
   function openSheet(item: AgendaItem) {
@@ -300,7 +321,7 @@ export function TodayView({
               go(to < from ? 1 : -1);
             }}
           >
-            <DayBook layout={layout} shop={shop} lang={lang} copy={t} allergy={allergy} onBooking={openSheet} onFreeGap={onFreeGap} />
+            <DayBook layout={layout} shop={shop} lang={lang} copy={t} allergy={allergy} onBooking={openSheet} onFreeGap={(g) => setBooking({ n: Date.now(), gap: g })} />
           </div>
         </>
       )}
@@ -341,8 +362,56 @@ export function TodayView({
           onClose={() => setSheetId(null)}
           onAction={onAction}
           onNoShow={(i, c, v) => void onNoShow(i, c, v)}
-          onPay={onPay}
+          onPay={pay}
           onOpenClient={onOpenClient}
+          onLocked={onLocked}
+        />
+      )}
+      <AddButton
+        copy={add}
+        bookingWord={bookingWord}
+        onNewBooking={() => setBooking({ n: Date.now(), gap: null })}
+        onBlock={() => setBlocking(true)}
+      />
+      {booking && (
+        <NewBookingDialog
+          key={booking.n}
+          shop={shop}
+          lang={lang}
+          copy={add}
+          bookingWord={bookingWord}
+          now={now}
+          initial={booking.gap ? { resourceId: booking.gap.resourceId, start: booking.gap.start } : null}
+          onClose={() => setBooking(null)}
+          onChanged={changed}
+          onLocked={onLocked}
+        />
+      )}
+      {blocking && (
+        <BlockDialog
+          shop={shop}
+          lang={lang}
+          copy={add}
+          bookingWord={bookingWord}
+          now={now}
+          onClose={() => setBlocking(false)}
+          onChanged={changed}
+          onLocked={onLocked}
+        />
+      )}
+      {paying && (
+        <PayDialog
+          key={`${paying.id}:${paying.revision}`}
+          item={paying}
+          shop={shop}
+          lang={lang}
+          copy={add}
+          onClose={() => {
+            setSheetId(paying.id);
+            setPaying(null);
+          }}
+          onPaid={onItem}
+          onChanged={changed}
           onLocked={onLocked}
         />
       )}
