@@ -25,6 +25,14 @@ const MONTHS: Record<Lang, readonly string[]> = {
   en: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
 };
 
+/** The greeting name: no control characters, one space between words, at most 30 characters; '' when it looks like a link or an address. */
+export function safeFirstName(name: string): string {
+  const clean = name.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202f\u2060\ufeff]/g, " ").replace(/\s+/g, " ").trim();
+  const first = firstName(clean);
+  if (first.includes("://") || first.includes("@") || first.includes("/") || /[a-z0-9]\.[a-z]{2,}/i.test(first) || /^www\./i.test(first)) return "";
+  return first.slice(0, 30);
+}
+
 const clamp = (s: string, n: number) => (s.length <= n ? s : s.slice(0, n).trimEnd());
 
 export interface CopyInput {
@@ -50,7 +58,7 @@ function whenText(start: Temporal.Instant, tz: string, lang: Lang): string {
 
 export function outboxBody(i: CopyInput): string {
   const shop = clamp(i.shopName.trim(), 80);
-  const who = clamp(firstName(i.name), 40);
+  const who = safeFirstName(i.name);
   const es = i.lang === "es";
   const when = i.start ? whenText(i.start, i.tz, i.lang) : "";
   const tomorrowAt = i.start ? formatClock(i.start, i.tz, i.lang) : "";
@@ -58,28 +66,28 @@ export function outboxBody(i: CopyInput): string {
   switch (i.kind) {
     case "reminder":
       body = es
-        ? `${shop}: Hola ${who}, te recordamos tu cita de mañana a las ${tomorrowAt}. Responde 1 para confirmar.`
-        : `${shop}: Hi ${who}, a reminder of your appointment tomorrow at ${tomorrowAt}. Reply 1 to confirm.`;
+        ? `${shop}: Hola${who ? ` ${who}` : ""}, te recordamos tu cita de mañana a las ${tomorrowAt}. Responde 1 para confirmar.`
+        : `${shop}: Hi${who ? ` ${who}` : ""}, a reminder of your appointment tomorrow at ${tomorrowAt}. Reply 1 to confirm.`;
       break;
     case "review":
       body = es
-        ? `${shop}: Hola ${who}, gracias por venir. ¿Nos dejas una reseña? Nos ayuda mucho: ${i.url ?? ""}`
-        : `${shop}: Hi ${who}, thank you for visiting. Would you leave us a review? It helps a lot: ${i.url ?? ""}`;
+        ? `${shop}: Hola${who ? ` ${who}` : ""}, gracias por venir. ¿Nos dejas una reseña? Nos ayuda mucho: ${i.url ?? ""}`
+        : `${shop}: Hi${who ? ` ${who}` : ""}, thank you for visiting. Would you leave us a review? It helps a lot: ${i.url ?? ""}`;
       break;
     case "gap":
       body = es
-        ? `${shop}: Hola ${who}, se ha liberado un hueco ${when}. ¿Quieres que te lo reserve? ${OPT_OUT.es}`
-        : `${shop}: Hi ${who}, a slot has just opened up on ${when}. Shall I book it for you? ${OPT_OUT.en}`;
+        ? `${shop}: Hola${who ? ` ${who}` : ""}, se ha liberado un hueco ${when}. ¿Quieres que te lo reserve? ${OPT_OUT.es}`
+        : `${shop}: Hi${who ? ` ${who}` : ""}, a slot has just opened up on ${when}. Shall I book it for you? ${OPT_OUT.en}`;
       break;
     case "winback":
       body = es
-        ? `${shop}: Hola ${who}, hace tiempo que no te vemos. Cuando quieras, dime y te busco un hueco. ${OPT_OUT.es}`
-        : `${shop}: Hi ${who}, it has been a while since we saw you. Whenever you like, tell me and I will find you a spot. ${OPT_OUT.en}`;
+        ? `${shop}: Hola${who ? ` ${who}` : ""}, hace tiempo que no te vemos. Cuando quieras, dime y te busco un hueco. ${OPT_OUT.es}`
+        : `${shop}: Hi${who ? ` ${who}` : ""}, it has been a while since we saw you. Whenever you like, tell me and I will find you a spot. ${OPT_OUT.en}`;
       break;
     case "birthday":
       body = es
-        ? `${shop}: ¡Feliz cumpleaños, ${who}! Un abrazo de todo el equipo. ${OPT_OUT.es}`
-        : `${shop}: Happy birthday, ${who}! Warm wishes from the whole team. ${OPT_OUT.en}`;
+        ? `${shop}: ¡Feliz cumpleaños${who ? `, ${who}` : ""}! Un abrazo de todo el equipo. ${OPT_OUT.es}`
+        : `${shop}: Happy birthday${who ? `, ${who}` : ""}! Warm wishes from the whole team. ${OPT_OUT.en}`;
       break;
   }
   return body;

@@ -8,7 +8,7 @@
  *   already paid writes nothing. It also touches the booking row, so the Machine_Version
  *   moves and every open machine sees "done" at its next Poll.
  */
-import { and, asc, desc, eq, gte, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lt, or, sql, type SQL } from "drizzle-orm";
 import { Temporal } from "temporal-polyfill";
 import type { ExpenseCategory, ExpenseRow } from "@/lib/salon/month";
 import type { OutboxBooking } from "@/lib/salon/outbox";
@@ -385,39 +385,46 @@ export function createSalonRepository(handle: DbHandle): SalonRepository {
 
     async listOutboxBookings(shopId, w, limit) {
       const paidAt = sql<Date | null>`(SELECT max(p.paid_at) FROM payments p WHERE p.booking_id = ${bookings.id} AND p.shop_id = ${bookings.shopId})`;
-      const rows = await db
-        .select({
-          id: bookings.id,
-          clientId: bookings.clientId,
-          name: bookings.customerName,
-          phone: bookings.customerPhone,
-          language: clients.language,
-          start: bookings.startsAt,
-          status: bookings.status,
-          cancelledAt: bookings.cancelledAt,
-          paidAt,
-        })
-        .from(bookings)
-        .leftJoin(clients, and(eq(clients.shopId, bookings.shopId), eq(clients.phone, bookings.customerPhone)))
-        .where(
+      const query = (where: SQL | undefined, order: SQL) =>
+        db
+          .select({
+            id: bookings.id,
+            clientId: bookings.clientId,
+            name: bookings.customerName,
+            phone: bookings.customerPhone,
+            language: clients.language,
+            start: bookings.startsAt,
+            status: bookings.status,
+            cancelledAt: bookings.cancelledAt,
+            paidAt,
+          })
+          .from(bookings)
+          .leftJoin(clients, and(eq(clients.shopId, bookings.shopId), eq(clients.phone, bookings.customerPhone)))
+          .where(and(eq(bookings.shopId, shopId), where))
+          .orderBy(order, asc(bookings.id))
+          .limit(limit);
+      const [tomorrow, paid, cancelled] = await Promise.all([
+        query(
+          and(eq(bookings.status, "confirmed"), gte(bookings.startsAt, toDate(w.remindFrom)), lt(bookings.startsAt, toDate(w.remindTo))),
+          sql`${bookings.startsAt} ASC`,
+        ),
+        query(
+          sql`EXISTS (SELECT 1 FROM payments p WHERE p.booking_id = ${bookings.id} AND p.shop_id = ${bookings.shopId} AND p.paid_at >= ${toDate(w.paidSince).toISOString()}::timestamptz)`,
+          sql`${bookings.startsAt} DESC`,
+        ),
+        query(
           and(
-            eq(bookings.shopId, shopId),
-            or(
-              and(eq(bookings.status, "confirmed"), gte(bookings.startsAt, toDate(w.remindFrom)), lt(bookings.startsAt, toDate(w.remindTo))),
-              sql`EXISTS (SELECT 1 FROM payments p WHERE p.booking_id = ${bookings.id} AND p.shop_id = ${bookings.shopId} AND p.paid_at >= ${toDate(w.paidSince).toISOString()}::timestamptz)`,
-              and(
-                eq(bookings.status, "cancelled"),
-                gte(bookings.cancelledAt, toDate(w.cancelledSince)),
-                sql`${bookings.startsAt} > ${toDate(w.now).toISOString()}::timestamptz`,
-                sql`${bookings.startsAt} <= ${toDate(w.gapTo).toISOString()}::timestamptz`,
-              ),
-            ),
+            eq(bookings.status, "cancelled"),
+            gte(bookings.cancelledAt, toDate(w.cancelledSince)),
+            sql`${bookings.startsAt} > ${toDate(w.now).toISOString()}::timestamptz`,
+            sql`${bookings.startsAt} <= ${toDate(w.gapTo).toISOString()}::timestamptz`,
           ),
-        )
-        .orderBy(asc(bookings.startsAt), asc(bookings.id))
-        .limit(limit);
-      return rows.map(
-        (r): OutboxBooking => ({
+          sql`${bookings.startsAt} ASC`,
+        ),
+      ]);
+      const byId = new Map<string, OutboxBooking>();
+      for (const r of [...tomorrow, ...paid, ...cancelled]) {
+        byId.set(r.id, {
           id: r.id,
           clientId: r.clientId,
           name: r.name,
@@ -427,8 +434,13 @@ export function createSalonRepository(handle: DbHandle): SalonRepository {
           status: r.status === "cancelled" ? "cancelled" : "confirmed",
           cancelledAt: r.cancelledAt ? toInstant(r.cancelledAt) : null,
           paidAt: r.paidAt ? toInstant(new Date(r.paidAt)) : null,
-        }),
-      );
+        });
+      }
+      return [...byId.values()];
+    },
+
+    async dismissStale(shopId, offKinds, now) {
+      return dismissStaleIn(db, shopId, offKinds, now);
     },
 
     async insertOutbox(rows) {
@@ -484,3 +496,27 @@ function dismissStatement(q: DbHandle["db"], shopId: string, kinds: readonly Out
 
 const dismissStatements = (q: DbHandle["db"], shopId: string, kinds: readonly OutboxKind[], now: Temporal.Instant) =>
   kinds.length === 0 ? [] : [dismissStatement(q, shopId, kinds, now)];
+
+/**
+ * Prepared messages that no longer stand (see SalonRepository.dismissStale). Shared with the client
+ * consent change, which dismisses a client's promotions the moment consent is withdrawn.
+ */
+export async function dismissStaleIn(db: DbHandle["db"], shopId: string, offKinds: readonly OutboxKind[], now: Temporal.Instant): Promise<number> {
+  const off = offKinds.length > 0 ? sql`${outbox.kind} IN (${sql.join(offKinds.map((k) => sql`${k}`), sql`, `)})` : sql`false`;
+  const rows = await db
+    .update(outbox)
+    .set({ status: "dismissed", actedAt: toDate(now) })
+    .where(
+      and(
+        eq(outbox.shopId, shopId),
+        eq(outbox.status, "prepared"),
+        or(
+          off,
+          sql`(${outbox.kind} IN ('gap', 'winback', 'birthday') AND NOT EXISTS (SELECT 1 FROM clients c WHERE c.id = ${outbox.clientId} AND c.shop_id = ${outbox.shopId} AND c.promo_consent_at IS NOT NULL))`,
+          sql`(${outbox.kind} IN ('reminder', 'review') AND EXISTS (SELECT 1 FROM bookings b WHERE b.id = ${outbox.bookingId} AND b.shop_id = ${outbox.shopId} AND b.status = 'cancelled'))`,
+        ),
+      ),
+    )
+    .returning({ id: outbox.id });
+  return rows.length;
+}

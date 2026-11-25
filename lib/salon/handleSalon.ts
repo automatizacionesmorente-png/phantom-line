@@ -39,7 +39,7 @@ import type {
   VisitNoteTextResponse,
 } from "./api";
 import { MAX_DRAFTS, planOutbox, type OutboxClient } from "./outbox";
-import type { SalonSettings } from "./settings";
+import { OUTBOX_KINDS, type SalonSettings } from "./settings";
 import {
   GAP_WINDOW_HOURS,
   addMonths,
@@ -504,7 +504,7 @@ export async function handleExport(
 
 const OUTBOX_HISTORY_DAYS = 30;
 /** The bookings one run of the outbox reads. */
-const OUTBOX_BOOKINGS_LIMIT = 500;
+const OUTBOX_BOOKINGS_LIMIT = 200;
 
 const settingsDto = (s: SalonSettings): SettingsResponse => ({
   automations: s.automations,
@@ -549,6 +549,12 @@ const outboxDto = (r: OutboxRow): OutboxItemDto => ({
   actedAt: r.actedAt?.toString() ?? null,
   waUrl: whatsappUrl(r.phone, r.body),
 });
+
+/** Dismisses the prepared messages of kinds that are off now, without consent, or for a cancelled booking. */
+async function dismissStaleNow(d: SalonDeps, shopId: string, now: Temporal.Instant): Promise<void> {
+  const fresh = await d.salon.getSettings(shopId);
+  await d.salon.dismissStale(shopId, OUTBOX_KINDS.filter((k) => !fresh.automations[k]), now);
+}
 
 /** Opening the outbox writes what is due (once per key), then lists it. */
 export async function handleOutbox(
@@ -604,6 +610,9 @@ export async function handleOutbox(
     await d.salon.insertOutbox(drafts.map((x) => ({ shopId, ...x })));
   }
 
+  // Settings, consent and bookings may have changed while this ran (or since the rows were made):
+  // what no longer stands is dismissed here, so it is never shown or sendable.
+  await dismissStaleNow(d, shopId, now);
   const rows = await d.salon.listOutbox(shopId, now.subtract({ hours: OUTBOX_HISTORY_DAYS * 24 }), 200);
   return { ok: true, body: { items: rows.map(outboxDto) } };
 }
@@ -617,6 +626,7 @@ export async function handleOutboxAction(
 ): Promise<OwnerResult<OutboxItemDto>> {
   const g = await open(shopId, token, d);
   if (!g.ok) return g;
+  await dismissStaleNow(d, shopId, d.clock());
   const r = await d.salon.setOutboxStatus(shopId, outboxId, action, d.clock());
   if (r === "not_found") return fail(404, { error: "outbox_not_found" });
   if (r === "not_prepared") return fail(409, { error: "not_prepared" });

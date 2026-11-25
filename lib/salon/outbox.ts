@@ -16,7 +16,7 @@ import { lapsedClients } from "@/lib/clients/lapsed";
 import type { ClientSummary } from "@/lib/clients/summary";
 import type { Lang } from "@/lib/sectors";
 import { outboxBody } from "./outboxCopy";
-import type { Automations, OutboxKind } from "./settings";
+import { isReviewUrl, type Automations, type OutboxKind } from "./settings";
 
 /** The most drafts one run makes: a cap on the work of opening the app. */
 export const MAX_DRAFTS = 200;
@@ -163,7 +163,7 @@ export function planOutbox(i: PlanInput): OutboxDraft[] {
     }
   }
 
-  if (on.review && settings.googleReviewUrl) {
+  if (on.review && settings.googleReviewUrl && isReviewUrl(settings.googleReviewUrl)) {
     const since = now.subtract(REVIEW_WINDOW);
     for (const b of [...i.bookings].sort(byStart)) {
       if (b.paidAt === null || cmp(b.paidAt, since) < 0 || cmp(b.paidAt, now) > 0) continue;

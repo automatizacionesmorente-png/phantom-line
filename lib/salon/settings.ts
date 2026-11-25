@@ -33,13 +33,18 @@ export function readAutomations(raw: unknown): Automations {
 }
 
 export const REVIEW_URL_MAX = 300;
-const REVIEW_PREFIXES = ["https://g.page/", "https://search.google.com/", "https://www.google.com/"] as const;
+/** The three shapes of a Google review link; a redirect such as google.com/url?q= is not one of them. */
+const REVIEW_SHAPES = [
+  /^https:\/\/g\.page\/[^\s]+$/,
+  /^https:\/\/search\.google\.com\/local\/writereview([?#][^\s]*)?$/,
+  /^https:\/\/www\.google\.com\/maps([/?#][^\s]*)?$/,
+];
 const REVIEW_HOSTS = new Set(["g.page", "search.google.com", "www.google.com"]);
 
-/** Only a Google link may reach a client's phone: https, one of three hosts, no spaces, no login part. */
+/** Only a Google review link may reach a client's phone: https, one of three hosts and paths, no spaces, no login part. */
 export function isReviewUrl(s: string): boolean {
   if (s.length > REVIEW_URL_MAX || /[\s\u0000-\u001f\u007f]/.test(s)) return false;
-  if (!REVIEW_PREFIXES.some((p) => s.startsWith(p))) return false;
+  if (!REVIEW_SHAPES.some((r) => r.test(s))) return false;
   try {
     const u = new URL(s);
     return u.protocol === "https:" && REVIEW_HOSTS.has(u.hostname) && u.username === "" && u.password === "" && u.port === "";

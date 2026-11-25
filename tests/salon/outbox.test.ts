@@ -136,10 +136,38 @@ describe("winback and birthday", () => {
   });
 });
 
+describe("review needs a valid link", () => {
+  it("makes no review draft for a link outside the allow-list", () => {
+    const b = [booking("new", "2026-11-09T10:00:00Z", { paidAt: I("2026-11-09T11:00:00Z") })];
+    const withUrl = (googleReviewUrl: string) =>
+      plan({ on: { review: true }, bookings: b, settings: { automations: { ...NO_AUTOMATIONS, review: true }, googleReviewUrl } });
+    expect(withUrl("https://www.google.com/url?q=https://evil.example")).toEqual([]);
+    expect(withUrl("https://evil.example/")).toEqual([]);
+    expect(withUrl("https://www.google.com/maps/place/x")).toHaveLength(1);
+  });
+});
+
+describe("names in the copy", () => {
+  const reminder = (name: string) => plan({ on: { reminder: true }, bookings: [booking("x", "2026-11-11T09:00:00Z", { name })] })[0].body;
+  it("strips control characters, collapses spaces and caps the name at 30 characters", () => {
+    expect(reminder("  Ana\u0000\u202e \n  Pérez ")).toContain("Hola Ana,");
+    expect(reminder("A".repeat(80))).toContain(`Hola ${"A".repeat(30)},`);
+    expect(reminder("\u0007\u200b")).toContain("Hola,");
+  });
+  it("greets neutrally when the name looks like a link, a domain or an address", () => {
+    for (const bad of ["https://evil.example/x", "evil.com", "www.evil", "ana@evil.example", "wa.me/3412"]) {
+      const body = reminder(bad);
+      expect(body, bad).toContain("Salón Lola: Hola, te recordamos");
+      expect(body).not.toContain("evil");
+    }
+    expect(reminder("Ana.")).toContain("Hola Ana.,");
+  });
+});
+
 describe("review link allow-list", () => {
   it("accepts only the three Google hosts over https", () => {
     for (const ok of ["https://g.page/r/abc/review", "https://search.google.com/local/writereview?placeid=x", "https://www.google.com/maps/place/x"]) expect(isReviewUrl(ok)).toBe(true);
-    for (const bad of ["http://g.page/r/x", "https://evil.example/", "https://g.page.evil.example/", "https://www.google.com@evil.example/", "https://google.com/x", "https://g.page/ x", "javascript:alert(1)", "https://g.page/" + "a".repeat(300)]) {
+    for (const bad of ["http://g.page/r/x", "https://evil.example/", "https://g.page.evil.example/", "https://www.google.com@evil.example/", "https://google.com/x", "https://g.page/ x", "javascript:alert(1)", "https://g.page/" + "a".repeat(300), "https://www.google.com/url?q=https://evil.example", "https://www.google.com/mapsx", "https://search.google.com/search?q=x", "https://g.page/"]) {
       expect(isReviewUrl(bad), bad).toBe(false);
     }
   });

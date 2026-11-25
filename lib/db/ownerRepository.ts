@@ -450,6 +450,20 @@ export function createOwnerRepository(handle: DbHandle): OwnerRepository {
         })
         .where(and(eq(clients.id, clientId), eq(clients.shopId, shopId)))
         .returning({ id: clients.id });
+      // Consent withdrawn: the promotions waiting for this client are dismissed with it.
+      if (rows.length > 0 && patch.promoConsentAt === null) {
+        await db
+          .update(outbox)
+          .set({ status: "dismissed", actedAt: sql`now()` })
+          .where(
+            and(
+              eq(outbox.shopId, shopId),
+              eq(outbox.clientId, clientId),
+              eq(outbox.status, "prepared"),
+              inArray(outbox.kind, ["gap", "winback", "birthday"]),
+            ),
+          );
+      }
       return rows.length > 0;
     },
 

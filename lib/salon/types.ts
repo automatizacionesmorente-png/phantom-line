@@ -112,10 +112,17 @@ export interface SalonRepository {
   /** Every dedupe key the shop's outbox holds. */
   outboxKeys(shopId: string): Promise<Set<string>>;
   /**
-   * The bookings the outbox rules read: starting in [from, to) or paid since `paidSince` or
-   * cancelled since `cancelledSince` (with a start after `cancelledSince`'s window), at most `limit`.
+   * The bookings the outbox rules read, one query per need (tomorrow's confirmed ones, the ones paid
+   * since `paidSince`, the ones cancelled since `cancelledSince` that were to start before `gapTo`),
+   * at most `limit` of each.
    */
   listOutboxBookings(shopId: string, w: OutboxWindow, limit: number): Promise<OutboxBooking[]>;
+  /**
+   * Dismisses the prepared messages that no longer stand: of a kind in `offKinds`; a promotion whose
+   * client has no consent (or no client row); a reminder or review whose booking is cancelled.
+   * Returns how many.
+   */
+  dismissStale(shopId: string, offKinds: readonly OutboxKind[], now: Temporal.Instant): Promise<number>;
   /** Inserts the drafts; a key the shop already has is skipped. */
   insertOutbox(rows: readonly NewOutboxRow[]): Promise<void>;
   /** The prepared messages (at most `limit`) and those sent or dismissed since `since`. */

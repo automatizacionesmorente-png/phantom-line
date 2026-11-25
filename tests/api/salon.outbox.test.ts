@@ -42,6 +42,7 @@ const person = (shopId: string, phone: string, name: string, o: Partial<typeof c
 const rows = (shopId = REAL) => t.handle.db.select().from(outbox).where(eq(outbox.shopId, shopId));
 type Item = { id: string; kind: string; status: string; body: string; waUrl: string; phone: string };
 const items = (a: { json: Record<string, unknown> | null }) => (a.json as { items: Item[] }).items;
+const waiting = (a: { json: Record<string, unknown> | null }) => items(a).filter((i) => i.status === "prepared");
 const CONSENT = new Date("2026-01-01T00:00:00Z");
 
 /** Tomorrow's booking (reminder), yesterday's paid one (review), a freed slot (gap), a lapsed client (winback), a birthday. */
@@ -122,9 +123,13 @@ describe("generation", () => {
     const c = await Promise.all([api.outbox(REAL, open()), api.outbox(REAL, open())]);
     expect(a.status).toBe(200);
     expect(items(b).map((i) => i.id)).toEqual(items(a).map((i) => i.id));
-    expect(items(c[0])).toHaveLength(items(a).length);
+    // Two GETs at once: both answer the same rows (same ids), and the table holds one row per key.
+    expect(c.map((x) => x.status)).toEqual([200, 200]);
+    expect(items(c[0]).map((i) => i.id).sort()).toEqual(items(a).map((i) => i.id).sort());
+    expect(items(c[1]).map((i) => i.id).sort()).toEqual(items(c[0]).map((i) => i.id).sort());
     const keys = (await rows()).map((r) => r.dedupeKey);
     expect(new Set(keys).size).toBe(keys.length);
+    expect(keys).toHaveLength(items(a).length);
     expect(keys.length).toBeGreaterThanOrEqual(5);
     // A message that was sent or dismissed is not made again.
     const id = items(a)[0].id;
@@ -184,8 +189,15 @@ describe("generation", () => {
 });
 
 describe("acting on a message", () => {
-  const prepared = async (shopId = REAL, key = "k1") =>
-    (await t.handle.db.insert(outbox).values({ shopId, kind: "winback", dedupeKey: key, phone: "+34611000009", language: "es", body: "Hola" }).returning({ id: outbox.id }))[0].id;
+  const prepared = async (shopId = REAL, key = "k1") => {
+    // A winback with a consenting client, its switch on: nothing stale about it.
+    const clientId = await person(shopId, `+3461100${key.length}${Math.random().toString().slice(2, 7)}`, "Ana", { promoConsentAt: CONSENT });
+    await t.handle.db
+      .insert(shopSettings)
+      .values({ shopId, automations: { winback: true } })
+      .onConflictDoNothing();
+    return (await t.handle.db.insert(outbox).values({ shopId, kind: "winback", clientId, dedupeKey: key, phone: "+34611000009", language: "es", body: "Hola" }).returning({ id: outbox.id }))[0].id;
+  };
 
   it("moves a prepared message to sent or dismissed, once", async () => {
     const a = await prepared();
@@ -223,5 +235,82 @@ describe("acting on a message", () => {
     }
     expect((await rows())[0].status).toBe("prepared");
     expect(Temporal.Instant.from("2026-11-10T08:00:00Z").epochMilliseconds).toBe(env.now().epochMilliseconds);
+  });
+});
+
+describe("stale messages at list time", () => {
+  const prepared = async (o: Partial<typeof outbox.$inferInsert>) =>
+    (await t.handle.db
+      .insert(outbox)
+      .values({ shopId: REAL, kind: "winback", dedupeKey: `k${Math.random()}`, phone: "+34611000009", language: "es", body: "Hola", ...o })
+      .returning({ id: outbox.id }))[0].id;
+  const statusOf = async (id: string) => (await t.handle.db.select().from(outbox).where(eq(outbox.id, id)))[0].status;
+
+  it("race: a GET that generated while the switch went off shows and sells nothing of that kind", async () => {
+    await seedDay();
+    await api.saveSettings(REAL, settings({ reminder: true }), open());
+    const first = items(await api.outbox(REAL, open()));
+    expect(first.map((i) => i.kind)).toEqual(["reminder"]);
+    // The switch goes off, then a late writer inserts a row of that kind (what a GET in flight does).
+    await api.saveSettings(REAL, settings({ reminder: false }), open());
+    const late = await prepared({ kind: "reminder", dedupeKey: "reminder:late" });
+    const a = await api.outbox(REAL, open());
+    expect(waiting(a)).toEqual([]);
+    expect(await statusOf(late)).toBe("dismissed");
+    const send = await api.outboxAction(REAL, late, { action: "sent" }, open());
+    expect(send.status).toBe(409);
+    expect(send.json).toEqual({ error: "not_prepared" });
+    // Even without a GET in between: a prepared row of an off kind cannot be sent.
+    const another = await prepared({ kind: "reminder", dedupeKey: "reminder:later" });
+    expect((await api.outboxAction(REAL, another, { action: "sent" }, open())).status).toBe(409);
+    expect(await statusOf(another)).toBe("dismissed");
+  });
+
+  it("consent withdrawn: promotions without consent or without a client row are dismissed at list time", async () => {
+    await api.saveSettings(REAL, settings({ winback: true, gap: true, birthday: true }), open());
+    const yes = await person(REAL, "+34611000001", "Ana", { promoConsentAt: CONSENT });
+    const no = await person(REAL, "+34611000002", "Bea");
+    const kept = await prepared({ clientId: yes, dedupeKey: "w1" });
+    const withdrawn = await prepared({ clientId: no, dedupeKey: "w2", kind: "birthday" });
+    const orphan = await prepared({ clientId: null, dedupeKey: "w3", kind: "gap" });
+    expect(waiting(await api.outbox(REAL, open())).map((i) => i.id)).toEqual([kept]);
+    expect(await statusOf(withdrawn)).toBe("dismissed");
+    expect(await statusOf(orphan)).toBe("dismissed");
+  });
+
+  it("consent withdrawn on the client card dismisses that client's waiting promotions at once", async () => {
+    const id = await person(REAL, "+34611000001", "Ana", { promoConsentAt: CONSENT });
+    const other = await person(REAL, "+34611000002", "Bea", { promoConsentAt: CONSENT });
+    const mine = await prepared({ clientId: id, dedupeKey: "a" });
+    const theirs = await prepared({ clientId: other, dedupeKey: "b" });
+    const reminder = await prepared({ clientId: id, kind: "reminder", dedupeKey: "c" });
+    expect((await api.clientAction(REAL, id, { action: "consent", consent: false }, open())).status).toBe(200);
+    expect(await statusOf(mine)).toBe("dismissed");
+    expect(await statusOf(theirs)).toBe("prepared");
+    expect(await statusOf(reminder)).toBe("prepared");
+  });
+
+  it("a reminder or review whose booking was cancelled is dismissed", async () => {
+    await api.saveSettings(REAL, settings({ reminder: true, review: true }), open());
+    const b1 = await addBooking(t, REAL, { start: "2026-11-11T09:00:00Z", phone: "+34611000001" });
+    const b2 = await addBooking(t, REAL, { start: "2026-11-12T09:00:00Z", phone: "+34611000002" });
+    const reminder = await prepared({ kind: "reminder", bookingId: b1, dedupeKey: `reminder:${b1}` });
+    const review = await prepared({ kind: "review", bookingId: b2, dedupeKey: `review:${b2}` });
+    const fine = await prepared({ kind: "review", bookingId: null, dedupeKey: "review:none" });
+    await t.handle.db.update(bookings).set({ status: "cancelled", cancelledAt: new Date("2026-11-10T07:00:00Z") }).where(eq(bookings.id, b1));
+    await t.handle.db.update(bookings).set({ status: "cancelled", cancelledAt: new Date("2026-11-10T07:00:00Z") }).where(eq(bookings.id, b2));
+    expect(waiting(await api.outbox(REAL, open())).map((i) => i.id)).toEqual([fine]);
+    expect(await statusOf(reminder)).toBe("dismissed");
+    expect(await statusOf(review)).toBe("dismissed");
+    expect((await api.outboxAction(REAL, reminder, { action: "sent" }, open())).status).toBe(409);
+  });
+
+  it("only takes the review link shapes of Google", async () => {
+    for (const bad of ["https://www.google.com/url?q=https://evil.example", "https://search.google.com/search?q=x"]) {
+      expect((await api.saveSettings(REAL, settings({}, { googleReviewUrl: bad }), open())).status, bad).toBe(400);
+    }
+    for (const ok of ["https://g.page/r/abc/review", "https://search.google.com/local/writereview?placeid=x", "https://www.google.com/maps/place/x"]) {
+      expect((await api.saveSettings(REAL, settings({}, { googleReviewUrl: ok }), open())).status, ok).toBe(200);
+    }
   });
 });
