@@ -6,6 +6,7 @@ import type { MachineShop } from "@/lib/owner/machineShop";
 import { isReviewUrl, type OutboxKind } from "@/lib/salon/settings";
 import type { Lang } from "@/lib/sectors";
 import { GOLD_GRADIENT, PRIMARY_BUTTON } from "../controlButton";
+import { formatRevenue } from "../weekCopy";
 import { getOutbox, getSettings, postOutboxAction, postSettings } from "../salonApi";
 import { AutomationSwitches } from "./AutomationSwitches";
 import { OutboxList } from "./OutboxList";
@@ -139,6 +140,42 @@ export function SettingsView({
       <h2 id={`${id}-h`} className="font-newsreader text-2xl text-ink">
         {copy.title}
       </h2>
+      <section aria-labelledby={`${id}-s`} data-testid="shop-summary" className="flex flex-col gap-2 rounded-2xl border border-border bg-section px-3 py-3">
+        <h3 id={`${id}-s`} className={h3}>
+          {copy.summary.title}
+        </h3>
+        <dl className="m-0 flex flex-col gap-2 font-inter text-sm text-ink">
+          <div>
+            <dt className="font-semibold">{copy.summary.hours}</dt>
+            <dd className="m-0 text-muted">
+              {copy.summary.days.map((d, i) => {
+                const spans = shop.hours[i + 1] ?? [];
+                return (
+                  <span key={d} className="block">
+                    {d}: {spans.length ? spans.map((x) => `${x.open}-${x.close}`).join(", ") : copy.summary.closed}
+                  </span>
+                );
+              })}
+            </dd>
+          </div>
+          <div>
+            <dt className="font-semibold">{copy.summary.services}</dt>
+            <dd className="m-0 text-muted">
+              {shop.services.map((sv) => (
+                <span key={sv.id} className="block">
+                  {sv.name[lang]}
+                  {sv.priceCents !== undefined ? ` · ${formatRevenue(sv.priceCents, lang)}` : ""}
+                </span>
+              ))}
+            </dd>
+          </div>
+          <div>
+            <dt className="font-semibold">{copy.summary.team}</dt>
+            <dd className="m-0 text-muted">{shop.resources.map((r) => r.name[lang]).join(", ")}</dd>
+          </div>
+        </dl>
+        <p className="m-0 font-inter text-sm text-muted">{copy.summary.note}</p>
+      </section>
       {failed && <p className="m-0 font-inter text-sm font-semibold text-muted">{copy.failed}</p>}
       {!saved && !failed && <p className="m-0 font-inter text-sm text-muted">{copy.loading}</p>}
 

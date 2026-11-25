@@ -71,6 +71,20 @@ const view = (active = true, onLocked = vi.fn()) =>
   render(<SettingsView shop={demoShop} lang="es" active={active} refreshKey={0} onLocked={onLocked} />);
 
 describe("SettingsView", () => {
+  it("shows hours, services with prices and the team, read-only, with the Volver a nacer note", async () => {
+    view();
+    const box = await screen.findByTestId("shop-summary");
+    const text = box.textContent ?? "";
+    expect(text).toContain(demoShop.services[0].name.es);
+    expect(text).toContain(demoShop.resources[0].name.es);
+    const price = demoShop.services.find((s) => s.priceCents !== undefined);
+    if (price) expect(text).toMatch(/\d/);
+    const open = Object.values(demoShop.hours).flat()[0]!;
+    expect(text).toContain(`${open.open}-${open.close}`);
+    expect(text).toContain("Volver a nacer");
+    expect(within(box).queryByRole("textbox")).toBeNull();
+  });
+
   it("does not read anything while the tab is inactive", () => {
     view(false);
     expect(reads).toEqual([]);

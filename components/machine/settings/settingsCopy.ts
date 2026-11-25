@@ -4,6 +4,7 @@ import type { OutboxKind } from "@/lib/salon/settings";
 /** The Settings tab's words (salon spec 2.4, 9.7, 9.8). Pure, so tests can read them. */
 export interface SettingsCopy {
   title: string;
+  summary: { title: string; hours: string; closed: string; services: string; team: string; note: string; days: readonly string[] };
   loading: string;
   failed: string;
   automations: { title: string; hint: string; label: Record<OutboxKind, string>; explain: Record<OutboxKind, string>; saveFailed: string };
@@ -26,6 +27,15 @@ export interface SettingsCopy {
 export const SETTINGS_COPY: Record<Lang, SettingsCopy> = {
   es: {
     title: "Ajustes",
+    summary: {
+      title: "Tu negocio",
+      hours: "Horario",
+      closed: "cerrado",
+      services: "Servicios",
+      team: "Equipo",
+      note: "Para cambiar horario, servicios o equipo, usa «Volver a nacer».",
+      days: ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"],
+    },
     loading: "Cargando los ajustes…",
     failed: "No se pudieron cargar los ajustes. Lo intento de nuevo.",
     automations: {
@@ -68,6 +78,15 @@ export const SETTINGS_COPY: Record<Lang, SettingsCopy> = {
   },
   en: {
     title: "Settings",
+    summary: {
+      title: "Your business",
+      hours: "Hours",
+      closed: "closed",
+      services: "Services",
+      team: "Team",
+      note: "To change hours, services or team, use “Volver a nacer”.",
+      days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+    },
     loading: "Loading settings…",
     failed: "Settings could not be loaded. Trying again.",
     automations: {
