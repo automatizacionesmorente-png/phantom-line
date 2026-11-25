@@ -10,6 +10,7 @@ import type { MachineShop } from "@/lib/owner/machineShop";
 import { withAgendaItem } from "@/lib/owner/poll";
 import { tapeItems } from "@/lib/owner/tapePlayer";
 import { useBrowserLang } from "../useBrowserLang";
+import { BusinessView } from "./business/BusinessView";
 import { ClientsView } from "./ClientsView";
 import { TrialBadge } from "@/components/TrialBadge";
 import { DemoNotice } from "./DemoNotice";
@@ -21,7 +22,6 @@ import { MessageLight } from "./MessageLight";
 import { TapeReels } from "./TapeReels";
 import { TapeView } from "./TapeView";
 import { TodayView } from "./today/TodayView";
-import { WeekPanel } from "./WeekPanel";
 import { pollUrl, useMachinePoll } from "./useMachinePoll";
 import { useReducedMotion } from "./useReducedMotion";
 import { useStoredView } from "./useStoredView";
@@ -161,8 +161,6 @@ export function MachineScreen({ shop, initial, label }: MachineScreenProps) {
         )}
         {(offline || failed) && <p className="font-inter text-sm font-semibold text-muted">{copy.offline}</p>}
 
-        <WeekPanel shopId={shop.id} lang={lang} refreshKey={tape.state.version} onLocked={toGate} />
-
         <ViewTabs view={view} onChange={setView} labels={copy.tabs} label={copy.tabsLabel} idBase={idBase} />
 
         <div
@@ -237,8 +235,14 @@ export function MachineScreen({ shop, initial, label }: MachineScreenProps) {
           aria-labelledby={tabId(idBase, "business")}
           hidden={view !== "business"}
         >
-          <h2 className="font-newsreader text-2xl text-ink">{copy.business.title}</h2>
-          <p className="font-inter text-base text-muted">{copy.business.soon}</p>
+          <BusinessView
+            shop={shop}
+            lang={lang}
+            active={view === "business"}
+            now={now}
+            refreshKey={tape.state.version}
+            onLocked={toGate}
+          />
         </div>
         <div
           role="tabpanel"

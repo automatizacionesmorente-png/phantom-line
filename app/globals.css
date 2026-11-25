@@ -172,3 +172,20 @@ body {
   animation-duration: 0.5s;
   animation-direction: reverse;
 }
+
+/* "Imprimir" in My business: only the business report prints (the body gets data-print). */
+@media print {
+  body[data-print="business"] * {
+    visibility: hidden;
+  }
+  body[data-print="business"] [data-print-area],
+  body[data-print="business"] [data-print-area] * {
+    visibility: visible;
+  }
+  body[data-print="business"] [data-print-area] {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+}
