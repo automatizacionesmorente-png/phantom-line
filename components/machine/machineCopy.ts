@@ -114,6 +114,23 @@ export interface MachineCopy {
     suggested: string;
     open: string;
     close: string;
+    search: string;
+    noMatches: string;
+    saveFields: string;
+    spent: (amount: string) => string;
+    birthday: string;
+    birthdayDay: string;
+    birthdayMonth: string;
+    birthdayNone: string;
+    months: readonly string[];
+    consent: string;
+    consentHint: string;
+    consentSince: (date: string) => string;
+    consentOff: string;
+    extra: string;
+    paid: (amount: string) => string;
+    unpaid: string;
+    savedField: string;
   };
 }
 
@@ -224,7 +241,7 @@ export const MACHINE_COPY: Record<Lang, MachineCopy> = {
       state: { visit: "Vino", no_show: "No vino", cancelled: "Cancelada", upcoming: "Próxima" },
       markNoShow: "No vino",
       undoNoShow: "Quitar «No vino»",
-      note: "Nota privada",
+      note: "Importante / alergias",
       notePlaceholder: "Solo la ves tú: alergias, manías, lo que quieras recordar.",
       noteHint: (left) => `${left} caracteres restantes`,
       save: "Guardar nota",
@@ -238,6 +255,23 @@ export const MACHINE_COPY: Record<Lang, MachineCopy> = {
       suggested: "Mensaje sugerido",
       open: "Ver ficha",
       close: "Cerrar ficha",
+      search: "Buscar por nombre o teléfono",
+      noMatches: "Nadie coincide con esa búsqueda.",
+      saveFields: "Guardar datos",
+      spent: (amount) => `Ha gastado ${amount}`,
+      birthday: "Cumpleaños",
+      birthdayDay: "Día",
+      birthdayMonth: "Mes",
+      birthdayNone: "Sin indicar",
+      months: ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"],
+      consent: "Acepta promociones",
+      consentHint: "Solo si lo ha aceptado le escribirás con ofertas o felicitaciones.",
+      consentSince: (date) => `Aceptó el ${date}`,
+      consentOff: "No ha aceptado promociones",
+      extra: "Datos del cliente",
+      paid: (amount) => `Pagado ${amount}`,
+      unpaid: "Sin cobrar",
+      savedField: "Guardado",
     },
   },
   en: {
@@ -344,7 +378,7 @@ export const MACHINE_COPY: Record<Lang, MachineCopy> = {
       state: { visit: "Came", no_show: "Didn't come", cancelled: "Cancelled", upcoming: "Upcoming" },
       markNoShow: "Didn't come",
       undoNoShow: "Undo \"Didn't come\"",
-      note: "Private note",
+      note: "Important / allergies",
       notePlaceholder: "Only you see it: allergies, quirks, anything you want to remember.",
       noteHint: (left) => `${left} characters left`,
       save: "Save note",
@@ -358,6 +392,23 @@ export const MACHINE_COPY: Record<Lang, MachineCopy> = {
       suggested: "Suggested message",
       open: "Open card",
       close: "Close card",
+      search: "Search by name or phone",
+      noMatches: "Nobody matches that search.",
+      saveFields: "Save details",
+      spent: (amount) => `Has spent ${amount}`,
+      birthday: "Birthday",
+      birthdayDay: "Day",
+      birthdayMonth: "Month",
+      birthdayNone: "Not set",
+      months: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+      consent: "Accepts promotions",
+      consentHint: "You only message them with offers or greetings if they have agreed.",
+      consentSince: (date) => `Agreed on ${date}`,
+      consentOff: "Has not agreed to promotions",
+      extra: "Client details",
+      paid: (amount) => `Paid ${amount}`,
+      unpaid: "Unpaid",
+      savedField: "Saved",
     },
   },
 };

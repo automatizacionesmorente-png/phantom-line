@@ -51,6 +51,7 @@ export function MachineScreen({ shop, initial, label }: MachineScreenProps) {
   const [view, setView] = useStoredView(shop.id);
   const [agenda, setAgenda] = useState<AgendaDayDto[]>(initial.agenda);
   const [now, setNow] = useState(initial.now);
+  const [focusClient, setFocusClient] = useState<string | null>(null);
   const [revealDoneFor, setRevealDoneFor] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const [copyNote, setCopyNote] = useState<{ text: string; over: string } | null>(null);
@@ -182,7 +183,10 @@ export function MachineScreen({ shop, initial, label }: MachineScreenProps) {
             onItem={onItem}
             onLocked={toGate}
             onRefresh={() => void refresh()}
-            onOpenClient={() => setView("clients")}
+            onOpenClient={(id) => {
+              setFocusClient(id);
+              setView("clients");
+            }}
           />
         </div>
         <div
@@ -217,7 +221,15 @@ export function MachineScreen({ shop, initial, label }: MachineScreenProps) {
           aria-labelledby={tabId(idBase, "clients")}
           hidden={view !== "clients"}
         >
-          <ClientsView active={view === "clients"} shop={shop} lang={lang} copy={copy} onLocked={toGate} />
+          <ClientsView
+            active={view === "clients"}
+            shop={shop}
+            lang={lang}
+            copy={copy}
+            onLocked={toGate}
+            focusClientId={focusClient}
+            onFocusDone={() => setFocusClient(null)}
+          />
         </div>
         <div
           role="tabpanel"

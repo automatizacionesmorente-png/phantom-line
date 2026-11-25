@@ -32,6 +32,9 @@ export interface MachineShop extends GateShop {
   /** Opening hours by ISO weekday (1 Monday … 7 Sunday) and the pack's slot step, for the booking book's grid. */
   hours: Partial<Record<number, { open: string; close: string }[]>>;
   slotStepMin: number;
+  /** The pack's extra client-card fields, and what the visit note is called (none: no visit note). */
+  clientFields?: { id: string; label: Localized; maxLength: number }[];
+  visitNoteLabel?: Localized;
 }
 
 export function toGateShop(shop: ShopProfile, trial = false): GateShop {
@@ -54,6 +57,10 @@ export function toMachineShop(shop: ShopProfile, pack: SectorPack, trial = false
     resources: shop.resources.map((r) => ({ id: r.id, name: { es: r.name.es, en: r.name.en } })),
     hours: Object.fromEntries(Object.entries(shop.hours).map(([d, v]) => [d, (v ?? []).map((x) => ({ open: x.open, close: x.close }))])),
     slotStepMin: pack.slotStepMin,
+    ...(pack.clientFields?.length
+      ? { clientFields: pack.clientFields.map((f) => ({ id: f.id, label: { es: f.label.es, en: f.label.en }, maxLength: f.maxLength })) }
+      : {}),
+    ...(pack.visitNoteLabel ? { visitNoteLabel: { es: pack.visitNoteLabel.es, en: pack.visitNoteLabel.en } } : {}),
   };
 }
 
