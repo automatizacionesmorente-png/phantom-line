@@ -28,7 +28,7 @@ export interface MachineCopy {
   tabsLabel: string;
   tabs: { today: string; clients: string; business: string; settings: string; tape: string };
   today: { messages: string; back: string };
-    settings: { title: string; soon: string };
+    settings: { title: string };
   controls: { label: string; play: string; next: string; erase: string; copy: string };
   emptyTape: string;
   player: { idle: string; end: string; nowPlaying: string };
@@ -159,7 +159,7 @@ export const MACHINE_COPY: Record<Lang, MachineCopy> = {
     tabsLabel: "Vistas del contestador",
     tabs: { today: "Hoy", clients: "Clientes", business: "Mi negocio", settings: "Ajustes", tape: "Cinta" },
     today: { messages: "Mensajes nuevos", back: "Volver" },
-    settings: { title: "Ajustes", soon: "Aquí ajustarás tu recepcionista." },
+    settings: { title: "Ajustes" },
     controls: { label: "Mandos de la cinta", play: "Escuchar", next: "Siguiente", erase: "Borrar", copy: "Copiar respuesta" },
     emptyTape: "No hay mensajes nuevos.",
     player: { idle: "Pulsa Escuchar para oír la cinta.", end: "Fin de la cinta.", nowPlaying: "Sonando" },
@@ -295,7 +295,7 @@ export const MACHINE_COPY: Record<Lang, MachineCopy> = {
     tabsLabel: "Machine views",
     tabs: { today: "Today", clients: "Clients", business: "My business", settings: "Settings", tape: "Tape" },
     today: { messages: "New messages", back: "Back" },
-    settings: { title: "Settings", soon: "You will tune your receptionist here." },
+    settings: { title: "Settings" },
     controls: { label: "Tape controls", play: "Play", next: "Next", erase: "Erase", copy: "Copy reply" },
     emptyTape: "No new messages.",
     player: { idle: "Press Play to hear the tape.", end: "End of the tape.", nowPlaying: "Now playing" },

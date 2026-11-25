@@ -1,4 +1,4 @@
-import type { BlockRequest, CreateBlockResponse, CreateBookingResponse, CreateExpenseResponse, ExpenseRequest, ExpensesResponse, ManualBookingRequest, MonthResponse, PayRequest, PayResponse } from "@/lib/salon/api";
+import type { BlockRequest, CreateBlockResponse, CreateBookingResponse, CreateExpenseResponse, ExpenseRequest, ExpensesResponse, ManualBookingRequest, MonthResponse, PayRequest, PayResponse, OutboxResponse, SettingsRequest, SettingsResponse } from "@/lib/salon/api";
 import { read, type ApiAnswer } from "./bookingApi";
 
 /**
@@ -65,3 +65,10 @@ export async function deleteExpense(shopId: string, expenseId: string): Promise<
 /** The accountant's CSV for a month; the route sends it as a download. */
 export const exportUrl = (shopId: string, month: string, lang: "es" | "en") =>
   `${root(shopId)}/export?month=${encodeURIComponent(month)}&format=csv&lang=${lang}`;
+
+/** Settings and the outbox (salon spec 2.4, 9.7, 9.8). */
+export const getSettings = (shopId: string) => get<SettingsResponse>(`${root(shopId)}/settings`);
+export const postSettings = (shopId: string, req: SettingsRequest) => post<SettingsResponse>(`${root(shopId)}/settings`, req);
+export const getOutbox = (shopId: string) => get<OutboxResponse>(`${root(shopId)}/outbox`);
+export const postOutboxAction = (shopId: string, outboxId: string, action: "sent" | "dismissed") =>
+  post<{ ok: true }>(`${root(shopId)}/outbox/${encodeURIComponent(outboxId)}`, { action });

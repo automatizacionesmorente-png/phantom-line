@@ -11,6 +11,7 @@ import { withAgendaItem } from "@/lib/owner/poll";
 import { tapeItems } from "@/lib/owner/tapePlayer";
 import { useBrowserLang } from "../useBrowserLang";
 import { BusinessView } from "./business/BusinessView";
+import { SettingsView } from "./settings/SettingsView";
 import { ClientsView } from "./ClientsView";
 import { TrialBadge } from "@/components/TrialBadge";
 import { DemoNotice } from "./DemoNotice";
@@ -49,6 +50,9 @@ export function MachineScreen({ shop, initial, label }: MachineScreenProps) {
   const copy = MACHINE_COPY[lang];
   const reducedMotion = useReducedMotion();
   const [view, setView] = useStoredView(shop.id);
+  // Known once the Settings tab has been opened: the count of messages waiting to be sent.
+  const [outboxCount, setOutboxCount] = useState(0);
+  const tabLabels = outboxCount > 0 ? { ...copy.tabs, settings: `${copy.tabs.settings} (${outboxCount})` } : copy.tabs;
   const [agenda, setAgenda] = useState<AgendaDayDto[]>(initial.agenda);
   const [now, setNow] = useState(initial.now);
   const [focusClient, setFocusClient] = useState<string | null>(null);
@@ -161,7 +165,7 @@ export function MachineScreen({ shop, initial, label }: MachineScreenProps) {
         )}
         {(offline || failed) && <p className="font-inter text-sm font-semibold text-muted">{copy.offline}</p>}
 
-        <ViewTabs view={view} onChange={setView} labels={copy.tabs} label={copy.tabsLabel} idBase={idBase} />
+        <ViewTabs view={view} onChange={setView} labels={tabLabels} label={copy.tabsLabel} idBase={idBase} />
 
         <div
           role="tabpanel"
@@ -250,8 +254,14 @@ export function MachineScreen({ shop, initial, label }: MachineScreenProps) {
           aria-labelledby={tabId(idBase, "settings")}
           hidden={view !== "settings"}
         >
-          <h2 className="font-newsreader text-2xl text-ink">{copy.settings.title}</h2>
-          <p className="font-inter text-base text-muted">{copy.settings.soon}</p>
+          <SettingsView
+            shop={shop}
+            lang={lang}
+            active={view === "settings"}
+            refreshKey={tape.state.version}
+            onLocked={toGate}
+            onCount={setOutboxCount}
+          />
         </div>
       </MachineBody>
     </div>
