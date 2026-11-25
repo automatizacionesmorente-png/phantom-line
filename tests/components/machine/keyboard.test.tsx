@@ -81,7 +81,7 @@ describe("keyboard order", () => {
     noPositiveTabindex();
   });
 
-  it("machine, Today: language switch, Lock, the selected tab, the messages tile, then each day's actions in time order", () => {
+  it("machine, Today: language switch, Lock, the selected tab, the numbers, the day arrows, the week strip, then the day's bookings", () => {
     render(<MachineScreen shop={demoShop} initial={initialPoll()} label="Lola" />);
     expect(tabbables().map(nameOf)).toEqual([
       "Español",
@@ -89,13 +89,19 @@ describe("keyboard order", () => {
       "Bloquear",
       "Hoy",
       "Mensajes nuevos2",
-      // Tuesday 10, Ana at 16:00 (booked): confirm, move, cancel.
-      "Confirmar",
-      "Mover",
-      "Cancelar",
-      // Wednesday 11, Pedro at 11:00 (confirmed): move, cancel.
-      "Mover",
-      "Cancelar",
+      // Previous day is disabled on the first day of the agenda.
+      "Día siguiente",
+      "Día",
+      "Semana",
+      "mar 10, 1 cita",
+      "mié 11, 1 cita",
+      "jue 12, 0 citas",
+      "vie 13, 0 citas",
+      "sáb 14, 0 citas",
+      "dom 15, 0 citas",
+      "lun 16, 0 citas",
+      // Tuesday 10, Ana at 16:00 (booked).
+      "16:00-16:30, Ana, corte",
     ]);
     noPositiveTabindex();
   });

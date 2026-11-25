@@ -47,7 +47,7 @@ describe("focus ring on every focusable control", () => {
     vi.stubGlobal("fetch", fakeMachineApi([]).fetchMock);
     render(<MachineScreen shop={demoShop} initial={initialPoll()} label="Lola" />);
     fireEvent.click(screen.getByRole("tab", { name: "Hoy" }));
-    expect(tabbables().length).toBe(10);
+    expect(tabbables().length).toBe(16);
     expect(withoutRing()).toEqual([]);
   });
 
@@ -55,7 +55,8 @@ describe("focus ring on every focusable control", () => {
     vi.stubGlobal("fetch", fakeMachineApi([]).fetchMock);
     render(<MachineScreen shop={demoShop} initial={initialPoll()} label="Lola" />);
     fireEvent.click(screen.getByRole("tab", { name: "Hoy" }));
-    fireEvent.click(screen.getAllByRole("button", { name: "Mover" })[0]);
+    fireEvent.click(document.querySelector('[data-booking="b1"]') as HTMLElement);
+    fireEvent.click(await screen.findByRole("button", { name: "Mover" }));
     await waitFor(() => expect(document.querySelector("dialog")).not.toBeNull());
     const dialog = document.querySelector("dialog")!;
     const controls = [...dialog.querySelectorAll<HTMLElement>("button, select, input")];

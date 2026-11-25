@@ -10,7 +10,6 @@ import type { MachineShop } from "@/lib/owner/machineShop";
 import { withAgendaItem } from "@/lib/owner/poll";
 import { tapeItems } from "@/lib/owner/tapePlayer";
 import { useBrowserLang } from "../useBrowserLang";
-import { AgendaView } from "./AgendaView";
 import { ClientsView } from "./ClientsView";
 import { TrialBadge } from "@/components/TrialBadge";
 import { DemoNotice } from "./DemoNotice";
@@ -21,6 +20,7 @@ import { MessageCounter } from "./MessageCounter";
 import { MessageLight } from "./MessageLight";
 import { TapeReels } from "./TapeReels";
 import { TapeView } from "./TapeView";
+import { TodayView } from "./today/TodayView";
 import { WeekPanel } from "./WeekPanel";
 import { useMachinePoll } from "./useMachinePoll";
 import { useReducedMotion } from "./useReducedMotion";
@@ -157,17 +157,19 @@ export function MachineScreen({ shop, initial, label }: MachineScreenProps) {
           aria-labelledby={tabId(idBase, "today")}
           hidden={view !== "today"}
         >
-          <button
-            type="button"
-            onClick={() => setView("tape")}
-            className="focus-ring mb-3 flex min-h-11 w-full items-center justify-between rounded-2xl border border-border bg-card px-4 font-inter text-base font-semibold text-ink"
-          >
-            <span>{copy.today.messages}</span>
-            <span data-messages-tile="" className="font-newsreader text-2xl text-gold-text">
-              {counts.new}
-            </span>
-          </button>
-          <AgendaView days={agenda} now={now} shop={shop} lang={lang} copy={copy} onItem={onItem} onLocked={toGate} />
+          <TodayView
+            shop={shop}
+            lang={lang}
+            copy={copy}
+            agenda={agenda}
+            now={now}
+            newMessages={counts.new}
+            refreshKey={tape.state.version}
+            onOpenTape={() => setView("tape")}
+            onItem={onItem}
+            onLocked={toGate}
+            onOpenClient={() => setView("clients")}
+          />
         </div>
         <div
           role="tabpanel"

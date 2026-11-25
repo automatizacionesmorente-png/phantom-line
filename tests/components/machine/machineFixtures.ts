@@ -136,6 +136,11 @@ export function fakeMachineApi(polls: (PollChanged | PollUnchanged)[] = []) {
     const body = typeof init?.body === "string" ? JSON.parse(init.body) : null;
     // "Últimos 7 días" reads its own route; it is not a Poll and is not recorded with them.
     if (method === "GET" && /^\/api\/machine\/[^/]+\/week$/.test(url)) return json(WEEK);
+    // Today's own reads (blocks, the day's cash, the clients' notes) are not Polls either.
+    if (method === "GET" && /^\/api\/machine\/[^/]+\/blocks\?/.test(url)) return json({ blocks: [] });
+    if (method === "GET" && /^\/api\/machine\/[^/]+\/payments\?day=/.test(url))
+      return json({ day: "2026-11-10", totalCents: 0, byMethod: { cash: 0, card: 0, bizum: 0, voucher: 0 }, count: 0 });
+    if (method === "GET" && /^\/api\/machine\/[^/]+\/clients$/.test(url)) return json({ now: NOW, clients: [], lapsed: [] });
     calls.push({ url, method, body });
     if (method === "GET" && /^\/api\/machine\/[^/]+\?since=/.test(url)) {
       const p = polls[Math.min(next, polls.length - 1)];

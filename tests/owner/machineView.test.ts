@@ -73,10 +73,12 @@ describe("loadMachineView", () => {
     expect(v.initial.agenda[0].items.map((b) => b.id)).toEqual([booking]);
     expect(v.shop.demo).toBe(false);
     expect(v.shop.timeZone).toBe("Europe/Madrid");
-    // Hours, prices, the address and the PIN hash stay on the server.
+    // Prices, the address and the PIN hash stay on the server. The opening hours (which the receptionist
+    // tells every caller) and the slot step travel for the booking book's grid.
     const json = JSON.stringify(v.shop);
-    expect(json).not.toMatch(/priceCents|address|hours|scrypt|ownerPin/);
+    expect(json).not.toMatch(/priceCents|address|scrypt|ownerPin/);
     expect(json).not.toContain(lolaProfile.address);
+    expect(v.shop?.hours[2]).toEqual([{ open: "10:00", close: "14:00" }, { open: "17:00", close: "20:00" }]);
     // A Real_Shop never runs the Demo_Retention.
     expect(env.spy.claims).toBe(0);
   });
