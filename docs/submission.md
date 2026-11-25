@@ -4,7 +4,7 @@
 
 Category: **Resurrection** (also entered for Best Student and Best Startup).
 
-- Live demo: https://phantom-line-nine.vercel.app (Peluquería Lola, a demo salon in Madrid)
+- Live demo: https://phantom-line-nine.vercel.app (Peluquería Lola, a demo salon in Madrid; the month shown is sample data)
 - Code, specs and steering: https://github.com/automatizacionesmorente-png/phantom-line (`.kiro/` at the root)
 - Startup page: https://phantom-line-nine.vercel.app/startup
 
@@ -29,11 +29,13 @@ A hair salon owner has scissors in one hand and the other hand on a customer. Th
 
 **The model proposes, the code decides.** Hours, service length, the past, the shop's time zone and free chairs are checked in pure TypeScript, and a Postgres exclusion constraint makes double bookings impossible. A rule-based Code_Brain reads the caller first and Gemini is used only when it is not sure, so a model failure never ends a call. Urgency and the owner's message are built by code.
 
-**Startup angle** (`/startup`, `docs/impact.md`): the problem in cited numbers (42% of US consumers leave a voicemail and 78% say they abandoned a business after an unanswered call, CallRail 2025; 33,882 hair and barber companies in Spain, einforma 2024), the cost to run (upper bound $0.04096 per call, about $76 a month at 1,000 calls with paid plans; $0 inside free tiers), a planned Salon plan of 29 EUR a month (a planned price, not market-tested) and a waitlist. Impact limits are stated in the doc: the surveys are not salon-only, and we publish no figure we could not verify. Not built, so not promised: a real phone number, WhatsApp, self-service setup, billing.
+**Salon system (new, 23-25 Nov)**: the owner's side has four tabs. *Today* is a booking book with one column per worker, a + button for manual bookings (marked as made by the owner) and blocked time (the receptionist never offers it), and a cash desk ("Cobrar": cash, card, Bizum or voucher). *Clients* adds notes and allergies, birthday, consent for promotions and sector fields. *My business* shows taken, expenses and what is left against the previous month, what the receptionist did (only figures the stored data proves), expenses and a CSV and printable page for the accountant. *Settings* has switches (reminder, review, freed slot, win-back, birthday) that fill an outbox; each message opens WhatsApp with the text ready and the owner sends it with one tap. The month in the demo is **sample data**, labelled on screen.
+
+**Startup angle** (`/startup`, `docs/impact.md`): the problem in cited numbers (42% of US consumers leave a voicemail and 78% say they abandoned a business after an unanswered call, CallRail 2025; 33,882 hair and barber companies in Spain, einforma 2024), the cost to run (upper bound $0.04096 per call, about $76 a month at 1,000 calls with paid plans; $0 inside free tiers), a planned Salon plan of 29 EUR a month (a planned price, not market-tested) and a waitlist. Impact limits are stated in the doc: the surveys are not salon-only, and we publish no figure we could not verify. Not built, so not promised: a real phone number, automatic WhatsApp sending (one-tap `wa.me` links only), legal invoices (VeriFactu), online payments, billing.
 
 ## How we built it
 
-Next.js 16, TypeScript strict, Tailwind 4, Gemini via `@google/genai` (server only), Postgres on Neon with Drizzle, `temporal-polyfill`, and Vitest with fast-check and PGlite. All free tiers. **1923 tests in 192 files, all passing.**
+Next.js 16, TypeScript strict, Tailwind 4, Gemini via `@google/genai` (server only), Postgres on Neon with Drizzle, `temporal-polyfill`, and Vitest with fast-check and PGlite. All free tiers. **2537 tests in 237 files, all passing.**
 
 ### Kiro, 5 to 16 Nov 2026 (IDE and CLI)
 
@@ -53,7 +55,10 @@ Kiro's 4,000 hackathon credits were used up on 17 Nov. The remaining work was wr
 - BACKLOG 1, `npm run demo:reset` (`caafb29`); 11 and 12, `/startup`, waitlist and `docs/impact.md` (`d98397b`).
 - BACKLOG 2, 26, 27, 28: the "Try it in 30 seconds" guide, browser-language machine, route titles, real 404 (`6de4fed`).
 - BACKLOG 19-25: QA fixes (`f087657`, `e5b2d77`) and the English cut aliases (`545e2a2`).
+- The **salon system** (commits `3c59a94` to `11ef12b`, spec in `.kiro/specs/salon-system/`): the four-tab owner app described above.
 - These submission documents.
+
+**Disclosure of pre-existing ideas.** The ideas come from the Nece-sites team's earlier private salon app (from 25 Oct 2026, before the hackathon). No code was copied from it; everything was rewritten in this repository during the submission period. The salon-system spec is organised the Kiro way (requirements, design, tasks) but it was implemented by Claude, because Kiro's credits had run out.
 
 ## Challenges
 
@@ -81,7 +86,7 @@ Kiro's 4,000 hackathon credits were used up on 17 Nov. The remaining work was wr
 
 - A real phone number and WhatsApp as thin adapters over the same core.
 - `/setup`: a salon creates its own shop in three minutes (BACKLOG 16).
-- A client book and "clients who have not come back" on the machine (BACKLOG 14, 15).
+- Automatic WhatsApp sending through each client's own official API, and a real phone line.
 - Physio, restaurant and bakery packs (only the hair salon ships today), and a trial with a real Madrid salon.
 
 ## Team

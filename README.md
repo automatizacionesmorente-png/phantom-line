@@ -2,6 +2,8 @@
 
 An 80s answering machine brought back from the dead, as the AI phone receptionist of a hair salon. When nobody picks up, it answers by voice in Spanish or English, books inside opening hours, and leaves the owner a message on a blinking tape. The model proposes; plain TypeScript decides every booking.
 
+Since 23 Nov 2026 the owner's side is also a small salon system: Today (a booking book per worker, a + button for manual bookings and blocked time, cash desk), Clients, My business (month, expenses, export for the accountant) and Settings (switches and a WhatsApp outbox). The month in the demo is **sample data**.
+
 Kiroween 2026 (Devpost), category **Resurrection**, plus Best Student and Best Startup. Founder: Miguel Morente, student at UFV Madrid. AGPL-3.0 license.
 
 ## Try it in 30 seconds
@@ -19,7 +21,7 @@ Also: [landing page](https://phantom-line-nine.vercel.app), [/startup](https://p
 Phantom Line was built spec-first with [Kiro](https://kiro.dev), IDE and CLI (`kiro-cli chat --no-interactive`):
 
 - [`.kiro/steering/`](.kiro/steering/): six standing docs (product, tech, structure, sector packs, receptionist voice, visual design).
-- Specs, each with requirements, design and tasks: [core-call-loop](.kiro/specs/core-call-loop/), [natural-voice](.kiro/specs/natural-voice/), [owner-machine](.kiro/specs/owner-machine/), [front-desk-brain](.kiro/specs/front-desk-brain/) (tasks 1-11, 15, 17, 18 done by Kiro), and [jury-polish](.kiro/specs/jury-polish/) (partly done).
+- Specs, each with requirements, design and tasks: [core-call-loop](.kiro/specs/core-call-loop/), [natural-voice](.kiro/specs/natural-voice/), [owner-machine](.kiro/specs/owner-machine/), [front-desk-brain](.kiro/specs/front-desk-brain/) (tasks 1-11, 15, 17, 18 done by Kiro), and [jury-polish](.kiro/specs/jury-polish/) (partly done), and [salon-system](.kiro/specs/salon-system/) (written by Claude, see below).
 - Property-based tests with fast-check, proven by mutation: Kiro broke the code on purpose and recorded the shrunk counterexamples.
 - [`.kiro/hooks/`](.kiro/hooks/) (secret guard, booking properties after each write, session brief), [`.kiro/agents/builder.json`](.kiro/agents/builder.json) (a builder agent that cannot push or read secrets) and a Context7 docs MCP in [`.kiro/settings/`](.kiro/settings/).
 - Day-by-day log: [`NOTAS-KIRO.md`](NOTAS-KIRO.md). The most telling rows:
@@ -32,6 +34,7 @@ Phantom Line was built spec-first with [Kiro](https://kiro.dev), IDE and CLI (`k
 
 Kiro's 4,000 hackathon credits were used up on 17 Nov. The rest was written by Claude (Anthropic's coding assistant) under the owner's direction; the commits say "Written by Claude (Kiro credits exhausted)". This is not Kiro's work:
 
+- **Salon system** (23-25 Nov, spec in [`.kiro/specs/salon-system/`](.kiro/specs/salon-system/), 18 tasks, commits `3c59a94` to `11ef12b`): four-tab owner app, manual bookings, time blocks, cash desk, clients with notes and consent, month report, expenses, accountant CSV, automation switches and outbox, demo month. Migration `0009_salon`.
 - Fix of the B15 counterexamples in front-desk-brain (`52a5c7e`).
 - BACKLOG 1: `npm run demo:reset`, a curated demo set (`caafb29`).
 - BACKLOG 11 and 12: `/startup` page, waitlist, `docs/impact.md` (`d98397b`).
@@ -39,6 +42,12 @@ Kiro's 4,000 hackathon credits were used up on 17 Nov. The rest was written by C
 - BACKLOG 19-25: QA fixes (stale reply, call-back needs a phone, code-built owner reason, no empty cards) (`f087657`, `e5b2d77`).
 - English cut aliases (men's, women's, kids' haircut) (`545e2a2`).
 - These docs (README, submission, checklist, video script).
+
+### Where the salon-system ideas come from
+
+The ideas come from the Nece-sites team's earlier private salon app (from 25 Oct 2026, before the hackathon). No code was copied from it; everything was rewritten in this repository during the submission period. The spec is organised the Kiro way, but Claude implemented it.
+
+Not built, on purpose: legal invoices (VeriFactu; the app exports numbers for the accountant instead), automatic WhatsApp sending (every message is a one-tap `wa.me` link), and a real phone line.
 
 ## Architecture
 
@@ -82,7 +91,7 @@ Needs Node.js 20.19 or newer, a free [Neon](https://neon.tech) Postgres database
    npm run dev
    ```
 
-Tests run without a database or network (PGlite and a fake model). Current run: **1923 tests in 192 files, all passing**.
+Tests run without a database or network (PGlite and a fake model). Current run: **2537 tests in 237 files, all passing**.
 
 ```bash
 npx vitest run

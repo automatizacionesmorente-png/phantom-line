@@ -1,6 +1,6 @@
 # Video script: Phantom Line (target 2:45, hard limit 2:55)
 
-Narration is the owner's voice, in English. During the Spanish call, subtitles show the Spanish words as spoken with an English line below. Receptionist lines come from the code and some have two wordings, so read the subtitles from the take, not from this file. Updated 23 Nov 2026 for commit 545e2a2.
+Narration is the owner's voice, in English. During the Spanish call, subtitles show the Spanish words as spoken with an English line below. Receptionist lines come from the code and some have two wordings, so read the subtitles from the take, not from this file. Updated 25 Nov 2026 for the salon-system branch (the segment below needs the new tabs on the live demo, so record after the production step).
 
 | # | Segment | Time | Length |
 |---|---|---|---|
@@ -13,6 +13,8 @@ Narration is the owner's voice, in English. During the Spanish call, subtitles s
 | 7 | Kiro, then Claude (honest line) | 2:10-2:20 | 10 s |
 | 8 | /startup | 2:20-2:38 | 18 s |
 | 9 | Close | 2:38-2:45 | 7 s |
+
+Segment 4b (the salon app, about 15 s) is taken from the time of segment 8; trim the English call or the Kiro segment by 15 s to stay under 2:55.
 
 ## Before recording
 
@@ -58,6 +60,13 @@ Narration is the owner's voice, in English. During the Spanish call, subtitles s
 - **Actions:** point at the light and counter (3 s); press **PLAY**, reels turn, transcript appears (6 s); show the card: caller, reason, urgency badge, what was agreed, suggested reply (6 s); open **Agenda** and show the booking (5 s).
 - **Narration:** "Seconds later Lola's machine blinks. One tap plays the call back. She sees who called, what was agreed and a reply she can send, and the booking is already in her agenda. The database itself refuses double bookings."
 
+## 4b. The salon app (about 15 s)
+
+- **Shot:** the machine's four tabs on a phone-sized window: Today (booking book, one column per worker, the + button), then My business (month numbers, the receptionist block).
+- **On screen:** "Sample data: a demo month."
+- **Narration:** "Lola's app is more than a tape. In the morning she sees her day, one column per stylist. At month end she sees what came in, what went out, and what the receptionist did. Everything here is a demo month, sample data. Messages to clients open WhatsApp for her to send with one tap; nothing is sent automatically."
+- Do not show a real client phone, and do not claim invoices or automatic sending.
+
 ## 5. English call (1:25-1:45)
 
 - **Shot:** window B, switch to **EN**, press Call. Show the greeting, the 9 pm rejection with an offer, and the confirmation; speed-ramp the name and phone.
@@ -79,7 +88,7 @@ Screen captures, about 8 s each.
 
 - **Shot:** `NOTAS-KIRO.md` scrolled to the 2026-11-22 row, then the git log with "Written by Claude (Kiro credits exhausted)".
 - **On screen:** "Kiro: 5-16 Nov. Claude: after the credits ran out."
-- **Narration (10 s, read as is):** "Kiro built the core until its credits ran out on the seventeenth of November. The rest, the judge guide, the startup page and the QA fixes, was written by Claude under my direction, and every commit says so."
+- **Narration (10 s, read as is):** "Kiro built the core until its credits ran out on the seventeenth of November. The rest, the judge guide, the startup page, the QA fixes and the salon app, was written by Claude under my direction, and every commit says so. The salon ideas come from our agency's earlier private app; no code was copied."
 
 ## 8. /startup (2:20-2:38)
 

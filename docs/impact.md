@@ -60,4 +60,14 @@ Today, honestly: a shop is created by hand, not by a self-service screen (a `/se
 4. The shop gets two links: `/call/<shop-id>` for callers and `/machine/<shop-id>` for the owner, who enters the PIN to see messages and bookings.
 5. The owner checks prices and hours, makes one test call, and watches the light blink on the machine.
 
-What is not built, so not promised: a real phone number, WhatsApp, self-service setup, and billing.
+What is not built, so not promised: a real phone number, automatic WhatsApp sending, self-service setup, and billing.
+
+## 4. What the owner app adds (salon system, 25 Nov 2026)
+
+The owner app now also holds every booking (including the owner's own), a cash desk, expenses and a month report, so a salon can see what it takes in and what its receptionist did. Honest limits:
+
+- The month shown in the public demo is **sample data**. It is not a measurement of any real salon, and nothing in this document or on `/startup` should be read as a result of it.
+- "What your receptionist did" counts only figures the stored data can attribute (calls answered, bookings it made, their value, gaps refilled after a sent offer). Phone time is the sum of the real duration of the month's calls, and each figure shows its formula on screen.
+- It does not issue legal invoices (VeriFactu); it exports takings and expenses as CSV for the accountant.
+- Messages to clients (reminder, review, freed slot, win-back, birthday) are prepared, and each opens WhatsApp for the owner to send by hand. Promotions go only to clients with recorded consent.
+- The ideas come from the Nece-sites team's earlier private salon app (from 25 Oct 2026); no code was copied.
