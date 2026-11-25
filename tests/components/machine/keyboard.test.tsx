@@ -31,22 +31,46 @@ describe("keyboard order", () => {
     noPositiveTabindex();
   });
 
-  it("machine, Tape view: language switch, Lock, the selected tab, PLAY, then the cards in Tape_Order", () => {
+  it("four tabs in order", () => {
     render(<MachineScreen shop={demoShop} initial={initialPoll()} label="Lola" />);
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Hoy", "Clientes", "Mi negocio", "Ajustes"]);
+    expect(screen.getByRole("tab", { name: "Hoy" }).getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("English labels the four tabs", () => {
+    render(<MachineScreen shop={{ ...demoShop, languages: ["en"] }} initial={initialPoll()} label="Lola" />);
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Today", "Clients", "My business", "Settings"]);
+  });
+
+  it("messages tile opens the tape and back returns", () => {
+    render(<MachineScreen shop={demoShop} initial={initialPoll()} label="Lola" />);
+    fireEvent.click(screen.getByRole("button", { name: /Mensajes nuevos/ }));
+    expect(screen.getByRole("button", { name: "Escuchar" })).toBeTruthy();
+    expect(screen.queryByRole("tab", { selected: true })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Volver" }));
+    expect(screen.getByRole("tab", { name: "Hoy" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.queryByRole("button", { name: "Escuchar" })).toBeNull();
+  });
+
+  it("machine, Tape view: language switch, Lock, Today as the tab stop, Back, PLAY, then the cards in Tape_Order", () => {
+    render(<MachineScreen shop={demoShop} initial={initialPoll()} label="Lola" />);
+    fireEvent.click(screen.getByRole("button", { name: /Mensajes nuevos/ }));
     // NEXT, ERASE and COPY REPLY are disabled until a Message plays.
-    expect(tabbables().map(nameOf)).toEqual(["Español", "English", "Bloquear", "Cinta", "Escuchar", "card:m1", "card:m2"]);
+    expect(tabbables().map(nameOf)).toEqual(["Español", "English", "Bloquear", "Hoy", "Volver", "Escuchar", "card:m1", "card:m2"]);
     noPositiveTabindex();
   });
 
   it("machine, Tape view while playing: PLAY, NEXT, ERASE, COPY REPLY, then the cards", async () => {
     render(<MachineScreen shop={demoShop} initial={initialPoll()} label="Lola" />);
+    fireEvent.click(screen.getByRole("button", { name: /Mensajes nuevos/ }));
     fireEvent.click(screen.getByRole("button", { name: "Escuchar" }));
     await waitFor(() => expect(document.querySelectorAll("[data-line]").length).toBeGreaterThan(0));
     expect(tabbables().map(nameOf)).toEqual([
       "Español",
       "English",
       "Bloquear",
-      "Cinta",
+      "Hoy",
+      "Volver",
       "Escuchar",
       "Siguiente",
       "Borrar",
@@ -57,14 +81,14 @@ describe("keyboard order", () => {
     noPositiveTabindex();
   });
 
-  it("machine, Agenda view: language switch, Lock, the selected tab, then each day's actions in time order", () => {
+  it("machine, Today: language switch, Lock, the selected tab, the messages tile, then each day's actions in time order", () => {
     render(<MachineScreen shop={demoShop} initial={initialPoll()} label="Lola" />);
-    fireEvent.click(screen.getByRole("tab", { name: "Agenda" }));
     expect(tabbables().map(nameOf)).toEqual([
       "Español",
       "English",
       "Bloquear",
-      "Agenda",
+      "Hoy",
+      "Mensajes nuevos2",
       // Tuesday 10, Ana at 16:00 (booked): confirm, move, cancel.
       "Confirmar",
       "Mover",
@@ -78,37 +102,43 @@ describe("keyboard order", () => {
 
   it("only the selected tab is tabbable, and ArrowRight / ArrowLeft move selection and focus", () => {
     render(<MachineScreen shop={demoShop} initial={initialPoll()} label="Lola" />);
-    const tape = screen.getByRole("tab", { name: "Cinta" });
-    const agenda = screen.getByRole("tab", { name: "Agenda" });
-    expect(tape.getAttribute("aria-selected")).toBe("true");
-    expect(tape.tabIndex).toBe(0);
-    expect(agenda.tabIndex).toBe(-1);
-
-    act(() => tape.focus());
-    fireEvent.keyDown(tape, { key: "ArrowRight" });
-    expect(agenda.getAttribute("aria-selected")).toBe("true");
-    expect(document.activeElement).toBe(agenda);
-    expect(agenda.tabIndex).toBe(0);
-    expect(tape.tabIndex).toBe(-1);
-    expect(screen.getByRole("tabpanel").id).toBe(agenda.getAttribute("aria-controls"));
-
-    fireEvent.keyDown(agenda, { key: "ArrowLeft" });
-    expect(tape.getAttribute("aria-selected")).toBe("true");
-    expect(document.activeElement).toBe(tape);
-
-    // Wraps around: ArrowLeft on the first tab goes to the last (Clientes), ArrowRight comes back.
-    fireEvent.keyDown(tape, { key: "ArrowLeft" });
+    const today = screen.getByRole("tab", { name: "Hoy" });
     const clients = screen.getByRole("tab", { name: "Clientes" });
+    expect(today.getAttribute("aria-selected")).toBe("true");
+    expect(today.tabIndex).toBe(0);
+    expect(clients.tabIndex).toBe(-1);
+
+    act(() => today.focus());
+    fireEvent.keyDown(today, { key: "ArrowRight" });
+    expect(clients.getAttribute("aria-selected")).toBe("true");
     expect(document.activeElement).toBe(clients);
-    fireEvent.keyDown(clients, { key: "ArrowRight" });
-    expect(document.activeElement).toBe(tape);
+    expect(clients.tabIndex).toBe(0);
+    expect(today.tabIndex).toBe(-1);
+    expect(screen.getByRole("tabpanel").id).toBe(clients.getAttribute("aria-controls"));
+
+    fireEvent.keyDown(clients, { key: "ArrowLeft" });
+    expect(today.getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(today);
+
+    // Wraps around: ArrowLeft on the first tab goes to the last (Ajustes), ArrowRight comes back.
+    fireEvent.keyDown(today, { key: "ArrowLeft" });
+    const settings = screen.getByRole("tab", { name: "Ajustes" });
+    expect(document.activeElement).toBe(settings);
+    fireEvent.keyDown(settings, { key: "ArrowRight" });
+    expect(document.activeElement).toBe(today);
   });
 
-  it("remembers the last view during the session (6.6)", () => {
+  it("stored view survives reload", () => {
     const { unmount } = render(<MachineScreen shop={demoShop} initial={initialPoll()} label="Lola" />);
-    fireEvent.click(screen.getByRole("tab", { name: "Agenda" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Mi negocio" }));
     unmount();
     render(<MachineScreen shop={demoShop} initial={initialPoll()} label="Lola" />);
-    expect(screen.getByRole("tab", { name: "Agenda" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("tab", { name: "Mi negocio" }).getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("an unknown stored view falls back to Today", () => {
+    sessionStorage.setItem(`pl:view:${demoShop.id}`, "agenda");
+    render(<MachineScreen shop={demoShop} initial={initialPoll()} label="Lola" />);
+    expect(screen.getByRole("tab", { name: "Hoy" }).getAttribute("aria-selected")).toBe("true");
   });
 });

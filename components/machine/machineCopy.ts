@@ -26,7 +26,10 @@ export interface MachineCopy {
   counter: { youHave: string; noneBefore: string; noneGold: string };
   note: string;
   tabsLabel: string;
-  tabs: { tape: string; agenda: string; clients: string };
+  tabs: { today: string; clients: string; business: string; settings: string; tape: string };
+  today: { messages: string; back: string };
+  business: { title: string; soon: string };
+  settings: { title: string; soon: string };
   controls: { label: string; play: string; next: string; erase: string; copy: string };
   emptyTape: string;
   player: { idle: string; end: string; nowPlaying: string };
@@ -138,7 +141,10 @@ export const MACHINE_COPY: Record<Lang, MachineCopy> = {
     counter: { youHave: "Tienes", noneBefore: "No tienes", noneGold: "mensajes nuevos" },
     note: "llamaron mientras atendías…",
     tabsLabel: "Vistas del contestador",
-    tabs: { tape: "Cinta", agenda: "Agenda", clients: "Clientes" },
+    tabs: { today: "Hoy", clients: "Clientes", business: "Mi negocio", settings: "Ajustes", tape: "Cinta" },
+    today: { messages: "Mensajes nuevos", back: "Volver" },
+    business: { title: "Mi negocio", soon: "Aquí verás el cierre del mes." },
+    settings: { title: "Ajustes", soon: "Aquí ajustarás tu recepcionista." },
     controls: { label: "Mandos de la cinta", play: "Escuchar", next: "Siguiente", erase: "Borrar", copy: "Copiar respuesta" },
     emptyTape: "No hay mensajes nuevos.",
     player: { idle: "Pulsa Escuchar para oír la cinta.", end: "Fin de la cinta.", nowPlaying: "Sonando" },
@@ -255,7 +261,10 @@ export const MACHINE_COPY: Record<Lang, MachineCopy> = {
     counter: { youHave: "You have", noneBefore: "You have", noneGold: "no new messages" },
     note: "they called while you were busy…",
     tabsLabel: "Machine views",
-    tabs: { tape: "Tape", agenda: "Agenda", clients: "Clients" },
+    tabs: { today: "Today", clients: "Clients", business: "My business", settings: "Settings", tape: "Tape" },
+    today: { messages: "New messages", back: "Back" },
+    business: { title: "My business", soon: "Your month-end report will appear here." },
+    settings: { title: "Settings", soon: "You will tune your receptionist here." },
     controls: { label: "Tape controls", play: "Play", next: "Next", erase: "Erase", copy: "Copy reply" },
     emptyTape: "No new messages.",
     player: { idle: "Press Play to hear the tape.", end: "End of the tape.", nowPlaying: "Now playing" },

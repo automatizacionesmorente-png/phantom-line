@@ -22,6 +22,7 @@ const reelClasses = () => [...document.querySelectorAll("[data-reels] *")].flatM
 const lines = () => [...document.querySelectorAll<HTMLElement>("[data-line]")];
 
 async function playFirst() {
+  fireEvent.click(screen.getByRole("button", { name: /Mensajes nuevos/ }));
   fireEvent.click(screen.getByRole("button", { name: "Escuchar" }));
   await waitFor(() => expect(lines().length).toBe(5));
 }

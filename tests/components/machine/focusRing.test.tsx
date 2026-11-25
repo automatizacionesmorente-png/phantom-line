@@ -34,6 +34,7 @@ describe("focus ring on every focusable control", () => {
     // No Clipboard API: COPY REPLY shows the read-only text box, which is focusable too.
     vi.stubGlobal("navigator", { ...navigator, clipboard: undefined });
     render(<MachineScreen shop={demoShop} initial={initialPoll()} label="Lola" />);
+    fireEvent.click(screen.getByRole("button", { name: /Mensajes nuevos/ }));
     fireEvent.click(screen.getByRole("button", { name: "Escuchar" }));
     await waitFor(() => expect(document.querySelectorAll("[data-line]").length).toBeGreaterThan(0));
     fireEvent.click(screen.getByRole("button", { name: "Copiar respuesta" }));
@@ -42,18 +43,18 @@ describe("focus ring on every focusable control", () => {
     expect(withoutRing()).toEqual([]);
   });
 
-  it("machine, Agenda view", () => {
+  it("machine, Today view", () => {
     vi.stubGlobal("fetch", fakeMachineApi([]).fetchMock);
     render(<MachineScreen shop={demoShop} initial={initialPoll()} label="Lola" />);
-    fireEvent.click(screen.getByRole("tab", { name: "Agenda" }));
-    expect(tabbables().length).toBe(9);
+    fireEvent.click(screen.getByRole("tab", { name: "Hoy" }));
+    expect(tabbables().length).toBe(10);
     expect(withoutRing()).toEqual([]);
   });
 
   it("the dialogs' controls carry it too (checked with the dialog content in the DOM)", async () => {
     vi.stubGlobal("fetch", fakeMachineApi([]).fetchMock);
     render(<MachineScreen shop={demoShop} initial={initialPoll()} label="Lola" />);
-    fireEvent.click(screen.getByRole("tab", { name: "Agenda" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Hoy" }));
     fireEvent.click(screen.getAllByRole("button", { name: "Mover" })[0]);
     await waitFor(() => expect(document.querySelector("dialog")).not.toBeNull());
     const dialog = document.querySelector("dialog")!;

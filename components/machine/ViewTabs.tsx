@@ -2,8 +2,12 @@
 
 import { useRef, type KeyboardEvent } from "react";
 
-export type MachineView = "tape" | "agenda" | "clients";
-const VIEWS: readonly MachineView[] = ["tape", "agenda", "clients"];
+export type MachineView = "today" | "clients" | "business" | "settings" | "tape";
+/** The four tabs of the bar; `tape` is a sub-view opened from Today's messages tile. */
+export type TabView = Exclude<MachineView, "tape">;
+export const TAB_VIEWS: readonly TabView[] = ["today", "clients", "business", "settings"];
+export const MACHINE_VIEWS: readonly MachineView[] = [...TAB_VIEWS, "tape"];
+const VIEWS = TAB_VIEWS;
 
 export const tabId = (base: string, v: MachineView) => `${base}-tab-${v}`;
 export const panelId = (base: string, v: MachineView) => `${base}-panel-${v}`;
@@ -21,15 +25,16 @@ export function ViewTabs({
 }: {
   view: MachineView;
   onChange: (v: MachineView) => void;
-  labels: Record<MachineView, string>;
+  labels: Record<TabView, string>;
   label: string;
   idBase: string;
 }) {
-  const refs = useRef<Record<MachineView, HTMLButtonElement | null>>({ tape: null, agenda: null, clients: null });
+  const refs = useRef<Record<TabView, HTMLButtonElement | null>>({ today: null, clients: null, business: null, settings: null });
 
   function onKeyDown(e: KeyboardEvent<HTMLButtonElement>) {
-    const at = VIEWS.indexOf(view);
-    let next: MachineView | null = null;
+    // The tape belongs to Today: from the tape the arrows start at the Today tab.
+    const at = Math.max(0, VIEWS.indexOf(view === "tape" ? "today" : view));
+    let next: TabView | null = null;
     if (e.key === "ArrowRight") next = VIEWS[(at + 1) % VIEWS.length];
     else if (e.key === "ArrowLeft") next = VIEWS[(at - 1 + VIEWS.length) % VIEWS.length];
     else if (e.key === "Home") next = VIEWS[0];
@@ -44,6 +49,8 @@ export function ViewTabs({
     <div role="tablist" aria-label={label} className="flex w-full rounded-full border border-border bg-card p-1">
       {VIEWS.map((v) => {
         const selected = v === view;
+        // Reading the tape, Today stays the one tab stop so the bar remains reachable.
+        const stop = selected || (view === "tape" && v === "today");
         return (
           <button
             key={v}
@@ -55,7 +62,7 @@ export function ViewTabs({
             role="tab"
             aria-selected={selected}
             aria-controls={panelId(idBase, v)}
-            tabIndex={selected ? 0 : -1}
+            tabIndex={stop ? 0 : -1}
             onClick={() => onChange(v)}
             onKeyDown={onKeyDown}
             className={`focus-ring min-h-11 flex-1 rounded-full px-4 font-inter text-base font-semibold ${

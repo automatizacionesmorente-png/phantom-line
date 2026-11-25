@@ -39,7 +39,7 @@ export interface MachineScreenProps {
 /**
  * The Owner's answering machine (owner-machine 6, 7, 9, 12, 13): header with the label
  * language switch and Lock, the ivory body with the reels, the Message_Light and the
- * Counter, and the Tape and Agenda as two tabs. The Poll keeps it live; the pure reducers
+ * Counter, and four tabs (Today, Clients, My business, Settings) with the Tape opened from Today. The Poll keeps it live; the pure reducers
  * in lib/owner decide what changes.
  */
 export function MachineScreen({ shop, initial, label }: MachineScreenProps) {
@@ -151,7 +151,37 @@ export function MachineScreen({ shop, initial, label }: MachineScreenProps) {
 
         <ViewTabs view={view} onChange={setView} labels={copy.tabs} label={copy.tabsLabel} idBase={idBase} />
 
-        <div role="tabpanel" id={panelId(idBase, "tape")} aria-labelledby={tabId(idBase, "tape")} hidden={view !== "tape"}>
+        <div
+          role="tabpanel"
+          id={panelId(idBase, "today")}
+          aria-labelledby={tabId(idBase, "today")}
+          hidden={view !== "today"}
+        >
+          <button
+            type="button"
+            onClick={() => setView("tape")}
+            className="focus-ring mb-3 flex min-h-11 w-full items-center justify-between rounded-2xl border border-border bg-card px-4 font-inter text-base font-semibold text-ink"
+          >
+            <span>{copy.today.messages}</span>
+            <span data-messages-tile="" className="font-newsreader text-2xl text-gold-text">
+              {counts.new}
+            </span>
+          </button>
+          <AgendaView days={agenda} now={now} shop={shop} lang={lang} copy={copy} onItem={onItem} onLocked={toGate} />
+        </div>
+        <div
+          role="tabpanel"
+          id={panelId(idBase, "tape")}
+          aria-label={copy.tabs.tape}
+          hidden={view !== "tape"}
+        >
+          <button
+            type="button"
+            onClick={() => setView("today")}
+            className="focus-ring mb-3 min-h-11 rounded-full px-4 font-inter text-base font-semibold text-gold-text underline"
+          >
+            {copy.today.back}
+          </button>
           <h2 className="sr-only">{copy.tabs.tape}</h2>
           <TapeView
             player={tape.state}
@@ -167,19 +197,29 @@ export function MachineScreen({ shop, initial, label }: MachineScreenProps) {
         </div>
         <div
           role="tabpanel"
-          id={panelId(idBase, "agenda")}
-          aria-labelledby={tabId(idBase, "agenda")}
-          hidden={view !== "agenda"}
-        >
-          <AgendaView days={agenda} now={now} shop={shop} lang={lang} copy={copy} onItem={onItem} onLocked={toGate} />
-        </div>
-        <div
-          role="tabpanel"
           id={panelId(idBase, "clients")}
           aria-labelledby={tabId(idBase, "clients")}
           hidden={view !== "clients"}
         >
           <ClientsView active={view === "clients"} shop={shop} lang={lang} copy={copy} onLocked={toGate} />
+        </div>
+        <div
+          role="tabpanel"
+          id={panelId(idBase, "business")}
+          aria-labelledby={tabId(idBase, "business")}
+          hidden={view !== "business"}
+        >
+          <h2 className="font-newsreader text-2xl text-ink">{copy.business.title}</h2>
+          <p className="font-inter text-base text-muted">{copy.business.soon}</p>
+        </div>
+        <div
+          role="tabpanel"
+          id={panelId(idBase, "settings")}
+          aria-labelledby={tabId(idBase, "settings")}
+          hidden={view !== "settings"}
+        >
+          <h2 className="font-newsreader text-2xl text-ink">{copy.settings.title}</h2>
+          <p className="font-inter text-base text-muted">{copy.settings.soon}</p>
         </div>
       </MachineBody>
     </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useSyncExternalStore } from "react";
-import type { MachineView } from "./ViewTabs";
+import { MACHINE_VIEWS, type MachineView } from "./ViewTabs";
 
 const EVENT = "phantom-line:view";
 const keyOf = (shopId: string) => `pl:view:${shopId}`;
@@ -9,9 +9,9 @@ const keyOf = (shopId: string) => `pl:view:${shopId}`;
 function read(shopId: string): MachineView {
   try {
     const v = window.sessionStorage.getItem(keyOf(shopId));
-    return v === "agenda" || v === "clients" ? v : "tape";
+    return MACHINE_VIEWS.find((x) => x === v) ?? "today";
   } catch {
-    return "tape";
+    return "today";
   }
 }
 
@@ -25,14 +25,14 @@ function subscribe(onChange: () => void): () => void {
 }
 
 /**
- * The last view (Tape, Agenda or Clients) for this tab's session (owner-machine 6.6), kept in
- * `sessionStorage`. The server renders the Tape; the stored view applies after hydration.
+ * The last view (Today, Clients, My business, Settings or the Tape) for this tab's session (owner-machine 6.6), kept in
+ * `sessionStorage`. The server renders Today; the stored view applies after hydration.
  */
 export function useStoredView(shopId: string): [MachineView, (v: MachineView) => void] {
   const view = useSyncExternalStore(
     subscribe,
     () => read(shopId),
-    () => "tape" as const,
+    () => "today" as const,
   );
   const set = useCallback(
     (v: MachineView) => {
