@@ -13,6 +13,7 @@ import type { Line, Outcome, Urgency } from "@/lib/conversation/types";
 import { callerLinesOf, decideUrgency, type FinalUrgency, type UrgencyBasis } from "@/lib/messages/urgency";
 import { phrases } from "@/lib/receptionist/phrases";
 import { getSectorPack, type Lang } from "@/lib/sectors";
+import { buildSalonMonth, priceOf, type CuratedSalon } from "./month";
 
 export interface CuratedBooking {
   id: string;
@@ -26,6 +27,10 @@ export interface CuratedBooking {
   ownerConfirmed: boolean;
   /** When the receptionist made it (the end of its Call); the reset's `now` when absent. */
   createdAt?: Temporal.Instant;
+  /** Catalogue price in cents at booking time (salon 0009). */
+  priceCents?: number;
+  /** The client card of this booking's phone, when it has one. */
+  clientId?: string | null;
 }
 
 export interface CuratedMessage {
@@ -58,10 +63,15 @@ export interface CuratedVisit extends CuratedBooking {
 
 /** A client of the demo customer book, with a private note and a believable visit history. */
 export interface CuratedClient {
+  id: string;
   name: string;
   phone: string;
   language: Lang;
   note: string;
+  /** "MM-DD" or null. */
+  birthday: string | null;
+  /** Agreed to promotion messages. */
+  promoConsent: boolean;
 }
 
 export interface CuratedSet {
@@ -72,6 +82,8 @@ export interface CuratedSet {
   clients: CuratedClient[];
   /** Their past bookings. Kept apart from `bookings`, which is the Agenda's week. */
   history: CuratedVisit[];
+  /** The living month: past bookings, payments, expenses, blocks, settings and outbox (salon 2.6). */
+  salon: CuratedSalon;
 }
 
 export interface CuratedContext {
@@ -401,11 +413,19 @@ export function buildCuratedSet(ctx: CuratedContext): CuratedSet {
   bookings.sort((a, b) => Temporal.Instant.compare(a.startsAt, b.startsAt));
   addWeekCalls({ now, tz, rules: rules.shop, calls, bookings, newId: ctx.newId });
   const { clients, history } = buildClients(ctx, rules);
-  return { calls, messages, bookings, clients, history };
+  const salon = buildSalonMonth({ now, shop, rules: rules.shop, newId: ctx.newId, coreClients: clients, week: bookings, history });
+  // The salon columns of the rows above: a price snapshot, and the client card of a known phone.
+  const clientByPhone = new Map(clients.map((c) => [c.phone, c.id]));
+  for (const b of bookings) b.priceCents = priceOf(shop, b.serviceId);
+  for (const h of history) {
+    h.priceCents = priceOf(shop, h.serviceId);
+    h.clientId = clientByPhone.get(h.customerPhone) ?? null;
+  }
+  return { calls: [...calls, ...salon.calls], messages, bookings, clients: [...clients, ...salon.clients], history, salon };
 }
 
 /** One curated client: who, and when their visits were, in days before now (oldest first). */
-interface ClientPlan extends CuratedClient {
+interface ClientPlan extends Omit<CuratedClient, "id"> {
   service: string;
   visitsDaysAgo: number[];
   /** Days ago of visits the Owner marked "No vino". */
@@ -420,6 +440,8 @@ interface ClientPlan extends CuratedClient {
 const CLIENT_PLANS: readonly ClientPlan[] = [
   {
     name: "Carlos Vega",
+    birthday: "09-22",
+    promoConsent: true,
     phone: phone(101),
     language: "es",
     note: "Prefiere el sillón 2. Le gusta que le avisen si hay hueco antes.",
@@ -428,6 +450,8 @@ const CLIENT_PLANS: readonly ClientPlan[] = [
   },
   {
     name: "Marta Ibáñez",
+    birthday: "03-08",
+    promoConsent: true,
     phone: phone(102),
     language: "es",
     note: "Alérgica a algunos tintes: usar siempre la prueba de alergia.",
@@ -436,6 +460,8 @@ const CLIENT_PLANS: readonly ClientPlan[] = [
   },
   {
     name: "John Carter",
+    birthday: "11-05",
+    promoConsent: true,
     phone: phone(103),
     language: "en",
     note: "Visiting from the UK every few weeks. Prefers to chat in English.",
@@ -444,6 +470,8 @@ const CLIENT_PLANS: readonly ClientPlan[] = [
   },
   {
     name: "Elena Soto",
+    birthday: "11-30",
+    promoConsent: false,
     phone: phone(104),
     language: "es",
     note: "",
@@ -452,6 +480,8 @@ const CLIENT_PLANS: readonly ClientPlan[] = [
   },
   {
     name: "Lucía Pardo",
+    birthday: "07-17",
+    promoConsent: true,
     phone: phone(105),
     language: "es",
     note: "Faltó a una cita sin avisar; confirmar siempre el día antes.",
@@ -505,7 +535,16 @@ function buildClients(ctx: CuratedContext, rules: RuleContext): { clients: Curat
     (plan.noShowsDaysAgo ?? []).forEach((d) => place(d, true));
   });
   history.sort((a, b) => Temporal.Instant.compare(a.startsAt, b.startsAt));
-  return { clients: CLIENT_PLANS.map(({ name, phone: p, language, note }) => ({ name, phone: p, language, note })), history };
+  const clients = CLIENT_PLANS.map(({ name, phone: p, language, note, birthday, promoConsent }) => ({
+    id: ctx.newId(),
+    name,
+    phone: p,
+    language,
+    note,
+    birthday,
+    promoConsent,
+  }));
+  return { clients, history };
 }
 
 /**

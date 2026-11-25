@@ -8,7 +8,7 @@ import { buildCuratedSet, TEST_BOOKING_NAMES } from "@/lib/demo/curated";
 import { checkResetTarget } from "@/lib/demo/guard";
 import { resetDemo } from "@/lib/demo/reset";
 import { buildClientBook } from "@/lib/clients/book";
-import { bookings, calls, clients, messages, ownerActions } from "@/lib/db/schema";
+import { bookings, calls, clients, expenses, messages, outbox, ownerActions, payments, shopSettings, timeBlocks } from "@/lib/db/schema";
 import { getSectorPack } from "@/lib/sectors";
 import { lolaSeedProfile } from "@/lib/db/seed";
 import { computeWeekStats } from "@/lib/owner/weekStats";
@@ -46,8 +46,8 @@ const rowsOf = async (shopId: string) => ({
 const content = async (shopId: string) => {
   const r = await rowsOf(shopId);
   const strip = <T extends object>(x: T) => {
-    const { id: _id, callId: _c, bookingId: _b, ...rest } = x as Record<string, unknown>;
-    void _id; void _c; void _b;
+    const { id: _id, callId: _c, bookingId: _b, clientId: _k, ...rest } = x as Record<string, unknown>;
+    void _id; void _c; void _b; void _k;
     return JSON.stringify(rest, Object.keys(rest).sort());
   };
   return {
@@ -188,12 +188,14 @@ describe("Demo_Retention keeps the curated set", () => {
 });
 
 describe("curated clients (BACKLOG 14, 15)", () => {
-  it("loads five curated clients with history, two of them overdue, and the demo's retention keeps them", async () => {
+  it("loads the curated clients with history, three of the five core ones overdue, and the demo's retention keeps them", async () => {
     await run();
     await run(); // twice: the same set, not duplicates
     const owner = ownerRepoOf(t);
-    const records = await owner.listClients(D, 100);
-    expect(records).toHaveLength(5);
+    const records = await owner.listClients(D, 500);
+    const total = buildCuratedSet({ now: NOW, shop: lolaSeedProfile, newId: () => randomUUID() }).clients.length;
+    expect(total).toBeGreaterThan(5);
+    expect(records).toHaveLength(total);
     const rowsClients = await t.handle.db.select().from(clients).where(eq(clients.shopId, D));
     expect(rowsClients.every((c) => c.curated)).toBe(true);
     expect(records.every((r) => r.bookings.length > 0)).toBe(true);
@@ -211,7 +213,75 @@ describe("curated clients (BACKLOG 14, 15)", () => {
     // A month later the sweep leaves curated clients and their history alone.
     const later = NOW.add({ hours: 24 * 30 });
     await runDemoRetention({ repo: owner, clock: () => later, newId: () => randomUUID(), log: () => {} });
-    expect(await owner.listClients(D, 100)).toHaveLength(5);
+    expect(await owner.listClients(D, 500)).toHaveLength(total);
+  });
+});
+
+describe("the demo month (salon 2.6)", () => {
+  const counts = async () => ({
+    payments: (await t.handle.db.select().from(payments).where(eq(payments.shopId, D))).length,
+    expenses: (await t.handle.db.select().from(expenses).where(eq(expenses.shopId, D))).length,
+    blocks: (await t.handle.db.select().from(timeBlocks).where(eq(timeBlocks.shopId, D))).length,
+    outbox: (await t.handle.db.select().from(outbox).where(eq(outbox.shopId, D))).length,
+    bookings: (await t.handle.db.select().from(bookings).where(eq(bookings.shopId, D))).length,
+  });
+
+  it("reset rebuilds a month with payments and expenses", async () => {
+    await run();
+    const rows = await t.handle.db.select().from(bookings).where(eq(bookings.shopId, D));
+    const pay = await t.handle.db.select().from(payments).where(eq(payments.shopId, D));
+    const exp = await t.handle.db.select().from(expenses).where(eq(expenses.shopId, D));
+    const blocks = await t.handle.db.select().from(timeBlocks).where(eq(timeBlocks.shopId, D));
+    const box = await t.handle.db.select().from(outbox).where(eq(outbox.shopId, D));
+    const [settings] = await t.handle.db.select().from(shopSettings).where(eq(shopSettings.shopId, D));
+    expect(rows.length).toBeGreaterThan(150);
+    expect(new Set(rows.map((b) => b.channel))).toEqual(new Set(["voice", "manual"]));
+    expect(rows.filter((b) => b.noShowAt).length).toBeGreaterThanOrEqual(3);
+    expect(pay.length).toBeGreaterThan(100);
+    expect(pay.every((p) => p.curated)).toBe(true);
+    // Payments only for bookings that ended, with the price snapshot behind the amount.
+    const byId = new Map(rows.map((b) => [b.id, b]));
+    for (const p of pay) {
+      if (!p.bookingId) continue;
+      const b = byId.get(p.bookingId)!;
+      expect(b.endsAt.getTime()).toBeLessThanOrEqual(NOW.epochMilliseconds);
+      expect(b.noShowAt).toBeNull();
+      expect(b.status).toBe("confirmed");
+      expect(p.amountCents - p.productCents).toBe(b.priceCents);
+    }
+    expect(rows.every((b) => b.priceCents !== null && b.curated)).toBe(true);
+    expect(exp.some((e) => e.recurring && e.category === "rent" && e.amountCents === 90_000)).toBe(true);
+    expect(exp.length).toBeGreaterThanOrEqual(5);
+    expect(blocks).toHaveLength(2);
+    expect(box.length).toBeGreaterThan(0);
+    expect(settings.googleReviewUrl).toMatch(/^https:\/\/g\.page\//);
+    expect(settings.automations).toMatchObject({ reminder: true, review: true });
+    expect([...exp, ...blocks, ...box].every((x) => x.curated)).toBe(true);
+  });
+
+  it("is idempotent for the month: a second run leaves the same counts", async () => {
+    await run();
+    const first = await counts();
+    await run();
+    expect(await counts()).toEqual(first);
+    expect((await t.handle.db.select().from(shopSettings)).length).toBe(1);
+  });
+
+  it("a visitor's rows next to the month go at retention; the month stays, and a reset removes the visitor rows too", async () => {
+    await run();
+    const before = await counts();
+    const old = NOW.subtract({ hours: 24 * 20 });
+    const b = await addBooking(t, D, { start: old, name: "Visitante" });
+    await t.handle.db.insert(payments).values({ shopId: D, bookingId: b, amountCents: 1000, method: "cash", paidAt: new Date(old.epochMilliseconds) });
+    await t.handle.db.insert(timeBlocks).values({ shopId: D, startsAt: new Date(old.epochMilliseconds), endsAt: new Date(old.add({ hours: 2 }).epochMilliseconds) });
+    await t.handle.db.insert(expenses).values({ shopId: D, concept: "Visitante", category: "other", amountCents: 100, day: "2026-11-01" });
+    await t.handle.db.insert(outbox).values({ shopId: D, kind: "reminder", dedupeKey: "visitante", phone: "+34600000999", language: "es", body: "x", createdAt: new Date(old.epochMilliseconds) });
+    await runDemoRetention({ repo: ownerRepoOf(t), clock: () => NOW, newId: () => randomUUID(), log: () => {} });
+    const after = await counts();
+    expect(after).toEqual(before);
+    await t.handle.db.insert(payments).values({ shopId: D, amountCents: 500, method: "cash", paidAt: new Date(NOW.epochMilliseconds) });
+    await run();
+    expect(await counts()).toEqual(before);
   });
 });
 
