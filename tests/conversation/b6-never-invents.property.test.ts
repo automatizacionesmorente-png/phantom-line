@@ -121,6 +121,8 @@ describe("B6: the Code_Brain never invents", () => {
               const at = unit.index!;
               // "¿a qué hora?" asks a time; it states no duration.
               if (/qu[eé] $/.test(lower.slice(0, at))) continue;
+              // "Esa hora ya ha pasado": "hora" there is the time of day, not a length.
+              if (/\b(esa|esta|la|misma) $/.test(lower.slice(0, at))) continue;
               const covered = allowed.some((phrase) => {
                 for (let from = lower.indexOf(phrase); from >= 0; from = lower.indexOf(phrase, from + 1)) {
                   if (from <= at && at < from + phrase.length) return true;
@@ -148,7 +150,8 @@ describe("B6: the Code_Brain never invents", () => {
           }
         }
       }),
-      { numRuns: 100 },
+      // 1000 runs, not 100: the read-back branch is rare, and with 100 one run in six never reached it.
+      { numRuns: 1000 },
     );
     for (const [k, n] of Object.entries(reached)) expect(n, k).toBeGreaterThan(0);
   });

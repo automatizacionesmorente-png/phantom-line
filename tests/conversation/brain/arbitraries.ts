@@ -54,6 +54,9 @@ export function arbAliasVariant(alias: string, shop: ShopProfile): fc.Arbitrary<
                   !aliasWords.has(t) &&
                   !lex.has(t) &&
                   editDistance(t, x.n[0], allow) <= allow &&
+                  // A typo one edit from a different alias word ("toper" is 1 from "taper") is
+                  // ambiguous by nature: the matcher may rightly read either, so it is not a test.
+                  ![...aliasWords].some((a) => a !== x.n[0] && editDistance(t, a, allow) <= allow) &&
                   // A typo that lands on a plural form ("cortes") is not a typo test.
                   !/s$/.test(t);
                 if (!ok) return { ws, typo: false };
