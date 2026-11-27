@@ -30,12 +30,12 @@ Total 2:52, under the 2:55 limit. The salon app is now the second half of the st
 
 - **Shot:** close-up of the ivory machine, terracotta light blinking, reels still.
 - **On screen:** "An 80s answering machine, brought back from the dead."
-- **Narration:** "Every missed call at a small shop is a customer who hung up. So we brought the answering machine back."
+- **Narration:** "Right now, a customer is calling a small shop. Nobody picks up. And that booking is gone forever."
 
 ## 2. Problem (0:08-0:20)
 
 - **Shot:** self-shot footage of a salon chair and a phone ringing, cut to the landing page `/`.
-- **Narration:** "Lola runs her salon alone. While she cuts hair, nobody picks up and the booking is gone. Phantom Line answers for her, by voice, in Spanish or English, with her real hours and prices."
+- **Narration:** "Lola cuts hair alone, so the phone rings out. We brought back the eighties answering machine, and gave it a brain. It answers in Spanish or English, with her real hours and prices."
 
 ## 3. Guided path and Spanish call (0:20-0:58)
 
@@ -51,7 +51,7 @@ Total 2:52, under the 2:55 limit. The salon app is now the second half of the st
 | Receptionist | Reads the booking back with day, time and phone |
 | **You say** | **"Sí."** and the receptionist confirms |
 
-- **Narration (over the 21:00 to 19:30 moment):** "I asked for nine at night. The model only reads what I said. The code checks hours and chairs, and offers the nearest free time."
+- **Narration (over the 21:00 to 19:30 moment):** "I ask for nine at night. The AI only listens. The code decides: it checks the hours and the chairs, and offers the nearest free time."
 - **On screen then:** "The model proposes. The code decides."
 - Speed-ramp the name and phone turns if the call runs long.
 
@@ -59,7 +59,7 @@ Total 2:52, under the 2:55 limit. The salon app is now the second half of the st
 
 - **Shot:** both windows, then window A. Within about 5 s of hanging up (one poll) the light blinks and the counter rises.
 - **Actions:** point at the light and counter (3 s); press **PLAY**, reels turn, transcript appears (6 s); show the card: caller, reason, urgency badge, what was agreed, suggested reply (6 s); open **Today** and show the booking in its column (5 s).
-- **Narration:** "Seconds later Lola's machine blinks. One tap plays the call back. She sees who called, what was agreed and a reply she can send, and the booking is already in her day. The database itself refuses double bookings."
+- **Narration:** "Seconds later, her machine blinks. One tap plays the call: who called, what was agreed. The booking is already in her day, and the database itself refuses double bookings."
 
 ## 4b. The salon app (1:18-1:52, 34 s)
 
@@ -69,7 +69,7 @@ Total 2:52, under the 2:55 limit. The salon app is now the second half of the st
   3. **My business:** taken, expenses, what is left against last month; the block "what your receptionist did this month"; tap **For the accountant** (CSV).
   4. **Settings:** the five switches and one prepared WhatsApp message; tap **Send on WhatsApp** only to show it opens, then come back.
 - **On screen:** "Sample data: a demo month."
-- **Narration (about 80 words, 150 per minute):** "Lola's app is more than a tape. In the morning she sees her day, one column per stylist, and adds or blocks time with one tap. Each client has a card: allergies, birthday, colour formula. At month end she sees what came in, what went out, what her receptionist did, and sends it to her accountant. Five switches prepare reminders and reviews; she sends each with one tap on WhatsApp, nothing automatic. Sample data, a demo month."
+- **Narration (about 80 words, 150 per minute):** "And it is a whole salon app. In the morning she sees her day, one column per stylist, and adds or blocks time with one tap. Each client has a card: allergies, birthday, colour formula. At month end she sees what came in, what went out, and what her receptionist did, ready for her accountant. Reminders and reviews are one tap on WhatsApp, nothing automatic. This is a demo month: sample data."
 - Do not show a real client phone, and do not claim invoices or automatic sending.
 
 ## 5. English call (1:52-2:06)
@@ -77,14 +77,14 @@ Total 2:52, under the 2:55 limit. The salon app is now the second half of the st
 - **Shot:** window B, switch to **EN**, press Call. Show the greeting, the 9 pm rejection with an offer, and the confirmation; speed-ramp the name and phone.
 - **You say:** **"I'd like a men's haircut tomorrow at nine in the evening."**, then **"Half past seven, then."**, **"John Smith"**, the phone, **"Yes please."**
 - **On screen:** "Same brain, in English."
-- **Narration:** "English callers get the same rules, the same agenda and a second chair."
+- **Narration:** "Same brain, in English. Same rules, same agenda, a second chair."
 - **Note:** after the Spanish call took one chair at 19:30, the English 19:30 goes on the other chair. Do not record a third take for the same time without a reset.
 
 ## 6. How Kiro built it (2:06-2:16)
 
 Screen captures, about 8 s each.
 
-- **Spec:** scroll `.kiro/specs/core-call-loop/requirements.md` (EARS lines), then a design with numbered properties. **Narration:** "Every feature started as a Kiro spec. I reviewed each like a shop owner, and Kiro found where my own changes contradicted its requirements."
+- **Spec:** scroll `.kiro/specs/core-call-loop/requirements.md` (EARS lines), then a design with numbered properties. **Narration:** "Every feature started as a Kiro spec. I reviewed each one like a shop owner."
 - **Property:** `NOTAS-KIRO.md` row of 2026-11-12, "mutation proof". **On screen:** "Break a rule on purpose: property P3 shrinks to a 158-minute service at 09:14." **Narration:** none (silent captions only, to save time).
 - **Steering and hooks:** flash `.kiro/steering/` and `.kiro/hooks/booking-properties.json`. **On screen:** "Steering · specs · hooks · property tests".
 - Do not show a Context7 call: no successful call has been logged.
@@ -99,7 +99,7 @@ Screen captures, about 8 s each.
 
 - **Shot:** `/startup`: the problem numbers, the cost per call, the planned Salon plan, the waitlist form (do not submit a real email on camera).
 - **On screen:** "Sourced numbers. Planned price, not market-tested."
-- **Narration:** "Phantom Line is also a startup: about four cents a call, a planned price, not market-tested, and every number cites its source. I'm Miguel Morente, a student at UFV Madrid."
+- **Narration:** "Phantom Line is also a startup: about four cents a call, a planned price, not market-tested, every number sourced. I'm Miguel Morente, a student at UFV Madrid."
 
 ## 9. Close (2:45-2:52)
 
