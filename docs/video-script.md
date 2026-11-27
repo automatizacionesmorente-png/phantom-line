@@ -10,10 +10,10 @@ Narration is the owner's voice, in English. During the Spanish call, subtitles s
 | 4 | The machine blinks | 0:58-1:18 | 20 s |
 | 4b | The salon app: Today, Clients, My business, Settings | 1:18-1:52 | 34 s |
 | 5 | English call | 1:52-2:06 | 14 s |
-| 6 | How Kiro built it | 2:06-2:24 | 18 s |
-| 7 | Kiro, then Claude (honest line) | 2:24-2:34 | 10 s |
-| 8 | /startup | 2:34-2:46 | 12 s |
-| 9 | Close | 2:46-2:52 | 6 s |
+| 6 | How Kiro built it (only the first narration line) | 2:06-2:16 | 10 s |
+| 7 | Kiro, then Claude (honest line) | 2:16-2:32 | 16 s |
+| 8 | /startup | 2:32-2:45 | 13 s |
+| 9 | Close | 2:45-2:52 | 7 s |
 
 Total 2:52, under the 2:55 limit. The salon app is now the second half of the story, so it gets 34 s; the English call, Kiro and /startup segments below are shortened to fit (cut their last sentence first if a take runs long).
 
@@ -80,28 +80,28 @@ Total 2:52, under the 2:55 limit. The salon app is now the second half of the st
 - **Narration:** "English callers get the same rules, the same agenda and a second chair."
 - **Note:** after the Spanish call took one chair at 19:30, the English 19:30 goes on the other chair. Do not record a third take for the same time without a reset.
 
-## 6. How Kiro built it (2:06-2:24)
+## 6. How Kiro built it (2:06-2:16)
 
 Screen captures, about 8 s each.
 
 - **Spec:** scroll `.kiro/specs/core-call-loop/requirements.md` (EARS lines), then a design with numbered properties. **Narration:** "Every feature started as a Kiro spec. I reviewed each like a shop owner, and Kiro found where my own changes contradicted its requirements."
-- **Property:** `NOTAS-KIRO.md` row of 2026-11-12, "mutation proof". **On screen:** "Break a rule on purpose: property P3 shrinks to a 158-minute service at 09:14." **Narration:** "Property tests check the rules on thousands of random cases, and Kiro broke the code on purpose to prove they work."
+- **Property:** `NOTAS-KIRO.md` row of 2026-11-12, "mutation proof". **On screen:** "Break a rule on purpose: property P3 shrinks to a 158-minute service at 09:14." **Narration:** none (silent captions only, to save time).
 - **Steering and hooks:** flash `.kiro/steering/` and `.kiro/hooks/booking-properties.json`. **On screen:** "Steering · specs · hooks · property tests".
 - Do not show a Context7 call: no successful call has been logged.
 
-## 7. Kiro, then Claude (2:24-2:34)
+## 7. Kiro, then Claude (2:16-2:32)
 
 - **Shot:** `NOTAS-KIRO.md` scrolled to the 2026-11-22 row, then the git log with "Written by Claude (Kiro credits exhausted)".
 - **On screen:** "Kiro: 5-16 Nov. Claude: after the credits ran out."
-- **Narration (10 s, read as is):** "Kiro built the core until its credits ran out on the seventeenth of November. The rest, the judge guide, the startup page, the QA fixes and the salon app, was written by Claude under my direction, and every commit says so. The salon ideas come from our agency's earlier private app; no code was copied."
+- **Narration (16 s, read as is):** "Kiro built the core until its credits ran out on the seventeenth of November. Claude wrote the rest, including the salon app, under my direction, and every commit says so. The salon ideas come from our agency's earlier private app; no code was copied."
 
-## 8. /startup (2:34-2:46)
+## 8. /startup (2:32-2:45)
 
 - **Shot:** `/startup`: the problem numbers, the cost per call, the planned Salon plan, the waitlist form (do not submit a real email on camera).
 - **On screen:** "Sourced numbers. Planned price, not market-tested."
 - **Narration:** "Phantom Line is also a startup: about four cents a call, a planned price, not market-tested, and every number cites its source. I'm Miguel Morente, a student at UFV Madrid."
 
-## 9. Close (2:46-2:52)
+## 9. Close (2:45-2:52)
 
 - **Shot:** the machine, light blinking, reels turning slowly; fade to the demo URL.
 - **On screen:** "Phantom Line · phantom-line-nine.vercel.app · #KiroweenHackathon26"
