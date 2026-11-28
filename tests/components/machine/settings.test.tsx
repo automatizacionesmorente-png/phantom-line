@@ -18,6 +18,7 @@ const OFF: SettingsResponse = {
 const msg = (over: Partial<OutboxItemDto> & { id: string }): OutboxItemDto => ({
   kind: "reminder",
   clientId: null,
+  clientFirstName: null,
   bookingId: null,
   phone: "+34600111222",
   language: "es",
@@ -83,6 +84,28 @@ describe("SettingsView", () => {
     expect(text).toContain(`${open.open}-${open.close}`);
     expect(text).toContain("Volver a nacer");
     expect(within(box).queryByRole("textbox")).toBeNull();
+  });
+
+  it("puts the switches first, the outbox second and the business last, collapsed by default", async () => {
+    view();
+    const box = await screen.findByTestId("shop-summary");
+    expect(box.tagName).toBe("DETAILS");
+    expect(box.hasAttribute("open")).toBe(false);
+    expect(within(box).getByText("Mi horario, servicios y equipo")).toBeTruthy();
+    const sw = screen.getAllByRole("switch")[0];
+    const card = screen.getAllByTestId("outbox-item")[0];
+    const follows = (a: Node, b: Node) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(follows(sw, card)).toBe(true);
+    expect(follows(card, box)).toBe(true);
+  });
+
+  it("names the client by first name when there is one, otherwise the phone", async () => {
+    outbox = [msg({ id: "n1", clientFirstName: "Ana" }), msg({ id: "n2" })];
+    view();
+    const cards = await screen.findAllByTestId("outbox-item");
+    expect(cards[0].textContent).toContain("Para Ana");
+    expect(cards[0].textContent).not.toContain("+34600111222");
+    expect(cards[1].textContent).toContain("Para +34600111222");
   });
 
   it("does not read anything while the tab is inactive", () => {

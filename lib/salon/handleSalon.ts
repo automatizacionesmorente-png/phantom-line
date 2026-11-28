@@ -542,6 +542,7 @@ const outboxDto = (r: OutboxRow): OutboxItemDto => ({
   clientId: r.clientId,
   bookingId: r.bookingId,
   phone: r.phone,
+  clientFirstName: r.clientFirstName ?? null,
   language: r.language,
   body: r.body,
   status: r.status,

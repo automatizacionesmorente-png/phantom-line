@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronDown } from "lucide-react";
 import { useCallback, useEffect, useId, useState, type FormEvent } from "react";
 import type { OutboxItemDto, SettingsResponse } from "@/lib/salon/api";
 import type { MachineShop } from "@/lib/owner/machineShop";
@@ -140,60 +141,11 @@ export function SettingsView({
       <h2 id={`${id}-h`} className="font-newsreader text-2xl text-ink">
         {copy.title}
       </h2>
-      <section aria-labelledby={`${id}-s`} data-testid="shop-summary" className="flex flex-col gap-2 rounded-2xl border border-border bg-section px-3 py-3">
-        <h3 id={`${id}-s`} className={h3}>
-          {copy.summary.title}
-        </h3>
-        <dl className="m-0 flex flex-col gap-2 font-inter text-sm text-ink">
-          <div>
-            <dt className="font-semibold">{copy.summary.hours}</dt>
-            <dd className="m-0 text-muted">
-              {copy.summary.days.map((d, i) => {
-                const spans = shop.hours[i + 1] ?? [];
-                return (
-                  <span key={d} className="block">
-                    {d}: {spans.length ? spans.map((x) => `${x.open}-${x.close}`).join(", ") : copy.summary.closed}
-                  </span>
-                );
-              })}
-            </dd>
-          </div>
-          <div>
-            <dt className="font-semibold">{copy.summary.services}</dt>
-            <dd className="m-0 text-muted">
-              {shop.services.map((sv) => (
-                <span key={sv.id} className="block">
-                  {sv.name[lang]}
-                  {sv.priceCents !== undefined ? ` · ${formatRevenue(sv.priceCents, lang)}` : ""}
-                </span>
-              ))}
-            </dd>
-          </div>
-          <div>
-            <dt className="font-semibold">{copy.summary.team}</dt>
-            <dd className="m-0 text-muted">{shop.resources.map((r) => r.name[lang]).join(", ")}</dd>
-          </div>
-        </dl>
-        <p className="m-0 font-inter text-sm text-muted">{copy.summary.note}</p>
-      </section>
       {failed && <p className="m-0 font-inter text-sm font-semibold text-muted">{copy.failed}</p>}
       {!saved && !failed && <p className="m-0 font-inter text-sm text-muted">{copy.loading}</p>}
 
       {saved && items && (
         <>
-          <section aria-labelledby={`${id}-o`} className="flex flex-col gap-2">
-            <h3 id={`${id}-o`} className={h3}>
-              {copy.outbox.title}
-              {items.length > 0 && <span className="ml-2 font-inter text-sm font-semibold text-gold-text">{copy.outbox.count(items.length)}</span>}
-            </h3>
-            {outboxError && (
-              <p role="alert" className="m-0 font-inter text-sm font-semibold text-light-text">
-                {outboxError}
-              </p>
-            )}
-            <OutboxList items={items} copy={copy} busyId={busyId} onSend={(i) => void act(i, "sent")} onDismiss={(i) => void act(i, "dismissed")} />
-          </section>
-
           <section aria-labelledby={`${id}-a`} className="flex flex-col gap-2">
             <h3 id={`${id}-a`} className={h3}>
               {copy.automations.title}
@@ -255,8 +207,71 @@ export function SettingsView({
               </button>
             </div>
           </form>
+          <section aria-labelledby={`${id}-o`} className="flex flex-col gap-2">
+            <h3 id={`${id}-o`} className={h3}>
+              {copy.outbox.title}
+              {items.length > 0 && <span className="ml-2 font-inter text-sm font-semibold text-gold-text">{copy.outbox.count(items.length)}</span>}
+            </h3>
+            {outboxError && (
+              <p role="alert" className="m-0 font-inter text-sm font-semibold text-light-text">
+                {outboxError}
+              </p>
+            )}
+            <OutboxList items={items} copy={copy} busyId={busyId} onSend={(i) => void act(i, "sent")} onDismiss={(i) => void act(i, "dismissed")} />
+          </section>
         </>
       )}
+      <details data-testid="shop-summary" className="group rounded-2xl border border-border bg-section">
+        <summary className="focus-ring flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-2xl px-4 py-2 font-newsreader text-lg font-medium text-ink [&::-webkit-details-marker]:hidden">
+          <span>
+            <span className="block font-inter text-xs font-semibold uppercase tracking-widest text-gold-text">{copy.summary.title}</span>
+            {copy.summary.toggle}
+          </span>
+          <ChevronDown aria-hidden="true" size={20} className="shrink-0 text-gold-text transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="flex flex-col gap-4 border-t border-border px-4 py-3 font-inter text-sm text-ink">
+          <section aria-labelledby={`${id}-sh`}>
+            <h4 id={`${id}-sh`} className="m-0 mb-1 font-inter text-sm font-semibold text-ink">
+              {copy.summary.hours}
+            </h4>
+            <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+              {copy.summary.days.map((d, i) => {
+                const spans = shop.hours[i + 1] ?? [];
+                return (
+                  <div key={d} className="contents">
+                    <dt className="font-semibold">{d}</dt>
+                    <dd className="m-0 text-muted">{spans.length ? spans.map((x) => `${x.open}-${x.close}`).join(", ") : copy.summary.closed}</dd>
+                  </div>
+                );
+              })}
+            </dl>
+          </section>
+          <section aria-labelledby={`${id}-ss`}>
+            <h4 id={`${id}-ss`} className="m-0 mb-1 font-inter text-sm font-semibold text-ink">
+              {copy.summary.services}
+            </h4>
+            <ul className="m-0 grid list-none grid-cols-1 gap-x-8 gap-y-1 p-0 sm:grid-cols-2">
+              {shop.services.map((sv) => (
+                <li key={sv.id} className="flex items-baseline justify-between gap-3 border-b border-border/60 py-0.5">
+                  <span className="text-muted">{sv.name[lang]}</span>
+                  {sv.priceCents !== undefined && (
+                    <span className="font-newsreader text-base text-ink" style={{ fontVariantNumeric: "tabular-nums lining-nums" }}>
+                      {formatRevenue(sv.priceCents, lang)}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+          <section aria-labelledby={`${id}-st`}>
+            <h4 id={`${id}-st`} className="m-0 mb-1 font-inter text-sm font-semibold text-ink">
+              {copy.summary.team}
+            </h4>
+            <p className="m-0 text-muted">{shop.resources.map((r) => r.name[lang]).join(", ")}</p>
+          </section>
+          <p className="m-0 text-muted">{copy.summary.note}</p>
+        </div>
+      </details>
     </section>
   );
 }

@@ -124,6 +124,8 @@ export interface OutboxItemDto {
   clientId: string | null;
   bookingId: string | null;
   phone: string;
+  /** The client's first name only, or null when there is no named client. */
+  clientFirstName: string | null;
   language: "es" | "en";
   body: string;
   status: "prepared" | "sent" | "dismissed";

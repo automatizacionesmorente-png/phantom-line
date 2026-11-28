@@ -30,7 +30,7 @@ export function OutboxList({
       {items.map((m) => (
         <li key={m.id} data-testid="outbox-item" className="flex flex-col gap-2 rounded-2xl border border-gold-dot bg-card px-3 py-3">
           <p className="m-0 font-inter text-sm font-semibold text-gold-text">
-            {t.kind[m.kind]} · {t.to(m.phone)}
+            {t.kind[m.kind]} · {m.clientFirstName ? t.toName(m.clientFirstName) : t.to(m.phone)}
           </p>
           <p className="m-0 whitespace-pre-wrap font-inter text-base text-ink">{m.body}</p>
           {PROMO_KINDS.includes(m.kind) && <p className="m-0 font-inter text-sm text-muted">{t.promoNote}</p>}

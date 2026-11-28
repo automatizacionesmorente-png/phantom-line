@@ -4,7 +4,7 @@ import type { OutboxKind } from "@/lib/salon/settings";
 /** The Settings tab's words (salon spec 2.4, 9.7, 9.8). Pure, so tests can read them. */
 export interface SettingsCopy {
   title: string;
-  summary: { title: string; hours: string; closed: string; services: string; team: string; note: string; days: readonly string[] };
+  summary: { title: string; toggle: string; hours: string; closed: string; services: string; team: string; note: string; days: readonly string[] };
   loading: string;
   failed: string;
   automations: { title: string; hint: string; label: Record<OutboxKind, string>; explain: Record<OutboxKind, string>; saveFailed: string };
@@ -19,6 +19,7 @@ export interface SettingsCopy {
     promoNote: string;
     kind: Record<OutboxKind, string>;
     to: (phone: string) => string;
+    toName: (firstName: string) => string;
     failed: string;
     gone: string;
   };
@@ -29,6 +30,7 @@ export const SETTINGS_COPY: Record<Lang, SettingsCopy> = {
     title: "Ajustes",
     summary: {
       title: "Tu negocio",
+      toggle: "Mi horario, servicios y equipo",
       hours: "Horario",
       closed: "cerrado",
       services: "Servicios",
@@ -72,6 +74,7 @@ export const SETTINGS_COPY: Record<Lang, SettingsCopy> = {
       promoNote: "Promoción: solo para clientes que dieron su consentimiento. El texto termina con «Responde BAJA si no quieres más mensajes.»",
       kind: { reminder: "Recordatorio", review: "Reseña", gap: "Hueco libre", winback: "Recuperar", birthday: "Cumpleaños" },
       to: (phone) => `Para ${phone}`,
+      toName: (n) => `Para ${n}`,
       failed: "No se pudo actualizar el mensaje. Prueba otra vez.",
       gone: "Ese mensaje ya estaba gestionado.",
     },
@@ -80,6 +83,7 @@ export const SETTINGS_COPY: Record<Lang, SettingsCopy> = {
     title: "Settings",
     summary: {
       title: "Your business",
+      toggle: "My hours, services and team",
       hours: "Hours",
       closed: "closed",
       services: "Services",
@@ -123,6 +127,7 @@ export const SETTINGS_COPY: Record<Lang, SettingsCopy> = {
       promoNote: "Promotion: only for clients who gave consent. The text ends with “Reply STOP to opt out.”",
       kind: { reminder: "Reminder", review: "Review", gap: "Free slot", winback: "Win back", birthday: "Birthday" },
       to: (phone) => `To ${phone}`,
+      toName: (n) => `To ${n}`,
       failed: "The message could not be updated. Try again.",
       gone: "That message was already handled.",
     },

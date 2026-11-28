@@ -53,6 +53,8 @@ const toOutboxRow = (r: OutboxDbRow): OutboxRow => ({
   createdAt: toInstant(r.createdAt),
   actedAt: r.actedAt ? toInstant(r.actedAt) : null,
 });
+/** The first word of a client name, or null when there is none. */
+const firstName = (n: string | null | undefined): string | null => n?.trim().split(/\s+/)[0] || null;
 /** The most rows of the outbox a read returns of each part. */
 const KEYS_LIMIT = 20_000;
 
@@ -470,7 +472,23 @@ export function createSalonRepository(handle: DbHandle): SalonRepository {
         )
         .orderBy(desc(sql`coalesce(${outbox.actedAt}, ${outbox.createdAt})`), asc(outbox.id))
         .limit(limit);
-      return [...prepared, ...done].map(toOutboxRow);
+      const all = [...prepared, ...done];
+      const ids = [...new Set(all.flatMap((r) => (r.clientId ? [r.clientId] : [])))];
+      const bids = [...new Set(all.flatMap((r) => (!r.clientId && r.bookingId ? [r.bookingId] : [])))];
+      const names = new Map<string, string>();
+      const bookingNames = new Map<string, string>();
+      if (ids.length > 0) {
+        const found = await db.select({ id: clients.id, name: clients.name }).from(clients).where(and(eq(clients.shopId, shopId), inArray(clients.id, ids)));
+        for (const c of found) names.set(c.id, c.name);
+      }
+      if (bids.length > 0) {
+        const found = await db.select({ id: bookings.id, name: bookings.customerName }).from(bookings).where(and(eq(bookings.shopId, shopId), inArray(bookings.id, bids)));
+        for (const b of found) bookingNames.set(b.id, b.name);
+      }
+      return all.map((r) => ({
+        ...toOutboxRow(r),
+        clientFirstName: firstName(r.clientId ? names.get(r.clientId) : r.bookingId ? bookingNames.get(r.bookingId) : null),
+      }));
     },
 
     async setOutboxStatus(shopId, id, status, now) {

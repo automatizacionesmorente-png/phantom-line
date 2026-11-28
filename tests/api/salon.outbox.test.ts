@@ -40,7 +40,7 @@ const settings = (on: Partial<typeof off> = {}, o: object = {}) => ({
 const person = (shopId: string, phone: string, name: string, o: Partial<typeof clients.$inferInsert> = {}) =>
   t.handle.db.insert(clients).values({ shopId, phone, name, ...o }).returning({ id: clients.id }).then((r) => r[0].id);
 const rows = (shopId = REAL) => t.handle.db.select().from(outbox).where(eq(outbox.shopId, shopId));
-type Item = { id: string; kind: string; status: string; body: string; waUrl: string; phone: string };
+type Item = { id: string; kind: string; status: string; body: string; waUrl: string; phone: string; clientFirstName?: string | null; clientId?: string | null };
 const items = (a: { json: Record<string, unknown> | null }) => (a.json as { items: Item[] }).items;
 const waiting = (a: { json: Record<string, unknown> | null }) => items(a).filter((i) => i.status === "prepared");
 const CONSENT = new Date("2026-01-01T00:00:00Z");
@@ -111,6 +111,21 @@ describe("settings", () => {
     // Another shop's prepared messages are untouched.
     await api.saveSettings(DEMO, settings({}), { token: tokenFor(DEMO) });
     expect((await rows()).filter((r) => r.status === "prepared")).toHaveLength(1);
+  });
+});
+
+describe("outbox client name", () => {
+  it("exposes only the first name of the linked client, otherwise null", async () => {
+    await seedDay();
+    await api.saveSettings(REAL, settings({ reminder: true, birthday: true }), open());
+    const list = items(await api.outbox(REAL, open()));
+    const named = list.find((i) => i.kind === "reminder")!;
+    expect(named.clientFirstName).toBe("Ana");
+    expect(JSON.stringify(list)).not.toContain("Pérez");
+    expect(list.every((i) => i.clientFirstName === null || typeof i.clientFirstName === "string")).toBe(true);
+    expect(Object.keys(named).sort()).toEqual(
+      ["actedAt", "body", "bookingId", "clientFirstName", "clientId", "createdAt", "id", "kind", "language", "phone", "status", "waUrl"],
+    );
   });
 });
 

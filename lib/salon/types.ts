@@ -165,6 +165,8 @@ export interface OutboxRow {
   status: "prepared" | "sent" | "dismissed";
   createdAt: Temporal.Instant;
   actedAt: Temporal.Instant | null;
+  /** The linked client's first name (never the full name), when the row has a client with a name. */
+  clientFirstName?: string | null;
 }
 
 export interface NewExpense {
