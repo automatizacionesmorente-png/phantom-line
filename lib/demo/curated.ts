@@ -162,8 +162,8 @@ const SHAPES: readonly (readonly Plan[])[] = [
   ],
 ];
 
-/** Days, counting today, that the week covers. */
-const WEEK_DAYS = 7;
+/** Days, counting today, that the seeded agenda covers: today plus the next 7, so every open day of the coming week looks alive. */
+const WEEK_DAYS = 8;
 
 /**
  * Checks one booking against the real Booking_Rules with only `chair` as a resource and

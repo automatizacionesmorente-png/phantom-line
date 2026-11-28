@@ -28,6 +28,7 @@ const FIXED = [
 function check(now: Temporal.Instant) {
   const set = build(now);
   const { salon } = set;
+  const today = localDateOf(now, tz);
   const all = [
     ...set.bookings.map((b) => ({ ...b, status: "confirmed" as const })),
     ...set.history.map((b) => ({ ...b, status: "confirmed" as const })),
@@ -53,6 +54,21 @@ function check(now: Temporal.Instant) {
   }
   for (const b of set.bookings) expect(b.priceCents).toBe(priceOf(lolaSeedProfile, b.serviceId));
   expect(salon.blocks.length).toBe(2);
+
+  // The next days are alive: every open day from tomorrow for 7 days has 3 to 8 future bookings.
+  for (let k = 1; k <= 7; k++) {
+    const date = today.add({ days: k });
+    if (sessionsOn(date, rules).length === 0) continue;
+    const n = set.bookings.filter((b) => localDateOf(b.startsAt, tz).equals(date) && cmp(b.startsAt, now) > 0).length;
+    expect(n, `bookings on ${date.toString()}`).toBeGreaterThanOrEqual(3);
+    expect(n).toBeLessThanOrEqual(8);
+  }
+  for (let k = 1; k <= 7; k++) {
+    const date = today.add({ days: k });
+    if (sessionsOn(date, rules).length === 0) {
+      expect(set.bookings.some((b) => localDateOf(b.startsAt, tz).equals(date))).toBe(false);
+    }
+  }
 
   // Payments: only past, ended, not no-show or cancelled bookings; at most one per booking.
   const byId = new Map(all.map((b) => [b.id, b]));
@@ -112,7 +128,6 @@ function check(now: Temporal.Instant) {
     if (b.clientId) expect(byPhone.get(b.customerPhone)?.id).toBe(b.clientId);
     else expect(byPhone.has(b.customerPhone)).toBe(false);
   }
-  const today = localDateOf(now, tz);
   const md = `${String(today.month).padStart(2, "0")}-${String(today.day).padStart(2, "0")}`;
   expect(set.clients.filter((c) => c.birthday === md).length).toBeGreaterThanOrEqual(1);
   expect(set.clients.some((c) => c.promoConsent)).toBe(true);
@@ -164,7 +179,7 @@ describe("the demo month is consistent", () => {
       }),
       { numRuns: 20 },
     );
-  });
+  }, 30_000);
 
   it("the same instant gives the same content", () => {
     const strip = (s: CuratedSet) => JSON.stringify(s.salon.month.map((b) => [b.serviceId, b.startsAt.toString(), b.priceCents, b.noShow, b.status]));
