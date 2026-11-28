@@ -259,6 +259,26 @@ describe("the demo month (salon 2.6)", () => {
     expect([...exp, ...blocks, ...box].every((x) => x.curated)).toBe(true);
   });
 
+  it.each(["06:00", "09:30", "12:00", "16:30", "20:00"])("a reset at %sZ on an open day leaves today with about eight bookings and a cash strip", async (hhmm) => {
+    const now = Temporal.Instant.from(`2026-12-23T${hhmm}:00Z`);
+    await run(now);
+    const tz = lolaSeedProfile.timeZone;
+    const today = localDateOf(now, tz);
+    const at = (d: Date) => Temporal.Instant.fromEpochMilliseconds(d.getTime());
+    const rows = (await t.handle.db.select().from(bookings).where(eq(bookings.shopId, D)))
+      .filter((b) => b.status === "confirmed" && localDateOf(at(b.startsAt), tz).equals(today));
+    expect(rows.length).toBeGreaterThanOrEqual(6);
+    expect(rows.length).toBeLessThanOrEqual(9);
+    expect(new Set(rows.map((b) => b.resourceId))).toEqual(new Set(["chair-1", "chair-2"]));
+    expect(rows.filter((b) => b.noShowAt).length).toBeLessThanOrEqual(1);
+    const pay = await t.handle.db.select().from(payments).where(eq(payments.shopId, D));
+    const todays = pay.filter((p) => localDateOf(at(p.paidAt), tz).equals(today));
+    for (const p of todays) expect(p.paidAt.getTime()).toBeLessThanOrEqual(now.epochMilliseconds);
+    const ended = rows.filter((b) => b.endsAt.getTime() <= now.epochMilliseconds);
+    if (ended.length >= 3) expect(todays.reduce((n, p) => n + p.amountCents, 0)).toBeGreaterThan(0);
+    for (const p of todays) expect(p.bookingId === null || ended.some((b) => b.id === p.bookingId)).toBe(true);
+  });
+
   it("is idempotent for the month: a second run leaves the same counts", async () => {
     await run();
     const first = await counts();

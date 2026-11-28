@@ -168,6 +168,8 @@ interface Input {
   /** The week ahead (future, confirmed) and the core clients' history: busy time and outbox input. */
   week: readonly CuratedBooking[];
   history: readonly CuratedVisit[];
+  /** Today's planned bookings that already ended at `now`: they become today's finished visits, so the morning is never empty. */
+  todayPast?: readonly { chair: string; serviceId: string; start: Temporal.Instant; end: Temporal.Instant }[];
 }
 
 /** The catalogue price of a service id, `+` joining the parts of a combined visit. */
@@ -213,6 +215,7 @@ export function buildSalonMonth(i: Input): CuratedSalon {
   const busy = new Map<string, { start: Temporal.Instant; end: Temporal.Instant }[]>(chairs.map((c) => [c, []]));
   for (const h of i.history) busy.get(h.resourceId)?.push({ start: h.startsAt, end: h.endsAt });
   for (const b of blocks) for (const c of b.resourceId ? [b.resourceId] : chairs) busy.get(c)?.push({ start: b.startsAt, end: b.endsAt });
+  for (const b of i.week) busy.get(b.resourceId)?.push({ start: b.startsAt, end: b.endsAt });
 
   const month: CuratedMonthBooking[] = [];
   const clients: CuratedClient[] = [];
@@ -308,6 +311,54 @@ export function buildSalonMonth(i: Input): CuratedSalon {
     if (!manual && idx % 3 === 1) addCall(d.start, "es", idx + 1);
   });
 
+  // ---- Today, up to now: the visits already done, so "Hoy" is alive whatever the hour of the reset.
+  // Every third one is a walk-in at the counter; the rest came by phone. Payments are decided below.
+  const todayIds = new Set<string>();
+  let tj = 0;
+  for (const p of [...(i.todayPast ?? [])].sort((a, b) => cmp(a.start, b.start) || a.chair.localeCompare(b.chair))) {
+    const taken = busy.get(p.chair);
+    if (!taken || taken.some((t) => overlaps({ start: p.start, end: p.end }, t))) continue;
+    taken.push({ start: p.start, end: p.end });
+    const manual = tj % 3 === 2;
+    const anonymous = manual && tj % 6 === 5;
+    let name: string;
+    let phone = "";
+    let clientId: string | null = null;
+    if (anonymous) {
+      name = WALK_INS[walkIn++ % WALK_INS.length];
+    } else {
+      const c = newClient(clients.length, "es", i.now, tz, today, i.newId);
+      clients.push(c);
+      name = c.name;
+      phone = c.phone;
+      clientId = c.id;
+    }
+    const call = manual ? null : addCall(p.start, "es", 40 + tj);
+    const id = i.newId();
+    todayIds.add(id);
+    month.push({
+      id,
+      resourceId: p.chair,
+      serviceId: p.serviceId,
+      startsAt: p.start,
+      endsAt: p.end,
+      customerName: name,
+      customerPhone: phone,
+      clientId,
+      channel: manual ? "manual" : "voice",
+      status: "confirmed",
+      createdAt: manual ? p.start.subtract({ minutes: 5 }) : call!.endedAt,
+      cancelledAt: null,
+      cancelledBy: null,
+      ownerConfirmed: !manual,
+      noShow: false,
+      priceCents: priceOf(shop, p.serviceId),
+      visitNote: VISIT_NOTES[p.serviceId] ?? "",
+      callId: call?.id ?? null,
+    });
+    tj++;
+  }
+
   // ---- One future cancellation that frees a slot within 72 h (the gap offer needs it).
   const freed = freeSlotSoon(now, rules, [...i.week.map((b) => ({ start: b.startsAt, end: b.endsAt, chair: b.resourceId })), ...blocks.map((b) => ({ start: b.startsAt, end: b.endsAt, chair: b.resourceId }))], service("corte-mujer").durationMin, chairs);
   if (freed) {
@@ -337,7 +388,7 @@ export function buildSalonMonth(i: Input): CuratedSalon {
 
   // ---- Payments: the past month except the no-shows, the cancelled and some left "to collect".
   const payments: CuratedPayment[] = [];
-  const pay = (bookingId: string, priceCents: number, end: Temporal.Instant, idx: number) => {
+  const pay = (bookingId: string, priceCents: number, end: Temporal.Instant, idx: number, cap?: Temporal.Instant) => {
     const product = idx % 5 === 3 ? PRODUCTS[idx % PRODUCTS.length] : null;
     payments.push({
       bookingId,
@@ -345,11 +396,19 @@ export function buildSalonMonth(i: Input): CuratedSalon {
       productCents: product?.cents ?? 0,
       productLabel: product?.label ?? "",
       method: idx % 23 === 5 ? "voucher" : METHODS[idx % METHODS.length],
-      paidAt: end.add({ minutes: 4 + (idx % 9) }),
+      paidAt: cap && cmp(end.add({ minutes: 4 + (idx % 9) }), cap) > 0 ? cap : end.add({ minutes: 4 + (idx % 9) }),
     });
   };
+  let todayNo = 0;
   month.forEach((b, idx) => {
     if (b.status === "cancelled" || b.noShow || cmp(b.endsAt, now) > 0) return;
+    if (todayIds.has(b.id)) {
+      // Today's: all paid except every third, which is left "to collect" (the day's cash strip shows the rest).
+      const at = todayNo++;
+      if (at % 3 === 2) return;
+      pay(b.id, b.priceCents, b.endsAt, idx, now);
+      return;
+    }
     // About two in ten are left "to collect": the owner has not cashed them yet.
     if (idx % 10 === 2 || idx % 10 === 6) return;
     pay(b.id, b.priceCents, b.endsAt, idx);

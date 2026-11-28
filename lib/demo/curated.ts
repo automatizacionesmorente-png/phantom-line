@@ -386,6 +386,8 @@ export function buildCuratedSet(ctx: CuratedContext): CuratedSet {
 
   // The week: from today to six days ahead, open days only, rotating the three shapes.
   let shapeNo = 0;
+  // Today's planned visits that already ended: the salon month turns them into finished ones.
+  const todayPast: { chair: string; serviceId: string; start: Temporal.Instant; end: Temporal.Instant }[] = [];
   for (let k = 0; k < WEEK_DAYS; k++) {
     const date = today.add({ days: k });
     const sessions = sessionsOn(date, rules.shop);
@@ -395,7 +397,16 @@ export function buildCuratedSet(ctx: CuratedContext): CuratedSet {
       const session = sessions[Math.min(plan.session, sessions.length - 1)];
       const svc = service(plan.service);
       const v = place({ serviceId: svc.id, start: session.open.add({ minutes: plan.offset }), chair: plan.chair }, rules, bookings);
-      if (!v) continue;
+      if (!v) {
+        if (k === 0) {
+          const start = session.open.add({ minutes: plan.offset });
+          const end = start.add({ minutes: svc.durationMin });
+          if (Temporal.Instant.compare(end, now) <= 0 && Temporal.Instant.compare(end, session.close) <= 0) {
+            todayPast.push({ chair: plan.chair, serviceId: svc.id, start, end });
+          }
+        }
+        continue;
+      }
       const c = nextCustomer();
       bookings.push({
         id: ctx.newId(),
@@ -413,7 +424,7 @@ export function buildCuratedSet(ctx: CuratedContext): CuratedSet {
   bookings.sort((a, b) => Temporal.Instant.compare(a.startsAt, b.startsAt));
   addWeekCalls({ now, tz, rules: rules.shop, calls, bookings, newId: ctx.newId });
   const { clients, history } = buildClients(ctx, rules);
-  const salon = buildSalonMonth({ now, shop, rules: rules.shop, newId: ctx.newId, coreClients: clients, week: bookings, history });
+  const salon = buildSalonMonth({ now, shop, rules: rules.shop, newId: ctx.newId, coreClients: clients, week: bookings, history, todayPast });
   // The salon columns of the rows above: a price snapshot, and the client card of a known phone.
   const clientByPhone = new Map(clients.map((c) => [c.phone, c.id]));
   for (const b of bookings) b.priceCents = priceOf(shop, b.serviceId);

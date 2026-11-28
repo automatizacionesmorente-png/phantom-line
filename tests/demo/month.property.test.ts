@@ -181,6 +181,35 @@ describe("the demo month is consistent", () => {
     );
   }, 30_000);
 
+  it.each(["06:00", "09:30", "12:00", "16:30", "20:00"])("today is alive across the whole open day, reset at %sZ (Wednesday, Madrid winter time)", (hhmm) => {
+    const now = Temporal.Instant.from(`2026-12-23T${hhmm}:00Z`);
+    const set = check(now);
+    const today = localDateOf(now, tz);
+    expect(sessionsOn(today, rules).length).toBeGreaterThan(0);
+    const mine = (b: { startsAt: Temporal.Instant }) => localDateOf(b.startsAt, tz).equals(today);
+    const done = set.salon.month.filter((b) => mine(b) && b.status === "confirmed");
+    const ahead = set.bookings.filter(mine);
+    const total = done.length + ahead.length;
+    expect(total, "today's bookings").toBeGreaterThanOrEqual(6);
+    expect(total).toBeLessThanOrEqual(9);
+    expect(new Set([...done, ...ahead].map((b) => b.resourceId))).toEqual(new Set(["chair-1", "chair-2"]));
+    for (const b of done) expect(cmp(b.endsAt, now)).toBeLessThanOrEqual(0);
+    for (const b of ahead) expect(cmp(b.startsAt, now)).toBeGreaterThanOrEqual(0);
+    expect(done.filter((b) => b.noShow).length).toBeLessThanOrEqual(1);
+    // The past ones are in the history shape: most paid, and a couple left to collect once there are enough.
+    const paidToday = new Set(set.salon.payments.filter((p) => p.bookingId && done.some((b) => b.id === p.bookingId)).map((p) => p.bookingId));
+    if (done.length >= 3) {
+      expect(paidToday.size).toBeGreaterThanOrEqual(2);
+      expect(paidToday.size).toBeLessThan(done.length);
+      // "Caja de hoy": the payments taken today add up to something.
+      const cash = set.salon.payments.filter((p) => localDateOf(p.paidAt, tz).equals(today)).reduce((n, p) => n + p.amountCents, 0);
+      expect(cash).toBeGreaterThan(0);
+    }
+    if (hhmm === "06:00") expect(done).toHaveLength(0);
+    if (hhmm === "20:00") expect(ahead).toHaveLength(0);
+    if (hhmm === "12:00" || hhmm === "16:30") expect(done.length).toBeGreaterThanOrEqual(3);
+  });
+
   it("the same instant gives the same content", () => {
     const strip = (s: CuratedSet) => JSON.stringify(s.salon.month.map((b) => [b.serviceId, b.startsAt.toString(), b.priceCents, b.noShow, b.status]));
     expect(strip(build(FIXED[0]))).toBe(strip(build(FIXED[0])));
