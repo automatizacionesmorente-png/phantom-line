@@ -33,7 +33,7 @@ function productionDeps(): CoreDeps {
     limiter: { hit: (key, now) => repo.hitRateLimits(key, now) },
     clock: () => Temporal.Now.instant(),
     newId: () => randomUUID(),
-    config: { modelTimeoutMs: MODEL_TIMEOUT_MS, maxTurns: 20, maxConsecutiveInvalid: 2, ...limitsFromEnv(process.env) },
+    config: { modelTimeoutMs: MODEL_TIMEOUT_MS, brainOnly: process.env.PHANTOM_BRAIN_ONLY === "1", maxTurns: 20, maxConsecutiveInvalid: 2, ...limitsFromEnv(process.env) },
   };
   return deps;
 }

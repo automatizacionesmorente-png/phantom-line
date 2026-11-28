@@ -422,7 +422,7 @@ async function say(
   if (limited.blocked && limited.limit === "visitor") {
     return endWithFallback(call, state, input, pack, deps, { reason: "rate_limit", limit: limited.limit });
   }
-  const skipModel = limited.blocked;
+  const skipModel = limited.blocked || deps.config.brainOnly === true;
 
   const now = deps.clock();
   // Step 2: the Code_Brain's Reading, before any model call (2.1). Synchronous and pure.

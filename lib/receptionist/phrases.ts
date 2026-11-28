@@ -3,6 +3,7 @@ import type { RejectionReason, Weekday } from "@/lib/booking";
 import { MAX_COMBO_PARTS } from "@/lib/booking/services";
 import type { TopicHit } from "@/lib/conversation/brain/topics";
 import { catalogItems, catalogLine, serviceView } from "@/lib/conversation/catalog";
+import { universalFaqById } from "@/lib/conversation/brain/universalFaq";
 import type { ShopProfile } from "@/lib/conversation/shopProfile";
 import type { AnsweredTopic, OwnerNote } from "@/lib/conversation/types";
 import type { Lang, SectorPack } from "@/lib/sectors";
@@ -360,7 +361,7 @@ const TOPIC_LABELS: Record<Lang, Record<"hours" | "address" | "services" | "pric
 function topicLabel(shop: ShopProfile, topic: AnsweredTopic, lang: Lang): string {
   if (!topic.startsWith("faq:")) return TOPIC_LABELS[lang][topic as keyof (typeof TOPIC_LABELS)["es"]];
   const id = topic.slice(4);
-  return shop.faq?.find((f) => f.id === id)?.aliases[lang][0] ?? id;
+  return (shop.faq?.find((f) => f.id === id) ?? universalFaqById(id))?.aliases[lang][0] ?? id;
 }
 
 const WEEKDAY: Record<Lang, readonly string[]> = {
@@ -630,7 +631,7 @@ function spanish(k: Kit): PhraseSet {
         }
         case "faq": {
           const entry = shop.faq?.find((f) => f.id === topic.id);
-          return said(entry ? entry.answer.es : `Eso no lo sé, pero se lo apunto a ${owner}.`);
+          return said(entry ? entry.answer.es : universalFaqById(topic.id)?.answer.es ?? `Eso no lo sé, pero se lo apunto a ${owner}.`);
         }
       }
     },
@@ -926,7 +927,7 @@ function english(k: Kit): PhraseSet {
         }
         case "faq": {
           const entry = shop.faq?.find((f) => f.id === topic.id);
-          return said(entry ? entry.answer.en : `I don't know that, but I'll leave a note for ${owner}.`);
+          return said(entry ? entry.answer.en : universalFaqById(topic.id)?.answer.en ?? `I don't know that, but I'll leave a note for ${owner}.`);
         }
       }
     },

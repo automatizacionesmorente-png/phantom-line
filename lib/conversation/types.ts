@@ -294,6 +294,8 @@ export interface ModelClient {
 
 export interface CoreConfig {
   modelTimeoutMs: number; // MODEL_TIMEOUT_MS, 2400
+  /** PHANTOM_BRAIN_ONLY=1: the Code_Brain answers every Turn and the model is never called (no API token spent). */
+  brainOnly?: boolean;
   maxTurns: number; // 20
   perVisitorPerMinute: number;
   globalPerHour: number;

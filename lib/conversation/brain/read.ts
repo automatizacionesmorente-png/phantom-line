@@ -15,6 +15,23 @@ import { readWhen, type PartOfDay } from "./when";
  * "What makes a Reading sure"). Pure and synchronous: no I/O, no model, no clock of its own.
  */
 
+/** Words of an ability question; "puedo" / "can I" ask whether something is allowed, not for a service. */
+const ABILITY_WORDS: ReadonlySet<string> = new Set(["puedo", "podria", "podeis", "can", "could", "may"]);
+/** Words that follow a wanting word and are never a treatment the shop could lack. */
+const NOT_A_SERVICE: ReadonlySet<string> = new Set([
+  "llevar", "traer", "pagar", "factura", "facturas", "recibo", "informacion", "info", "duda", "dudas", "pregunta", "problema", "ayuda", "hablar", "preguntar", "saber",
+  "bring", "pay", "invoice", "receipt", "information", "question", "questions", "problem", "help", "talk", "speak", "ask", "know", "complain", "complaint", "queja",
+]);
+
+/** Complaint cues, said with no sensitive hit: the Receptionist never argues, she notes it for the owner. */
+const COMPLAINT_PHRASES: readonly (readonly string[])[] = [
+  "tengo una queja", "quiero poner una queja", "quiero hacer una reclamación", "tengo una reclamación", "quiero reclamar",
+  "estoy muy descontento", "estoy muy descontenta", "no estoy contento con", "no estoy contenta con",
+  "me habéis hecho un destrozo", "me habéis estropeado el pelo", "me han estropeado el pelo",
+  "i want to complain", "i'd like to complain", "i have a complaint", "i'm not happy with", "i am not happy with",
+  "i'm very unhappy", "you ruined my hair", "you messed up my hair",
+].map((x) => words(x));
+
 export type BrainIntent =
   | "owner_request"
   | "language_switch"
@@ -204,7 +221,10 @@ export function readUtterance(input: ReadInput): Reading {
   const topic = topicRead.topic;
 
   // 6. Owner_Request and language switch.
-  const owner = anyPhrase(toks, ownerPhrases(shop), (i) => !faq.has(i));
+  // A complaint goes to a person, unless the pack lists the matter as a sensitive topic (its own note wins).
+  const owner =
+    anyPhrase(toks, ownerPhrases(shop), (i) => !faq.has(i)) ??
+    (topicRead.sensitive ? null : anyPhrase(toks, COMPLAINT_PHRASES, (i) => !faq.has(i)));
   if (owner) for (let k = owner.start; k < owner.end; k++) placed.add(k);
   let wantsLanguage: Lang | null = null;
   const toEn = anyPhrase(toks, both("toEn"), (i) => !faq.has(i));
@@ -252,7 +272,10 @@ export function readUtterance(input: ReadInput): Reading {
 
   // A service word not in the catalog, right after a wanting word: "quería una manicura" (4.8).
   let services: ServiceRequest = svc.request;
-  if (services.kind === "none" && !topic && wanting) {
+  // Not a guess at a service: an ability question ("¿puedo llevar a mi hijo?", "can I bring my dog?") or a
+  // word that is plainly not a treatment ("necesito factura", "I need an invoice").
+  const abilityAsk = wanting !== null && toks.slice(wanting.start, wanting.end).some((t) => ABILITY_WORDS.has(t.w));
+  if (services.kind === "none" && !topic && wanting && !abilityAsk) {
     let k = wanting.end;
     if (ARTICLES.has(toks[k]?.w ?? "")) k++;
     const said: number[] = [];
@@ -262,7 +285,7 @@ export function readUtterance(input: ReadInput): Reading {
       k++;
     }
     const ends = k >= toks.length || placed.has(k) || toks[k].brk || lex.has(toks[k].w);
-    if (said.length >= 1 && said.length <= 2 && ends && k > wanting.end) {
+    if (said.length >= 1 && said.length <= 2 && ends && k > wanting.end && !said.some((x) => NOT_A_SERVICE.has(toks[x].w))) {
       services = { kind: "unknown", said: said.map((x) => toks[x].raw).join(" ") };
       addAll(said);
     }

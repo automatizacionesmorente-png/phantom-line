@@ -5,6 +5,7 @@ import type { ShopProfile } from "../shopProfile";
 import { toShopRules } from "../shopProfile";
 import { phrasesOf, type LexiconList } from "./lexicon";
 import { entry, findSpans, longestSpans, phraseAt, tokenize, words, type PhraseEntry, type Tok } from "./normalize";
+import { UNIVERSAL_FAQ } from "./universalFaq";
 import { matchServices, protectedWord, serviceIndex, type ServiceMatch } from "./services";
 
 /**
@@ -57,6 +58,15 @@ function faqIndex(shop: ShopProfile): Record<Lang, PhraseEntry<string>[]> {
         const e = entry(a, f.id);
         if (e) index[lang].push(e);
       }
+  // The Universal_FAQ after the shop's own entries: a shop alias that says the same words wins.
+  for (const f of UNIVERSAL_FAQ)
+    for (const lang of ["es", "en"] as const) {
+      const taken = new Set(index[lang].map((x) => x.words.join(" ")));
+      for (const a of f.aliases[lang]) {
+        const e = entry(a, f.id);
+        if (e && !taken.has(e.words.join(" "))) index[lang].push(e);
+      }
+    }
   FAQ_INDEX.set(shop, index);
   return index;
 }
