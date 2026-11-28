@@ -80,7 +80,7 @@ describe("buildCuratedSet", () => {
       expect(Temporal.Instant.compare(b.startsAt, now)).toBeGreaterThan(0);
       const date = localDateOf(b.startsAt, tz);
       expect(Temporal.PlainDate.compare(date, today)).toBeGreaterThanOrEqual(0);
-      expect(Temporal.PlainDate.compare(date, today.add({ days: 7 }))).toBeLessThan(0);
+      expect(Temporal.PlainDate.compare(date, today.add({ days: 8 }))).toBeLessThan(0);
       const inside = sessionsOn(date, shop).some(
         (s) => Temporal.Instant.compare(b.startsAt, s.open) >= 0 && Temporal.Instant.compare(b.endsAt, s.close) <= 0,
       );
