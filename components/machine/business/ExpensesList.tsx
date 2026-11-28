@@ -1,5 +1,6 @@
 "use client";
 
+import { EmptyState } from "../EmptyState";
 import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import type { ExpenseItem } from "@/lib/salon/month";
@@ -25,7 +26,7 @@ export function ExpensesList({
   const [asking, setAsking] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
-  if (items.length === 0) return <p className="font-inter text-base text-muted">{t.empty}</p>;
+  if (items.length === 0) return <EmptyState>{t.empty}</EmptyState>;
 
   async function confirm(id: string) {
     setBusy(true);

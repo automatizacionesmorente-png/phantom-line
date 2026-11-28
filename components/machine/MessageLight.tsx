@@ -7,14 +7,14 @@ import type { LightState } from "@/lib/messages/tape";
  * With reduced motion neither class exists: the light is a steady light, and its state is
  * also in the live region next to it (13.2). `aria-hidden`: the text says it all.
  */
-export function MessageLight({ state, reducedMotion }: { state: LightState; reducedMotion: boolean }) {
+export function MessageLight({ state, reducedMotion, small = false }: { state: LightState; reducedMotion: boolean; small?: boolean }) {
   const moving = state === "blinking" && !reducedMotion;
   const lit = state !== "off";
   return (
     <span
       data-light={state}
       aria-hidden="true"
-      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-gold-dot bg-card p-1"
+      className={`inline-flex ${small ? "h-6 w-6 p-0.5" : "h-8 w-8 p-1"} shrink-0 items-center justify-center rounded-full border border-gold-dot bg-card`}
     >
       <span className={`block h-full w-full rounded-full ${moving ? "light-blink" : ""}`}>
         <span

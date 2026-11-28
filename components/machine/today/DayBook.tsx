@@ -1,4 +1,4 @@
-import { TriangleAlert } from "lucide-react";
+import { Check, TriangleAlert } from "lucide-react";
 import { Temporal } from "temporal-polyfill";
 import type { AgendaItem } from "@/lib/owner/api";
 import { formatClock } from "@/lib/owner/format";
@@ -7,31 +7,8 @@ import type { BlockDto } from "@/lib/salon/api";
 import type { DayLayout } from "@/lib/salon/dayLayout";
 import type { Lang } from "@/lib/sectors";
 import { formatRevenue } from "../weekCopy";
+import { isCompact, PX_PER_HOUR, STATE_STYLE, tintFor } from "./dayBookStyle";
 import type { TodayCopy } from "./todayCopy";
-
-/** Pixels per hour: a 30 minute booking is 44 px, the tap target minimum. */
-const PX_PER_HOUR = 88;
-
-/** Six tints over the colour tokens, text always ink. */
-const TINTS = [
-  "border-gold-text bg-gold-dot/35",
-  "border-olive bg-olive/15",
-  "border-light-text bg-light/15",
-  "border-espresso bg-espresso/10",
-  "border-gold bg-gold/15",
-  "border-muted bg-border",
-] as const;
-
-/** A fixed tint for the usual category ids; any other category rotates through the six by a stable hash. */
-const KNOWN: Record<string, number> = { cut: 0, color: 1, colour: 1, treatment: 2, styling: 3, beard: 4, nails: 5 };
-export function tintFor(category: string | undefined): string {
-  if (!category) return TINTS[0];
-  const known = KNOWN[category];
-  if (known !== undefined) return TINTS[known];
-  let h = 0;
-  for (const ch of category) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return TINTS[h % TINTS.length];
-}
 
 export interface FreeGap {
   resourceId: string;
@@ -68,10 +45,10 @@ export function DayBook({
   for (let h = firstHour; h * 60 <= layout.endMin; h++) hours.push(h);
   const pct = (m: number) => ((m - layout.startMin) / (layout.endMin - layout.startMin)) * 100;
   const cols = layout.columns.length;
-  const tint = (item: AgendaItem) => tintFor(shop.services.find((s) => s.id === item.serviceId)?.category);
+  const tint = (item: AgendaItem) => tintFor(shop.services.find((s) => s.id === item.serviceId)?.category).cls;
 
   return (
-    <div className="flex rounded-2xl border border-border bg-card">
+    <div className="flex rounded-2xl border border-border bg-card shadow-[0_2px_10px_rgb(36_29_20/0.06)]">
       <div className="w-11 shrink-0 pt-9" aria-hidden="true">
         <div className="relative" style={{ height }}>
           {hours.map((h) => (
@@ -81,12 +58,12 @@ export function DayBook({
           ))}
         </div>
       </div>
-      <div className="min-w-0 flex-1 overflow-x-auto">
+      <div className="min-w-0 flex-1 overflow-x-auto md:overflow-x-clip">
         <div className="relative">
           <div className="grid" style={{ gridTemplateColumns: `repeat(${cols}, minmax(9rem, 1fr))`, minWidth: `${cols * 9}rem` }}>
             {layout.columns.map((col) => (
               <div key={col.resourceId} data-column={col.resourceId} className="min-w-0 border-l border-border">
-                <h3 className="flex h-9 items-center justify-center truncate px-2 font-inter text-sm font-semibold text-ink">
+                <h3 className="sticky top-0 z-10 flex h-9 items-center justify-center truncate border-b border-border bg-card px-2 font-inter text-sm font-semibold text-ink">
                   {resourceName(shop, col.resourceId, lang)}
                 </h3>
                 <div className="relative" style={{ height }}>
@@ -132,28 +109,44 @@ export function DayBook({
                     }
                     const item = e.item!;
                     const has = allergy.has(item.id);
+                    const st = STATE_STYLE[item.state];
+                    const compact = isCompact(e.startMin, e.endMin);
+                    const stateLabel = copy.sheet.state[item.state];
+                    const chip =
+                      st.chip !== null && (
+                        <span data-state={item.state} className={st.chip}>
+                          {st.icon === "check" && <Check aria-hidden="true" size={11} strokeWidth={3} />}
+                          {compact && st.icon !== null ? <span className="sr-only">{stateLabel}</span> : stateLabel}
+                        </span>
+                      );
+                    const name = (
+                      <span className={`truncate ${st.strike ? "line-through decoration-1" : ""}`}>{item.customerName}</span>
+                    );
                     return (
                       <button
                         key={item.id}
                         type="button"
                         data-booking={item.id}
+                        data-compact={compact ? "" : undefined}
                         style={pos}
-                        aria-label={`${range}, ${item.customerName}, ${serviceName(shop, item.serviceId, lang)}${has ? `, ${copy.allergy}` : ""}`}
+                        aria-label={`${range}, ${item.customerName}, ${serviceName(shop, item.serviceId, lang)}${item.state !== "confirmed" ? `, ${stateLabel}` : ""}${has ? `, ${copy.allergy}` : ""}`}
                         onClick={() => onBooking(item)}
-                        className={`focus-ring absolute inset-x-1 flex flex-col overflow-hidden rounded-lg border-l-4 px-2 py-1 text-left font-inter text-ink ${tint(item)} ${
-                          item.state === "no_show" ? "opacity-60" : ""
+                        className={`focus-ring absolute inset-x-1 flex flex-col justify-center overflow-hidden rounded-lg border-l-4 px-2 py-0.5 text-left font-inter text-ink transition-[filter,box-shadow] hover:brightness-95 active:brightness-90 ${tint(item)} ${
+                          item.state === "no_show" ? "opacity-70" : ""
                         }`}
                       >
                         <span className="flex items-center gap-1 text-sm font-semibold leading-tight">
-                          <span className="truncate">{item.customerName}</span>
+                          {name}
+                          {compact && <span className="shrink-0 text-xs font-normal tabular-nums">{clock(e.start)}</span>}
                           {has && <TriangleAlert data-allergy="" aria-hidden="true" size={14} className="shrink-0 text-light-text" />}
+                          <span className="ml-auto" />
+                          {chip}
                         </span>
-                        <span className="truncate text-xs leading-tight">
-                          {clock(e.start)} · {serviceName(shop, item.serviceId, lang)}
-                          {item.priceCents !== null && ` · ${formatRevenue(item.priceCents, lang)}`}
-                        </span>
-                        {item.state !== "confirmed" && (
-                          <span className="truncate text-xs font-semibold leading-tight">{copy.sheet.state[item.state]}</span>
+                        {!compact && (
+                          <span className="truncate text-xs leading-tight tabular-nums">
+                            {clock(e.start)} · {serviceName(shop, item.serviceId, lang)}
+                            {item.priceCents !== null && ` · ${formatRevenue(item.priceCents, lang)}`}
+                          </span>
                         )}
                       </button>
                     );

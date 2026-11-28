@@ -25,9 +25,9 @@ export function KpiRow({
   newMessages: number;
   onOpenTape: () => void;
 }) {
-  const tile = "flex min-h-11 flex-col justify-between gap-1 rounded-2xl border border-border bg-card px-3 py-2.5 text-left";
+  const tile = "flex min-h-11 flex-col justify-between gap-1 pl-card px-3 py-2.5 text-left";
   const label = "font-inter text-sm text-muted";
-  const num = "font-newsreader text-3xl leading-none text-ink";
+  const num = "pl-num text-3xl leading-none text-ink";
   return (
     <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
       <div data-kpi="appointments" className={tile}>

@@ -86,8 +86,8 @@ export const BUSINESS_COPY: Record<Lang, BusinessCopy> = {
       callsFormula: "Llamadas atendidas = llamadas del mes.",
       booked: "Citas que ha cerrado",
       bookedFormula: "Citas que ha cerrado = citas hechas por la recepcionista este mes, sin contar las canceladas.",
-      value: "Valen",
-      valueFormula: "Valen = suma de los precios de esas citas cuando se reservaron.",
+      value: "Valor de esas citas",
+      valueFormula: "Valor de esas citas = suma de los precios de esas citas cuando se reservaron.",
       phone: "Teléfono ahorrado",
       phoneFormula: (n, total) => `Teléfono ahorrado = suma de la duración real de ${n === 1 ? "la llamada" : `las ${n} llamadas`}: ${total}.`,
       gaps: "Huecos rellenados",
@@ -159,8 +159,8 @@ export const BUSINESS_COPY: Record<Lang, BusinessCopy> = {
       callsFormula: "Calls answered = calls of the month.",
       booked: "Appointments it booked",
       bookedFormula: "Appointments it booked = bookings made by the receptionist this month, not counting cancelled ones.",
-      value: "Worth",
-      valueFormula: "Worth = sum of those bookings' prices when they were made.",
+      value: "Value of those bookings",
+      valueFormula: "Value of those bookings = sum of those bookings' prices when they were made.",
       phone: "Phone time saved",
       phoneFormula: (n, total) => `Phone time saved = sum of the real duration of ${n === 1 ? "the call" : `the ${n} calls`}: ${total}.`,
       gaps: "Gaps refilled",
@@ -233,3 +233,13 @@ export function monthLabel(month: string, lang: Lang): string {
 
 export const dayShort = (iso: string, lang: Lang): string =>
   new Intl.DateTimeFormat(lang, { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${iso}T00:00:00Z`));
+
+/** "Sem. 2–8 nov" / "Wk 2–8 Nov" from the report's "2-8" (or "30") week label and its month. */
+export function weekRangeLabel(label: string, month: string, lang: Lang): string {
+  const [y, m] = month.split("-").map(Number);
+  const mon = new Intl.DateTimeFormat(lang, { month: "short", timeZone: "UTC" })
+    .format(new Date(Date.UTC(y, m - 1, 1)))
+    .replace(/\.$/, "");
+  const range = label.replace("-", "\u2013");
+  return `${lang === "es" ? "Sem." : "Wk"} ${range} ${mon}`;
+}

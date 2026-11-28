@@ -189,3 +189,39 @@ body {
     width: 100%;
   }
 }
+
+/* ── Machine polish: one card rhythm, gold-ruled headings, serif figures ── */
+.pl-card {
+  border-radius: 1rem;
+  border: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: 0 2px 10px rgb(36 29 20 / 0.06);
+}
+/* A heading with a thin gold rule that fades out to the right. */
+.pl-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.pl-heading::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--gold-dot), transparent);
+}
+/* Numbers in the display face with tabular figures. */
+.pl-num {
+  font-family: var(--font-newsreader), Georgia, serif;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+/* Chips and pills: a quiet hover and a pressed state. */
+.pl-chip {
+  transition: background-color 0.15s, transform 0.1s;
+}
+.pl-chip:hover {
+  background-color: var(--section);
+}
+.pl-chip:active {
+  transform: translateY(1px);
+  background-color: var(--border);
+}

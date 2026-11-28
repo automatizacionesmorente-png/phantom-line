@@ -27,7 +27,7 @@ import { pollUrl, useMachinePoll } from "./useMachinePoll";
 import { useReducedMotion } from "./useReducedMotion";
 import { useStoredView } from "./useStoredView";
 import { useTapePlayer } from "./useTapePlayer";
-import { panelId, tabId, ViewTabs } from "./ViewTabs";
+import { isSlimView, panelId, tabId, ViewTabs } from "./ViewTabs";
 
 export interface MachineScreenProps {
   shop: MachineShop;
@@ -97,6 +97,7 @@ export function MachineScreen({ shop, initial, label }: MachineScreenProps) {
   // One polite live region (13.2): the counts, or a COPY REPLY result until the counts change (7.7).
   const liveText = copyNote !== null && copyNote.over === announcement ? copyNote.text : announcement;
 
+  const slim = isSlimView(view);
   const playing = tape.state.playing;
   const spinning =
     !reducedMotion && playing !== null && !(revealDoneFor === playing && tape.state.transcripts[playing] !== undefined);
@@ -138,18 +139,18 @@ export function MachineScreen({ shop, initial, label }: MachineScreenProps) {
         </div>
       </header>
 
-      <MachineBody>
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
-          <TapeReels spinning={spinning} />
-          <div className="flex min-w-0 flex-1 items-center gap-3">
-            <MessageLight state={light} reducedMotion={reducedMotion} />
+      <MachineBody slim={slim}>
+        <div data-header={slim ? "slim" : "full"} className={`flex flex-wrap items-center ${slim ? "gap-x-3 gap-y-1" : "gap-x-5 gap-y-3"}`}>
+          <TapeReels spinning={spinning} small={slim} />
+          <div className={`flex min-w-0 flex-1 items-center ${slim ? "gap-2" : "gap-3"}`}>
+            <MessageLight state={light} reducedMotion={reducedMotion} small={slim} />
             <p role="status" aria-live="polite" className="sr-only">
               {liveText}
             </p>
-            <MessageCounter count={counts.new} lang={lang} copy={copy} />
+            <MessageCounter count={counts.new} lang={lang} copy={copy} slim={slim} />
           </div>
         </div>
-        {counts.new > 0 && (
+        {counts.new > 0 && !slim && (
           <p className="flex items-center gap-2 font-caveat text-2xl text-gold-text">
             <svg aria-hidden="true" width="42" height="22" viewBox="0 0 42 22" fill="none" className="shrink-0">
               <path

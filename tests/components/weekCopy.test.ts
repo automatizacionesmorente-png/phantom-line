@@ -16,3 +16,10 @@ describe("weekCopy", () => {
     expect(formatRevenue(12500, "es").replace(/\s/g, " ")).toBe("125 €");
   });
 });
+
+describe("money grouping and week labels", () => {
+  it("groups thousands in Spanish too", () => {
+    expect(formatRevenue(121690, "es").replace(/\s/g, " ")).toBe("1.216,90 €");
+    expect(formatRevenue(121690, "en")).toBe("€1,216.90");
+  });
+});

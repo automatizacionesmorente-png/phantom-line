@@ -102,7 +102,7 @@ describe("keyboard order", () => {
       "lun 16, 0 citas",
       // Tuesday 10, Ana at 16:00 (booked).
       "Hueco libre de 10:00 a 14:00",
-      "16:00-16:30, Ana, corte",
+      "16:00-16:30, Ana, corte, Pendiente",
       "Hueco libre de 17:00 a 20:00",
       "Hueco libre de 10:00 a 14:00",
       "Hueco libre de 17:00 a 20:00",

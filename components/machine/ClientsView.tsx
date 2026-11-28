@@ -6,6 +6,7 @@ import type { MachineShop } from "@/lib/owner/machineShop";
 import type { Lang } from "@/lib/sectors";
 import { ClientCard } from "./ClientCard";
 import { getClients } from "./clientApi";
+import { EmptyState } from "./EmptyState";
 import { LapsedList } from "./LapsedList";
 import type { MachineCopy } from "./machineCopy";
 
@@ -76,7 +77,7 @@ export function ClientsView({
           {failed && <p className="font-inter text-sm font-semibold text-muted">{c.failed}</p>}
           <LapsedList lapsed={book.lapsed} copy={copy} />
           {book.clients.length === 0 ? (
-            <p className="font-inter text-base text-text">{c.empty}</p>
+            <EmptyState>{c.empty}</EmptyState>
           ) : (
             <>
               <div className="flex flex-col gap-1">

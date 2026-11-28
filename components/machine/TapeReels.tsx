@@ -3,22 +3,22 @@
  * Message plays, and never with reduced motion (13.4): the spin class is simply not there.
  * Decorative, so `aria-hidden`.
  */
-export function TapeReels({ spinning }: { spinning: boolean }) {
+export function TapeReels({ spinning, small = false }: { spinning: boolean; small?: boolean }) {
   return (
-    <div data-reels={spinning ? "spinning" : "still"} aria-hidden="true" className="relative flex items-center gap-6">
-      <Reel spinning={spinning} />
-      <span className="absolute left-7 right-7 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-espresso/70" />
-      <Reel spinning={spinning} />
+    <div data-reels={spinning ? "spinning" : "still"} aria-hidden="true" className={`relative flex items-center ${small ? "gap-2" : "gap-6"}`}>
+      <Reel spinning={spinning} size={small ? 28 : 56} />
+      <span className={`absolute top-1/2 h-1 -translate-y-1/2 rounded-full bg-espresso/70 ${small ? "left-3.5 right-3.5" : "left-7 right-7 h-1.5"}`} />
+      <Reel spinning={spinning} size={small ? 28 : 56} />
     </div>
   );
 }
 
-function Reel({ spinning }: { spinning: boolean }) {
+function Reel({ spinning, size }: { spinning: boolean; size: number }) {
   return (
     <svg
       viewBox="0 0 64 64"
-      width="56"
-      height="56"
+      width={size}
+      height={size}
       className={`relative z-10 shrink-0 ${spinning ? "reel-spin" : ""}`}
       focusable="false"
     >

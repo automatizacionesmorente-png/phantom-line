@@ -48,12 +48,12 @@ export function WeekStrip({
               aria-pressed={d.date === selected}
               aria-label={`${name}, ${copy.weekCount(n, bookingWord)}`}
               onClick={() => onSelect(d.date)}
-              className={`focus-ring flex min-h-11 w-full ${expanded ? "flex-row items-center justify-between px-4" : "flex-col items-center justify-center px-1"} rounded-2xl border py-1.5 font-inter ${
+              className={`focus-ring ${d.date === selected ? "" : "pl-chip"} flex min-h-11 w-full ${expanded ? "flex-row items-center justify-between px-4" : "flex-col items-center justify-center px-1"} rounded-2xl border py-1.5 font-inter ${
                 d.date === selected ? "border-ink bg-espresso text-card" : "border-border bg-card text-ink"
               }`}
             >
               <span className="text-sm font-semibold capitalize">{d.date === today ? copy.nav.today : name}</span>
-              <span className={`font-newsreader text-xl ${d.date === selected ? "text-card" : "text-gold-text"}`}>{n}</span>
+              <span className={`pl-num text-xl ${d.date === selected ? "text-card" : "text-gold-text"}`}>{n}</span>
             </button>
             {expanded && n > 0 && (
               <ul className="mt-1 flex flex-col gap-1 pl-3">

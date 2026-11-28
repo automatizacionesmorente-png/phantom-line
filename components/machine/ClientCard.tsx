@@ -92,7 +92,7 @@ export function ClientCard({
   }
 
   return (
-    <li ref={root} data-client={client.id} className="flex flex-col gap-2 rounded-[18px] border border-border bg-card p-3.5">
+    <li ref={root} data-client={client.id} className="pl-card flex flex-col gap-2 p-3.5">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <h3 className="font-newsreader text-xl font-medium text-ink break-words">{client.name}</h3>
         <span className="font-inter text-sm text-muted">{client.phone}</span>

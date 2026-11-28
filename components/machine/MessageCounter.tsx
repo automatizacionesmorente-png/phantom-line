@@ -6,7 +6,14 @@ import type { MachineCopy } from "./machineCopy";
  * The Counter (owner-machine 6.3): "Tienes *3 mensajes nuevos*" in Newsreader, the number
  * big inside the one gold phrase, singular for one. It is the page's heading.
  */
-export function MessageCounter({ count, lang, copy }: { count: number; lang: Lang; copy: MachineCopy }) {
+export function MessageCounter({ count, lang, copy, slim = false }: { count: number; lang: Lang; copy: MachineCopy; slim?: boolean }) {
+  if (slim) {
+    return (
+      <h1 className="font-newsreader text-lg font-medium tracking-tight text-ink">
+        {count > 0 ? <span className="tabular-nums">{formatMessageCount(count, lang)}</span> : <>{copy.counter.noneBefore} <span className="text-gold-text">{copy.counter.noneGold}</span></>}
+      </h1>
+    );
+  }
   if (count <= 0) {
     return (
       <h1 className="font-newsreader text-3xl font-medium tracking-tight text-ink sm:text-4xl">

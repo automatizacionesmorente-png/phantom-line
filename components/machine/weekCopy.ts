@@ -16,6 +16,7 @@ export function formatRevenue(cents: number, lang: Lang): string {
   return new Intl.NumberFormat(lang, {
     style: "currency",
     currency: "EUR",
+    useGrouping: "always",
     minimumFractionDigits: cents % 100 === 0 ? 0 : 2,
     maximumFractionDigits: 2,
   }).format(cents / 100);

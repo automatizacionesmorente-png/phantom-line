@@ -11,7 +11,7 @@ export function LapsedList({ lapsed, copy }: { lapsed: ClientsResponse["lapsed"]
   return (
     <section aria-labelledby="lapsed-heading" className="flex flex-col gap-3">
       <div>
-        <h3 id="lapsed-heading" className="font-newsreader text-xl font-medium text-ink">
+        <h3 id="lapsed-heading" className="pl-heading font-newsreader text-xl font-medium text-ink">
           {c.lapsedTitle}
         </h3>
         <p className="font-inter text-sm text-muted">{c.lapsedHint}</p>

@@ -21,7 +21,7 @@ const REPORT: MonthResponse = {
   deltaPct: { taken: 12, expenses: -5, left: null },
   weeks: [
     { label: "2-8 nov", takenCents: 100000 },
-    { label: "9-15 nov", takenCents: 150000 },
+    { label: "9-15", takenCents: 150000 },
   ],
   byWorker: [{ resourceId: chair, takenCents: 250000 }],
   topServices: [{ serviceId: service, count: 7, takenCents: 140000 }],
@@ -104,7 +104,7 @@ describe("My business", () => {
   it("lists the weekly bars, the worker and the top services by name", async () => {
     view();
     await screen.findByTestId("big-taken");
-    expect(screen.getByText("9-15 nov")).toBeTruthy();
+    expect(screen.getByText("Sem. 9–15 nov")).toBeTruthy();
     expect(screen.getAllByText(demoShop.resources[0].name.es).length).toBeGreaterThan(0);
     expect(screen.getAllByText(demoShop.services[0].name.es).length).toBeGreaterThan(0);
   });

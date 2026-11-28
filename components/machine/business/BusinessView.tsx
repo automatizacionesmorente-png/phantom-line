@@ -11,7 +11,7 @@ import { CONTROL_BUTTON, GOLD_GRADIENT, PRIMARY_BUTTON } from "../controlButton"
 import { deleteExpense, exportUrl, getExpenses, getMonth } from "../salonApi";
 import { formatDuration, formatRevenue } from "../weekCopy";
 import { Bars } from "./Bars";
-import { BUSINESS_COPY, monthLabel, type BusinessCopy } from "./businessCopy";
+import { BUSINESS_COPY, monthLabel, weekRangeLabel, type BusinessCopy } from "./businessCopy";
 import { ExpenseDialog } from "./ExpenseDialog";
 import { ExpensesList } from "./ExpensesList";
 import { MonthHeader } from "./MonthHeader";
@@ -68,16 +68,16 @@ function Big({
 
 function Stat({ label, value, formula, testId }: { label: string; value: string; formula: string; testId?: string }) {
   return (
-    <div data-testid={testId} title={formula} className="flex min-w-0 flex-col gap-0.5 rounded-2xl border border-border bg-card px-3 py-2.5">
+    <div data-testid={testId} title={formula} className="pl-card flex min-w-0 flex-col gap-0.5 px-3 py-2.5">
       <dt className="font-inter text-xs text-muted">{label}</dt>
-      <dd className="m-0 font-newsreader text-2xl font-medium tracking-tight text-ink">{value}</dd>
+      <dd className="m-0 font-newsreader pl-num text-2xl font-medium tracking-tight text-ink">{value}</dd>
     </div>
   );
 }
 
 const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
   <section aria-label={title} className="flex flex-col gap-2">
-    <h3 className="m-0 font-newsreader text-xl font-medium tracking-tight text-ink">{title}</h3>
+    <h3 className="pl-heading m-0 font-newsreader text-xl font-medium tracking-tight text-ink">{title}</h3>
     {children}
   </section>
 );
@@ -214,7 +214,7 @@ export function BusinessView({
             <Bars
               label={copy.weeks}
               title={copy.weeksFormula}
-              items={report.weeks.map((w) => ({ key: w.label, label: w.label, cents: w.takenCents, valueText: formatRevenue(w.takenCents, lang) }))}
+              items={report.weeks.map((w) => ({ key: w.label, label: weekRangeLabel(w.label, month, lang), cents: w.takenCents, valueText: formatRevenue(w.takenCents, lang) }))}
             />
           </Section>
 

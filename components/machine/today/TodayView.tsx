@@ -326,8 +326,8 @@ export function TodayView({
         </>
       )}
 
-      <section data-cash-strip="" aria-label={t.cash.title} className="flex flex-col gap-2 rounded-2xl border border-border bg-card p-3.5">
-        <h3 className="font-newsreader text-xl text-ink">{t.cash.title}</h3>
+      <section data-cash-strip="" aria-label={t.cash.title} className="pl-card flex flex-col gap-2 p-3.5">
+        <h3 className="pl-heading font-newsreader text-xl text-ink">{t.cash.title}</h3>
         {cash === null ? (
           cashFailed && <p className="font-inter text-sm text-muted">{t.cash.failed}</p>
         ) : cash.count === 0 ? (
