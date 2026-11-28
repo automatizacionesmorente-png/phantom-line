@@ -1,5 +1,5 @@
 /**
- * The demo shop's living month (salon spec 2.6): about 30 days of past bookings across both chairs,
+ * The demo shop's living month (salon spec 2.6): past bookings from the 1st of the previous month across both chairs,
  * their payments, expenses (one fixed monthly), blocks, settings and the outbox. Pure and
  * deterministic: the clock, the shop and the id source come in. Every row it makes is `curated`.
  *
@@ -110,7 +110,7 @@ export interface CuratedSalon {
 /** A Google review link of the right shape that points at nothing real. */
 export const SAMPLE_REVIEW_URL = "https://g.page/r/demo-peluqueria-lola/review";
 
-const DAYS_BACK = 30;
+/** The seeded history starts on the 1st of the previous calendar month, so both months are whole. */
 const BASE_MIX = [
   "corte-mujer", "tinte-raiz", "corte-hombre", "mechas", "lavar-peinar", "balayage", "tinte-completo",
   "corte-mujer", "keratina", "matiz", "hidratante", "corte-hombre", "recogido", "tinte-raiz", "permanente",
@@ -211,7 +211,7 @@ export function buildSalonMonth(i: Input): CuratedSalon {
     reason: "Curso de colorimetría",
   });
 
-  // ---- Bookings: both chairs, every open day of the last 30, around what is already there.
+  // ---- Bookings: both chairs, every open day since the 1st of the previous month, around what is already there.
   const busy = new Map<string, { start: Temporal.Instant; end: Temporal.Instant }[]>(chairs.map((c) => [c, []]));
   for (const h of i.history) busy.get(h.resourceId)?.push({ start: h.startsAt, end: h.endsAt });
   for (const b of blocks) for (const c of b.resourceId ? [b.resourceId] : chairs) busy.get(c)?.push({ start: b.startsAt, end: b.endsAt });
@@ -223,7 +223,8 @@ export function buildSalonMonth(i: Input): CuratedSalon {
   let mix = 0;
   let skip = 0;
   let gap = 0;
-  for (let k = DAYS_BACK; k >= 1; k--) {
+  const daysBack = today.since(Temporal.PlainDate.from(`${addMonths(monthOf(now, tz), -1)}-01`), { largestUnit: "days" }).days;
+  for (let k = daysBack; k >= 1; k--) {
     const date = today.subtract({ days: k });
     for (const session of sessionsOn(date, rules)) {
       chairs.forEach((chair, ci) => {
@@ -251,8 +252,17 @@ export function buildSalonMonth(i: Input): CuratedSalon {
   }
   draft.sort((a, b) => cmp(a.start, b.start) || a.chair.localeCompare(b.chair));
 
-  const n = draft.length;
-  const noShowAt = new Set([Math.floor(n * 0.18), Math.floor(n * 0.5), Math.floor(n * 0.83)]);
+  // Three no-shows in each calendar month that has enough bookings (spread through it).
+  const noShowAt = new Set<number>();
+  const perMonth = new Map<string, number[]>();
+  draft.forEach((d, idx) => {
+    const m = monthOf(d.start, tz);
+    perMonth.set(m, [...(perMonth.get(m) ?? []), idx]);
+  });
+  for (const list of perMonth.values()) {
+    if (list.length < 12) continue;
+    for (const f of [0.18, 0.5, 0.83]) noShowAt.add(list[Math.floor(list.length * f)]);
+  }
   const callSlots = new Map<string, number>();
   const calls: CuratedCall[] = [];
   /** A short answered call on the open day before `start`, at the next free six-minute slot. */
@@ -418,7 +428,7 @@ export function buildSalonMonth(i: Input): CuratedSalon {
     pay(h.id, priceOf(shop, h.serviceId), h.endsAt, idx + 1000);
   });
   // A few products sold on their own, on past open days.
-  [3, 9, 16, 23].forEach((back, idx) => {
+  [3, 9, 16, 23, 31, 38, 45, 52].filter((back) => back < daysBack).forEach((back, idx) => {
     const day = openDayNear(today.subtract({ days: back }), -1, rules);
     const p = PRODUCTS[idx % PRODUCTS.length];
     payments.push({
@@ -426,12 +436,12 @@ export function buildSalonMonth(i: Input): CuratedSalon {
       amountCents: p.cents,
       productCents: p.cents,
       productLabel: p.label,
-      method: METHODS[idx + 2],
+      method: METHODS[(idx + 2) % METHODS.length],
       paidAt: sessionsOn(day, rules)[0].open.add({ minutes: 50 + idx * 25 }),
     });
   });
 
-  // ---- Expenses: this month and last, one of them fixed.
+  // ---- Expenses: this month and the whole last one; the rent and the gestoría are fixed monthly templates that start well before it.
   const cur = monthOf(now, tz);
   const prev = addMonths(cur, -1);
   const dayIn = (m: string, d: number) => `${m}-${String(d).padStart(2, "0")}`;
@@ -441,6 +451,7 @@ export function buildSalonMonth(i: Input): CuratedSalon {
     { concept: "Gestoría", category: "other", amountCents: 6_050, day: null, recurring: true, startMonth: addMonths(cur, -5), endMonth: null },
     { concept: "Tintes y oxidantes (distribuidor)", category: "products", amountCents: 58_900, day: dayIn(prev, 5), recurring: false, startMonth: null, endMonth: null },
     { concept: "Luz y agua", category: "utilities", amountCents: 17_420, day: dayIn(prev, 9), recurring: false, startMonth: null, endMonth: null },
+    { concept: "Champús y mascarillas para la venta", category: "products", amountCents: 19_500, day: dayIn(prev, 14), recurring: false, startMonth: null, endMonth: null },
     { concept: "Tintes y oxidantes (distribuidor)", category: "products", amountCents: 64_300, day: dayIn(cur, upTo(4)), recurring: false, startMonth: null, endMonth: null },
     { concept: "Luz y agua", category: "utilities", amountCents: 18_650, day: dayIn(cur, upTo(9)), recurring: false, startMonth: null, endMonth: null },
     { concept: "Champús y mascarillas para la venta", category: "products", amountCents: 21_800, day: dayIn(cur, upTo(12)), recurring: false, startMonth: null, endMonth: null },

@@ -291,7 +291,7 @@ describe("the demo month (salon 2.6)", () => {
     await run();
     const before = await counts();
     const old = NOW.subtract({ hours: 24 * 20 });
-    const b = await addBooking(t, D, { start: old, name: "Visitante" });
+    const b = await addBooking(t, D, { start: old, name: "Visitante", resourceId: "chair-9" }) // a chair the seeded month never fills;
     await t.handle.db.insert(payments).values({ shopId: D, bookingId: b, amountCents: 1000, method: "cash", paidAt: new Date(old.epochMilliseconds) });
     await t.handle.db.insert(timeBlocks).values({ shopId: D, startsAt: new Date(old.epochMilliseconds), endsAt: new Date(old.add({ hours: 2 }).epochMilliseconds) });
     await t.handle.db.insert(expenses).values({ shopId: D, concept: "Visitante", category: "other", amountCents: 100, day: "2026-11-01" });
