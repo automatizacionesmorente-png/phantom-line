@@ -49,6 +49,15 @@ The ideas come from the Nece-sites team's earlier private salon app (from 25 Oct
 
 Not built, on purpose: legal invoices (VeriFactu; the app exports numbers for the accountant instead), automatic WhatsApp sending (every message is a one-tap `wa.me` link), and a real phone line.
 
+## It answers without spending an API token
+
+The Code_Brain reads every turn first and answers by itself whenever it is sure: bookings, hours,
+prices, the shop's own FAQ and a built-in Universal_FAQ (who are you, a joke, the weather, "what is the
+capital of France", compliments, complaints, "say that again"), in Spanish and English. Only when it is
+unsure does it ask the Gemini model, and if that fails or the free quota runs out it keeps answering
+from code. Set `PHANTOM_BRAIN_ONLY=1` and the model is never called: zero tokens, same demo.
+What nobody planned for ends as a note for the owner, never an invented answer.
+
 ## Architecture
 
 - Next.js 16 (App Router), TypeScript strict, Tailwind 4, Postgres on Neon with Drizzle. Gemini (`@google/genai`) for conversation and optional neural voice, on the server only.
