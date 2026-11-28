@@ -445,17 +445,20 @@ export function buildSalonMonth(i: Input): CuratedSalon {
   const cur = monthOf(now, tz);
   const prev = addMonths(cur, -1);
   const dayIn = (m: string, d: number) => `${m}-${String(d).padStart(2, "0")}`;
-  const upTo = (d: number) => Math.min(d, today.day);
+  // The same bills fall on the same days of both months, and this month's only exist once their day has come,
+  // so the month so far and the same days of last month compare like with like.
   const expenses: CuratedExpense[] = [
     { concept: "Alquiler del local", category: "rent", amountCents: 90_000, day: null, recurring: true, startMonth: addMonths(cur, -5), endMonth: null },
     { concept: "Gestoría", category: "other", amountCents: 6_050, day: null, recurring: true, startMonth: addMonths(cur, -5), endMonth: null },
     { concept: "Tintes y oxidantes (distribuidor)", category: "products", amountCents: 58_900, day: dayIn(prev, 5), recurring: false, startMonth: null, endMonth: null },
     { concept: "Luz y agua", category: "utilities", amountCents: 17_420, day: dayIn(prev, 9), recurring: false, startMonth: null, endMonth: null },
     { concept: "Champús y mascarillas para la venta", category: "products", amountCents: 19_500, day: dayIn(prev, 14), recurring: false, startMonth: null, endMonth: null },
-    { concept: "Tintes y oxidantes (distribuidor)", category: "products", amountCents: 64_300, day: dayIn(cur, upTo(4)), recurring: false, startMonth: null, endMonth: null },
-    { concept: "Luz y agua", category: "utilities", amountCents: 18_650, day: dayIn(cur, upTo(9)), recurring: false, startMonth: null, endMonth: null },
-    { concept: "Champús y mascarillas para la venta", category: "products", amountCents: 21_800, day: dayIn(cur, upTo(12)), recurring: false, startMonth: null, endMonth: null },
+    { concept: "Tintes y oxidantes (distribuidor)", category: "products", amountCents: 64_300, day: dayIn(cur, 5), recurring: false, startMonth: null, endMonth: null },
+    { concept: "Luz y agua", category: "utilities", amountCents: 18_650, day: dayIn(cur, 9), recurring: false, startMonth: null, endMonth: null },
+    { concept: "Champús y mascarillas para la venta", category: "products", amountCents: 21_800, day: dayIn(cur, 14), recurring: false, startMonth: null, endMonth: null },
   ];
+
+  expenses.splice(0, expenses.length, ...expenses.filter((e) => e.recurring || e.day! <= today.toString()));
 
   const settings: CuratedSettings = {
     automations: { ...NO_AUTOMATIONS, reminder: true, review: true },

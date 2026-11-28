@@ -202,6 +202,19 @@ describe("GET month", () => {
     expect(dec.json).toMatchObject({ takenCents: 9999, deltaPct: { taken: 150 } });
   });
 
+  it("compares the current month with the same days of the previous one, and a past month with a whole one", async () => {
+    await addPayment(REAL, "2026-11-05T09:00:00Z", 3000);
+    await addPayment(REAL, "2026-10-08T09:00:00Z", 2000); // by the 10th
+    await addPayment(REAL, "2026-10-20T09:00:00Z", 8000); // after the 10th: not in the comparison
+    await addPayment(REAL, "2026-09-15T09:00:00Z", 5000);
+    await api.createExpense(REAL, spend({ amountCents: 500, day: "2026-10-04" }), open());
+    await api.createExpense(REAL, spend({ amountCents: 9000, day: "2026-10-25" }), open());
+    const now = await api.month(REAL, "2026-11", open());
+    expect(now.json).toMatchObject({ comparedThrough: 10, takenCents: 3000, deltaPct: { taken: 50, expenses: -100 } });
+    const oct = await api.month(REAL, "2026-10", open());
+    expect(oct.json).toMatchObject({ comparedThrough: null, takenCents: 10_000, deltaPct: { taken: 100 } });
+  });
+
   it("works with nothing at all, and counts a sent gap message toward gaps refilled", async () => {
     const empty = await api.month(REAL, "2026-11", open());
     expect(empty.json).toMatchObject({ takenCents: 0, deltaPct: { taken: null, expenses: null, left: null }, topServices: [], byWorker: [] });

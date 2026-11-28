@@ -8,7 +8,7 @@ import { buildCuratedSet, type CuratedSet } from "@/lib/demo/curated";
 import { priceOf } from "@/lib/demo/month";
 import { lolaSeedProfile } from "@/lib/db/seed";
 import { bookingState } from "@/lib/salon/state";
-import { addMonths, monthOf } from "@/lib/salon/month";
+import { addMonths, comparedThrough, monthOf } from "@/lib/salon/month";
 import { isReviewUrl } from "@/lib/salon/settings";
 
 const tz = lolaSeedProfile.timeZone;
@@ -141,7 +141,7 @@ function check(now: Temporal.Instant) {
     if (e.recurring) expect(e.day).toBeNull();
     else expect(e.day! <= today.toString()).toBe(true);
   }
-  expect(salon.expenses.filter((e) => e.day?.startsWith(cur)).length).toBeGreaterThanOrEqual(2);
+  expect(salon.expenses.filter((e) => e.day?.startsWith(cur)).length).toBe([5, 9, 14].filter((d) => d <= today.day).length);
 
   // Settings and outbox.
   expect(salon.settings.automations).toMatchObject({ reminder: true, review: true });
@@ -215,9 +215,12 @@ describe("the demo month is consistent", () => {
     expect(strip(build(FIXED[0]))).toBe(strip(build(FIXED[0])));
   });
 
-  it("the previous calendar month is whole, so the month-over-month figures are plausible", () => {
+  it("the previous calendar month is whole, so the month-so-far figures are plausible at any reset day", () => {
     // Includes the 2nd, 15th and 28th (all open days, Madrid), and a month change.
-    const instants = ["2026-12-02T10:00:00Z", "2026-12-15T12:00:00Z", "2026-12-28T18:00:00Z", "2027-01-15T12:00:00Z", "2027-02-03T10:00:00Z", "2027-02-26T18:00:00Z", "2027-05-28T18:00:00Z"];
+    const everyDay = ["2026-12", "2027-01", "2027-02", "2027-03", "2027-05"].flatMap((m) =>
+      Array.from({ length: 27 }, (_, k) => `${m}-${String(k + 2).padStart(2, "0")}T18:00:00Z`),
+    );
+    const instants = [...everyDay, "2026-12-02T10:00:00Z", "2026-12-15T12:00:00Z", "2026-12-28T18:00:00Z", "2027-01-15T12:00:00Z", "2027-02-03T10:00:00Z", "2027-02-26T18:00:00Z", "2027-05-28T18:00:00Z"];
     const pct = (cur: number, prev: number) => Math.abs(((cur - prev) / prev) * 100);
     for (const iso of instants) {
       const now = Temporal.Instant.from(iso);
@@ -228,26 +231,25 @@ describe("the demo month is consistent", () => {
       const first = Temporal.PlainDate.from(`${prev}-01`);
       // History reaches the 1st of the previous month: its first open day has bookings.
       expect(set.salon.month.some((b) => localDateOf(b.startsAt, tz).since(first).days <= 2), iso).toBe(true);
-      const day = (p: { paidAt: Temporal.Instant }) => localDateOf(p.paidAt, tz).toString();
-      const byDay = (m: string) => {
-        const per = new Map<string, number>();
-        for (const p of set.salon.payments) if (monthOf(p.paidAt, tz) === m && day(p) !== today.toString()) per.set(day(p), (per.get(day(p)) ?? 0) + p.amountCents);
-        return per;
-      };
-      const total = (m: ReadonlyMap<string, number>) => [...m.values()].reduce((a, b) => a + b, 0);
-      const [pc, pp] = [byDay(cur), byDay(prev)];
-      // What the Business tab shows is the month so far against the whole previous month: for "taken" that only
-      // compares like with like late in the month, so earlier it is judged per open day (the pace of the shop).
-      if (today.day >= 25) expect(pct(total(pc), total(pp)), `${iso} taken vs whole month`).toBeLessThanOrEqual(25);
-      expect(pct(total(pc) / pc.size, total(pp) / pp.size), `${iso} taken per open day`).toBeLessThanOrEqual(pc.size >= 5 ? 25 : 45); // one or two days are just one weekday's takings
-      // Expenses: the whole of this month is already on the books, so the figure compares as shown.
-      const spent = (m: string) =>
-        set.salon.expenses.reduce((n, e) => n + ((e.recurring ? e.startMonth! <= m && (e.endMonth === null || e.endMonth >= m) : e.day!.slice(0, 7) === m) ? e.amountCents : 0), 0);
-      expect(pct(spent(cur), spent(prev)), `${iso} expenses`).toBeLessThanOrEqual(25);
+      // What the Business tab shows: the month so far against the same days of the previous month.
+      const through = comparedThrough(cur, now, tz)!;
+      const taken = (m: string, upTo: number) =>
+        set.salon.payments.filter((p) => monthOf(p.paidAt, tz) === m && p.paidAt.toZonedDateTimeISO(tz).day <= upTo).reduce((n, p) => n + p.amountCents, 0);
+      // In the first days the two windows hold different weekdays (a closed Sunday and Monday on one side only),
+      // so the takings are only comparable from the 13th on; expenses are comparable always.
+      if (through >= 13) expect(pct(taken(cur, through), taken(prev, through)), `${iso} taken so far`).toBeLessThanOrEqual(25);
+      // Expenses: fixed templates count whole in both months, one-offs only up to the same day.
+      const spent = (m: string, upTo: number) =>
+        set.salon.expenses.reduce(
+          (n, e) => n + ((e.recurring ? e.startMonth! <= m && (e.endMonth === null || e.endMonth >= m) : e.day!.slice(0, 7) === m && Number(e.day!.slice(8)) <= upTo) ? e.amountCents : 0),
+          0,
+        );
+      expect(pct(spent(cur, through), spent(prev, through)), `${iso} expenses`).toBeLessThanOrEqual(25);
       for (const e of set.salon.expenses.filter((x) => x.recurring)) expect(e.startMonth! < prev, iso).toBe(true);
       // Exactly 3 no-shows in each month that has a week or more of bookings.
       for (const m of [cur, prev]) {
-        const rows = set.salon.month.filter((b) => monthOf(b.startsAt, tz) === m && cmp(b.endsAt, now) <= 0);
+        const rows = set.salon.month.filter((b) => monthOf(b.startsAt, tz) === m && cmp(b.endsAt, now) <= 0 && !localDateOf(b.startsAt, tz).equals(today));
+        // (the seeded days before today; today's own finished visits are added apart)
         const ns = rows.filter((b) => b.noShow).length;
         if (rows.length >= 12) expect(ns, `${iso} ${m}`).toBe(3);
         else expect(ns).toBeLessThanOrEqual(3);

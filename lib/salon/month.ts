@@ -74,6 +74,8 @@ export interface MonthReport extends MonthTotals {
   month: string;
   timeZone: string;
   /** Percent change against the previous month, whole numbers. Null without a previous month; each figure is null when its previous total is 0. */
+  /** Day of the month through which the figures were compared with the previous month (the current month); null = whole months. */
+  comparedThrough: number | null;
   deltaPct: { taken: number | null; expenses: number | null; left: number | null } | null;
   weeks: { label: string; takenCents: number }[];
   byWorker: { resourceId: string; takenCents: number }[];
@@ -98,6 +100,8 @@ export interface MonthInput {
   calls: readonly MonthCall[];
   gapSends: readonly GapSend[];
   prev?: MonthTotals;
+  /** The day of the month `prev` runs through (the month so far), or null/absent when `prev` is a whole month. */
+  comparedThrough?: number | null;
   /** Catalogue price by service id, for bookings with no price snapshot. */
   catalogue?: Readonly<Record<string, number>>;
 }
@@ -168,6 +172,22 @@ function delta(cur: number, prev: number): number | null {
   const pct = ((cur - prev) / Math.abs(prev)) * 100;
   // Half away from zero, so +12.5 and -12.5 round alike (Math.round would send -12.5 to -12).
   return Math.sign(pct) * Math.round(Math.abs(pct));
+}
+
+/** The day of the month a comparison runs through: today's, when `month` is the current one; null for any other month. */
+export function comparedThrough(month: string, now: Temporal.Instant, tz: string): number | null {
+  const today = now.toZonedDateTimeISO(tz).toPlainDate();
+  return monthOfDate(today) === month ? today.day : null;
+}
+
+/**
+ * The totals of a month up to its `through`-th day (the 1st through that day, local time), for comparing the
+ * month so far with the same days of the previous one. Monthly templates count whole; one-offs only up to that day.
+ */
+export function sameDaysTotals(payments: readonly PaymentRow[], expenses: readonly ExpenseItem[], through: number, tz: string): MonthTotals {
+  const takenCents = sum(payments.filter((p) => p.paidAt.toZonedDateTimeISO(tz).day <= through).map((p) => p.amountCents));
+  const expensesCents = sum(expenses.filter((e) => e.recurring || Number(e.day.slice(8, 10)) <= through).map((e) => e.amountCents));
+  return { takenCents, expensesCents, leftCents: takenCents - expensesCents };
 }
 
 export function monthReport(input: MonthInput): MonthReport {
@@ -244,6 +264,7 @@ export function monthReport(input: MonthInput): MonthReport {
     takenCents,
     expensesCents,
     leftCents: takenCents - expensesCents,
+    comparedThrough: input.comparedThrough ?? null,
     deltaPct: input.prev
       ? {
           taken: delta(takenCents, input.prev.takenCents),

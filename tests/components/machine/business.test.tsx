@@ -18,6 +18,7 @@ const REPORT: MonthResponse = {
   takenCents: 250000,
   expensesCents: 90000,
   leftCents: 160000,
+  comparedThrough: null,
   deltaPct: { taken: 12, expenses: -5, left: null },
   weeks: [
     { label: "2-8 nov", takenCents: 100000 },
@@ -80,7 +81,8 @@ describe("My business", () => {
     view();
     const taken = await screen.findByTestId("big-taken");
     expect(taken.textContent).toMatch(/2\.?500/);
-    expect(taken.textContent).toMatch(/12\s?%/);
+    expect(taken.textContent).toMatch(/12\s?%.*mes pasado/);
+    expect(taken.textContent).not.toMatch(/a esta altura/);
     expect(screen.getByTestId("big-expenses").textContent).toMatch(/900/);
     expect(screen.getByTestId("big-expenses").textContent).toMatch(/5\s?%/);
     expect(screen.getByTestId("big-left").textContent).toMatch(/1\.?600/);
@@ -89,6 +91,14 @@ describe("My business", () => {
     expect(screen.getByRole("heading", { name: /Lo que ha hecho tu recepcionista/ })).toBeTruthy();
     expect(screen.getByText("31")).toBeTruthy();
     expect(screen.getByText("2 no vinieron", { exact: false })).toBeTruthy();
+  });
+
+  it("says 'a esta altura' when the month so far is compared with the same days of last month", async () => {
+    report = { ...REPORT, comparedThrough: 10 };
+    view();
+    const taken = await screen.findByTestId("big-taken");
+    expect(taken.textContent).toMatch(/12\s?%.*mes pasado a esta altura/);
+    expect(screen.getByTestId("big-expenses").textContent).toMatch(/a esta altura/);
   });
 
   it("hides gaps refilled at zero and shows it above zero", async () => {

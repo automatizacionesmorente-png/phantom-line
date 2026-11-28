@@ -12,9 +12,9 @@ export interface BusinessCopy {
   expensesFormula: string;
   leftFormula: string;
   /** "12 % more than last month", with the arrow for sighted users. */
-  moreThan: (pct: number) => string;
-  lessThan: (pct: number) => string;
-  same: string;
+  moreThan: (pct: number, soFar?: boolean) => string;
+  lessThan: (pct: number, soFar?: boolean) => string;
+  same: (soFar?: boolean) => string;
   receptionist: {
     title: string;
     calls: string;
@@ -77,9 +77,9 @@ export const BUSINESS_COPY: Record<Lang, BusinessCopy> = {
     takenFormula: "Has cobrado = suma de lo cobrado en las citas y ventas del mes.",
     expensesFormula: "Gastos = gastos sueltos del mes más los fijos que están activos ese mes.",
     leftFormula: "Te queda = cobrado menos gastos.",
-    moreThan: (p) => `${p} % más que el mes pasado`,
-    lessThan: (p) => `${p} % menos que el mes pasado`,
-    same: "igual que el mes pasado",
+    moreThan: (p, soFar) => `${p} % más que el mes pasado${soFar ? " a esta altura" : ""}`,
+    lessThan: (p, soFar) => `${p} % menos que el mes pasado${soFar ? " a esta altura" : ""}`,
+    same: (soFar) => `igual que el mes pasado${soFar ? " a esta altura" : ""}`,
     receptionist: {
       title: "Lo que ha hecho tu recepcionista este mes",
       calls: "Llamadas atendidas",
@@ -150,9 +150,9 @@ export const BUSINESS_COPY: Record<Lang, BusinessCopy> = {
     takenFormula: "Taken = sum of what was collected on appointments and sales this month.",
     expensesFormula: "Expenses = the month's one-off expenses plus the monthly ones active that month.",
     leftFormula: "Left = taken minus expenses.",
-    moreThan: (p) => `${p}% more than last month`,
-    lessThan: (p) => `${p}% less than last month`,
-    same: "same as last month",
+    moreThan: (p, soFar) => `${p}% more than last month${soFar ? " at this point" : ""}`,
+    lessThan: (p, soFar) => `${p}% less than last month${soFar ? " at this point" : ""}`,
+    same: (soFar) => `same as last month${soFar ? " at this point" : ""}`,
     receptionist: {
       title: "What your receptionist did this month",
       calls: "Calls answered",

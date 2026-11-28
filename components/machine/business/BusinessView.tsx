@@ -27,6 +27,7 @@ function Big({
   label,
   cents,
   pct,
+  soFar,
   upIs,
   lang,
   copy,
@@ -36,6 +37,8 @@ function Big({
   label: string;
   cents: number;
   pct: number | null | undefined;
+  /** True when the comparison is the month so far against the same days of the previous one. */
+  soFar?: boolean;
   /** Whether a rise is good news (takings, what is left) or bad (expenses). */
   upIs: Tone;
   lang: Lang;
@@ -48,7 +51,7 @@ function Big({
     const good = pct === 0 ? null : up === (upIs === "good");
     delta = {
       arrow: pct === 0 ? "=" : up ? "▲" : "▼",
-      text: pct === 0 ? copy.same : up ? copy.moreThan(pct) : copy.lessThan(Math.abs(pct)),
+      text: pct === 0 ? copy.same(soFar) : up ? copy.moreThan(pct, soFar) : copy.lessThan(Math.abs(pct), soFar),
       cls: good === null ? "text-muted" : good ? "text-gold-text" : "text-light-text",
     };
   }
@@ -183,9 +186,9 @@ export function BusinessView({
       {ready && report && r && expenses && (
         <>
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-            <Big id="taken" label={copy.big.taken} cents={report.takenCents} pct={report.deltaPct?.taken} upIs="good" lang={lang} copy={copy} formula={copy.takenFormula} />
-            <Big id="expenses" label={copy.big.expenses} cents={report.expensesCents} pct={report.deltaPct?.expenses} upIs="bad" lang={lang} copy={copy} formula={copy.expensesFormula} />
-            <Big id="left" label={copy.big.left} cents={report.leftCents} pct={report.deltaPct?.left} upIs="good" lang={lang} copy={copy} formula={copy.leftFormula} />
+            <Big id="taken" label={copy.big.taken} cents={report.takenCents} pct={report.deltaPct?.taken} soFar={report.comparedThrough !== null} upIs="good" lang={lang} copy={copy} formula={copy.takenFormula} />
+            <Big id="expenses" label={copy.big.expenses} cents={report.expensesCents} pct={report.deltaPct?.expenses} soFar={report.comparedThrough !== null} upIs="bad" lang={lang} copy={copy} formula={copy.expensesFormula} />
+            <Big id="left" label={copy.big.left} cents={report.leftCents} pct={report.deltaPct?.left} soFar={report.comparedThrough !== null} upIs="good" lang={lang} copy={copy} formula={copy.leftFormula} />
           </div>
           {empty && <p className="m-0 font-inter text-sm text-muted">{copy.empty}</p>}
 

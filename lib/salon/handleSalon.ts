@@ -43,12 +43,14 @@ import { OUTBOX_KINDS, type SalonSettings } from "./settings";
 import {
   GAP_WINDOW_HOURS,
   addMonths,
+  comparedThrough,
   exportCsv,
   monthBounds,
   monthExpenses,
   monthInWindow,
   monthOf,
   monthReport,
+  sameDaysTotals,
 } from "./month";
 import type { OutboxRow, SalonDeps, TimeBlock } from "./types";
 
@@ -372,9 +374,10 @@ function monthParam(month: string | undefined, shop: ShopProfile, d: SalonDeps):
 const expensesOf = async (d: SalonDeps, shopId: string, month: string) =>
   monthExpenses(await d.salon.listExpenses(shopId, month), month);
 
-async function totalsOf(d: SalonDeps, shopId: string, month: string, tz: string) {
+async function totalsOf(d: SalonDeps, shopId: string, month: string, tz: string, through: number | null) {
   const { start, end } = monthBounds(month, tz);
   const [payments, expenses] = await Promise.all([d.salon.listPayments(shopId, start, end), expensesOf(d, shopId, month)]);
+  if (through !== null) return sameDaysTotals(payments, expenses, through, tz);
   const takenCents = payments.reduce((n, p) => n + p.amountCents, 0);
   const expensesCents = expenses.reduce((n, e) => n + e.amountCents, 0);
   return { takenCents, expensesCents, leftCents: takenCents - expensesCents };
@@ -392,6 +395,7 @@ export async function handleMonth(
   const m = monthParam(q.month, shop, d);
   if (!m.ok) return m;
   const tz = shop.timeZone;
+  const through = comparedThrough(m.month, d.clock(), tz);
   const { start, end } = monthBounds(m.month, tz);
   const [payments, expenses, bookings, calls, gapSends, prev] = await Promise.all([
     d.salon.listPayments(shopId, start, end),
@@ -399,10 +403,10 @@ export async function handleMonth(
     d.salon.listMonthBookings(shopId, start, end),
     d.salon.listMonthCalls(shopId, start, end),
     d.salon.listGapSends(shopId, start.subtract({ hours: GAP_WINDOW_HOURS }), end),
-    totalsOf(d, shopId, addMonths(m.month, -1), tz),
+    totalsOf(d, shopId, addMonths(m.month, -1), tz, through),
   ]);
   const catalogue = Object.fromEntries(shop.services.map((s) => [s.id, s.priceCents]));
-  return { ok: true, body: monthReport({ month: m.month, tz, payments, expenses, bookings, calls, gapSends, prev, catalogue }) };
+  return { ok: true, body: monthReport({ month: m.month, tz, payments, expenses, bookings, calls, gapSends, prev, comparedThrough: through, catalogue }) };
 }
 
 export async function handleListExpenses(
